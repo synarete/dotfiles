@@ -1,0 +1,14 @@
+#!/bin/bash
+
+base=$(dirname ${BASH_SOURCE[0]})
+redhat=/etc/redhat-release
+debian=/etc/debian_version
+
+if [ -f ${redhat} ]; then
+	cat ${redhat}
+	pkgs=( $( < ${base}/rpmpkg.list ) )
+	yum install ${pkgs[@]}
+elif [ -f ${debian} ]; then
+	pkgs=( $( < ${base}/debpkg.list ) )
+	apt-get install ${pkgs[@]}
+fi

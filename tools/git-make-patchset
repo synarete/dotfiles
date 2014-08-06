@@ -1,0 +1,67 @@
+#!/bin/bash
+
+PROGRAM=`basename $0`
+DESCRIPTION="create a patchset to send"
+PARAMS="from-rev to-rev [remote-name]"
+OPTIONS="[-h] [-p prefix] [-v version] [-s subject] -o out-dir"
+
+usage()
+{
+	[ $1 -ne 0 ] && exec >&2
+
+	cat << EOF
+$PROGRAM - $DESCRIPTION
+usage:
+$PROGRAM $OPTIONS $PARAMS
+create a patchset ready to be sent. if remote-name is supplied, it is used to
+generate a pull request in the cover letter.
+
+options:
+-h	help: show this help message and exit.
+-p	prefix: set the patchset prefix (e.g. RTK for [RTK PATCH])
+-v	version: patchset version
+-s	subject: cover letter subject
+-o	output: where to put the output
+
+exit status:
+254:	bad arguments
+otherwise, exit status from git-format-patch
+EOF
+	exit $1
+}
+
+PREFIX=""
+VERSION=""
+SUBJECT=""
+while getopts hp:v:s:o: option; do
+	case $option in
+		h) usage 0 ;;
+		p) PREFIX="$OPTARG " ;;
+		v) VERSION=" v$OPTARG" ;;
+		s) SUBJECT="$OPTARG" ;;
+		o) OUTDIR="$OPTARG" ;;
+		\?) usage 254 ;;
+	esac
+done
+shift $(($OPTIND - 1))
+FROM_REV="$1"
+TO_REV="$2"
+REMOTE="$3"
+
+[ -n "$OUTDIR" ] || usage 254
+
+if [ -n "$REMOTE" ]; then
+	REMOTE_URL=$(git remote show -n idank | grep 'Fetch URL' | awk '{ print $NF }')
+	PULL_REQ=$(git request-pull $FROM_REV $REMOTE_URL $TO_REV | head -7)
+else
+	PULL_REQ=""
+fi
+
+git format-patch -U15 --cover-letter -o "$OUTDIR" --subject-prefix="${PREFIX}PATCH${VERSION}" "${FROM_REV}..${TO_REV}" || exit
+
+COVER_LETTER=$OUTDIR/0000-cover-letter.patch
+sed -i "s/\*\*\* SUBJECT HERE \*\*\*/$SUBJECT/" $COVER_LETTER
+perl -i.bak -pne "s@\*\*\* BLURB HERE \*\*\*@$PULL_REQ@" $COVER_LETTER
+rm ${COVER_LETTER}.bak
+
+vim $COVER_LETTER

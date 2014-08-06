@@ -1,0 +1,84 @@
+[user]
+	name = Shachar Sharon
+	email = shachars@xxxxxx
+
+[core]
+	whitespace = trailing-space,space-before-tab
+	#editor = "emacs -nw"
+	editor = "emacsclient -t"
+	bigfilethreshold = 200k
+
+[sendemail]
+	from = Shachar Sharon <shachars@xxxxxx>
+	smtpserver = smtp.gmail.com
+	smtpserverport = 465
+	smtpencryption = ssl
+	smtpdomain = xxxxxx.net
+	smtpuser = shachars@xxxxxx
+	smtppass = passwd
+	suppresscc = all
+	suppressfrom = yes
+	signedoffbycc = no
+	chainreplyto = no
+
+[push]
+	default = current
+
+[branch]
+	autosetuprebase = always
+
+[color]
+	ui = true
+	branch = auto
+	diff = auto
+	status = auto
+
+#[color "branch"]
+#	current = yellow bold
+#	local = normal
+#	remote = green
+
+#[color "diff"]
+#	plain = normal
+#	meta = yellow bold
+#	frag = magenta bold
+#	old = red bold
+#	new = green bold
+
+#[color "status"]
+#	header = normal
+#	branch = yellow bold
+#	nobranch = magenta
+#	added = green
+#	changed = red
+#	untracked = yellow
+
+[color "grep"]
+	external = --color=always
+
+[guitool "Rebase onto..."]
+	cmd = git rebase
+	revprompt = yes
+[guitool "Rebase/Continue"]
+	cmd = git rebase --continue
+[guitool "Rebase/Skip"]
+	cmd = git rebase --skip
+[guitool "Rebase/Abort"]
+	cmd = git rebase --abort
+[guitool "Pull with Rebase"]
+	cmd = git pull --rebase
+
+[alias]
+	st = status -sb
+	br = branch
+	df = diff
+#	co = checkout
+	push-tags = push --tags
+	clean-fxd = clean -fxd
+	add-commit = commit -a
+	reset-head = reset --hard HEAD
+	ls = log --oneline --decorate
+	ll = log --oneline --decorate --all --graph --date=iso --pretty
+	lll = log --graph --all --format=format:'%C(yellow)%h%C(reset) - %C(blue)%ci%C(reset) %C(red)%d%C(reset)%n''  %C(normal)%s%C(reset) %C(bold)- %an %C(dim)<%cE> %C(reset)' --abbrev-commit
+
+

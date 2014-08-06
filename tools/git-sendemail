@@ -1,0 +1,17 @@
+#!/bin/bash
+
+to="$1"
+rev_set="$2"
+
+function die() {
+    echo "${@}"
+    exit 1
+}
+
+out_dir=$(mktemp -d -t git_email.XXXXXX)
+
+git format-patch --to "$to" "$rev_set" -o ${out_dir} --cover-letter
+vim ${out_dir}/0000-cover-letter.patch
+git send-email ${out_dir}
+
+rm -rf ${out_dir}

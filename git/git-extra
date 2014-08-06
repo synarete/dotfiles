@@ -1,0 +1,23 @@
+export GIT_PS1_SHOWDIRTYSTATE=true
+export GIT_PS1_SHOWUNTRACKEDFILES=true
+
+
+__git_name() {
+	if [ -f "$(__gitdir)/name" ]; then
+		name=$(head -1 $(__gitdir)/name | awk '{print $1}')
+                echo -n ${name}
+	fi
+}
+
+
+__git_ps1_improved() {
+	gps1=$(echo -n $(__git_ps1))
+	name=$(__git_name)
+	if [ "$name" != "" ]; then
+		gps1=$(echo ${gps1} | tr -d "\(\)")
+		gps1="${gps1#"${gps1%%[![:space:]]*}"}" 
+		gps1="${gps1%"${gps1##*[![:space:]]}"}"
+		gps1="(${name}:${gps1})"
+	fi
+	echo -n ${gps1}
+}

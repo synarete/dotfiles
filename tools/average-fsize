@@ -1,0 +1,7 @@
+#!/bin/bash
+
+[[ ! -z "$@" ]] && dirs="$@" || dirs="./"
+for d in ${dirs}; do
+    echo -n ${d} " "
+    find ${d} -ls | awk '{sum += $7; n++;} END {print sum/n;}'
+done

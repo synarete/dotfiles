@@ -1,0 +1,9 @@
+
+set $COLOUREDPROMPT = 1
+set $USECOLOR = 1
+
+set history filename ~/.gdb_history
+set history save
+
+set input-radix 0x10
+set output-radix 0xa
