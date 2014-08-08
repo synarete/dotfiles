@@ -7,3 +7,4 @@ shift 2
 for f in $@; do
 	sed -i "s,${word},${next},g" "$f"
 done
+

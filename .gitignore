@@ -1,0 +1,18 @@
+# Global excludes across all subdirectories
+Makefile.in
+# Temp files & build outputs
+*~
+*.pyc
+\#*\#
+.\#*
+
+# Local excludes in root directory
+# Dev-tools files
+/.cproject
+/.project
+/.pydevproject
+/.settings
+
+/.sconsign.dblite
+/build
+/_build
