@@ -1,0 +1,41 @@
+#!/bin/bash -e
+#
+# astylefiles -- Wrapper over 'astyle' utility with linux kernel style
+#
+# Copyright (C) 2017 Synarete
+#
+# Licensed under the MIT License.
+#
+
+which astyle &> /dev/null
+
+astylelinux() {
+  astyle -Q \
+    --style=linux \
+    --suffix=none \
+    --indent=force-tab=8 \
+    --align-pointer=name \
+    --pad-oper \
+    --pad-header \
+    --unpad-paren \
+    --remove-braces \
+    --min-conditional-indent=0 \
+    --indent-preprocessor \
+    --break-after-logical \
+    --max-code-length=80 \
+    --indent-col1-comments \
+    --lineend=linux \
+    "$@"
+}
+
+for arg in "$@"; do
+  if [ -f ${arg} ]; then
+    astylelinux ${arg}
+  elif [ -d ${arg} ]; then
+    astylelinux $(find ${arg} -type f -name "*.[ch]")
+  fi
+done
+
+
+
+

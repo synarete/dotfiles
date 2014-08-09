@@ -8,29 +8,37 @@
 
 (message "[ Loading Emacs init file of %s ]" (user-login-name))
 
-;; Load-path
-(add-to-list 'load-path "~/.emacs.d/site-lisp/")
+;; Load-path (where to look for extra emacs lisp files)
+(add-to-list 'load-path "~/.emacs.d/lisp/")
 
+;; Where to look for extra emacs themes
+(add-to-list 'custom-theme-load-path "~/.emacs.d/themes/")
 
-;;;; Extra-modes:
+(load-library "python")
+
+;;;; Extras:
 (require 'cc-mode)
 (require 'make-mode)
 (require 'magit)
+(require 'git-commit)
 (require 'rst)
 (require 'color-theme)
 (require 'smart-tabs-mode)
-
+(require 'generic-x)
+(require 'whitespace)
+(require 'smooth-scroll)
 
 ;;;; Appearence:
 
 ;; Minbuffer's messages color
-(set-face-foreground 'minibuffer-prompt "orange")
+(set-face-foreground 'minibuffer-prompt "yellow")
 
-;; Disable toolbar
+;; Disable toolbar in terminal-mode
 (tool-bar-mode -1)
 
 ;; Disable menu-bar (toggle with "M-m", see key-binding below)
-;;(menu-bar-mode -99)
+;; (menu-bar-mode -99)
+(if (not window-system) (menu-bar-mode -99))
 
 ;; Show time
 (display-time)
@@ -46,6 +54,10 @@
 
 ;; Highligh current line
 (global-hl-line-mode 1)
+
+;; Highlight selected region
+(set-face-attribute
+ 'region nil :background "black" :foreground "ivory")
 
 ;; Display line, column numbers and buffer-size
 (setq-default line-number-mode 't)
@@ -105,7 +117,6 @@
 ;;(add-hook 'c-mode-hook 'turn-on-auto-fill)
 ;;(add-hook 'python-mode-hook 'turn-on-auto-fill)
 
-
 ;; Skip the startup screens
 (setq-default inhibit-startup-screen t)
 
@@ -116,13 +127,12 @@
 ;; Force newline at ent-of-file
 (setq require-final-newline 't)
 
-;; Remove trailing whitespaces
+;; Remove trailing whitespaces upon save
 (add-hook 'before-save-hook 'delete-trailing-whitespace)
 (add-hook 'before-save-hook 'whitespace-cleanup)
 
 
 ;; Enable smoth-scrolling
-(require 'smooth-scroll)
 (smooth-scroll-mode t)
 
 ;;(setq mouse-wheel-scroll-amount '(1 ((shift) . 1)))
@@ -155,7 +165,6 @@
 
 ;; When on a tab, make the cursor the tab length
 (setq-default x-stretch-cursor t)
-
 
 ;;;; Key-binding:
 
@@ -225,8 +234,8 @@
 (global-set-key "\C-x\ \C-r" 'recentf-open-files)
 
 ;; Easy navigation pane
-(require 'nav)
-(nav-disable-overeager-window-splitting)
+;;(require 'nav)
+;;(nav-disable-overeager-window-splitting)
 ;;(global-set-key (kbd "M-n") 'nav-toggle)
 
 ;; Use ibuffer for buffer-listing
@@ -242,8 +251,8 @@
 ;;;; Mode-setup:
 
 ;; Indentation rules
-(setq-default c-basic-offset 4)
-(setq-default tab-width 4)
+(setq-default c-basic-offset 8)
+(setq-default tab-width 8)
 
 (setq indent-line-function 'insert-tab)
 (setq-default indent-tabs-mode t)
@@ -253,7 +262,7 @@
 ;; Improved TAB behaviour
 (setq c-backspace-function 'backward-delete-char)
 
-;; Usae spart tabs
+;; Use smart tabs
 (smart-tabs-insinuate 'c)
 (setq-default indent-tabs-mode nil)
 
@@ -285,10 +294,47 @@
 (setq auto-mode-alist
       (cons '("SConscript" . python-mode) auto-mode-alist))
 
+;; Shell-mode
+(add-hook 'sh-mode-hook
+          (lambda ()
+            (setq tab-width 8
+                  sh-basic-offset 8
+                  indent-tabs-mode t)))
+
+;; Python
+(autoload 'python-mode "python-mode" "Python Mode." t)
+(add-to-list 'auto-mode-alist '("\\.py\\'" . python-mode))
+(add-to-list 'interpreter-mode-alist '("python" . python-mode))
+
+(setq interpreter-mode-alist
+      (cons '("python" . python-mode)
+            interpreter-mode-alist)
+      python-mode-hook
+      '(lambda () (progn
+                    (set-variable 'py-indent-offset 4)
+                    (set-variable 'indent-tabs-mode nil))))
+
+;; Git
+(add-hook 'git-commit-setup-hook 'turn-off-auto-fill t)
+
 ;;;; Colors:
 
-;; Prefered color theme + few customizations
+;; Prefered color theme + private customizations
 (color-theme-initialize)
 (load-theme 'wombat t)
+                                        ;(load-theme 'twilight t)
 (set-face-underline-p 'highlight nil)
-(set-background-color "black")
+(custom-set-variables
+ ;; custom-set-variables was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ '(custom-safe-themes
+   (quote
+    ("b46ee2c193e350d07529fcd50948ca54ad3b38446dcbd9b28d0378792db5c088" default))))
+(custom-set-faces
+ ;; custom-set-faces was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ )

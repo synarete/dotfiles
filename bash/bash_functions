@@ -1,0 +1,107 @@
+# Common helpers
+yell() {
+  echo "$0: $*" >&2;
+}
+die() {
+  yell "$*"; exit 1;
+}
+try() {
+  "$@" || die "Failed to execute: $*";
+}
+
+# Emacs helpers
+emacsclnt() {
+  emacsclient -t -a "" $@
+}
+
+emacsd_start() {
+  emacs --daemon
+}
+
+emacsd_stop() {
+  emacsclient --eval '(kill-emacs)'
+}
+
+# Use 'most' pager for man
+mman() {
+  env MANPAGER="most -s" man "$@"
+}
+
+# Run Vim with less.vim. Read stdin if no arguments were given.
+vmore() {
+  if test $# = 0; then
+    vim --cmd 'let no_plugin_maps = 1' -c 'runtime! macros/less.vim' -
+  else
+    vim --cmd 'let no_plugin_maps = 1' -c 'runtime! macros/less.vim' "$@"
+  fi
+}
+
+# Start Vim in insert mode
+vii() {
+  vim +startinsert "$@"
+}
+
+# Top by process-name
+ptop() {
+  name="$1"
+  if [ -z "${name}" ]; then
+    return
+  fi
+  pids=$(pgrep -d',' -x ${name})
+  if [ -z "${pids}" ]; then
+    return
+  fi
+  top -p ${pids}
+}
+
+# Show installed packages using white-seperator delimiter
+rpmqaf() {
+  rpm -qa --qf "%{NAME} %{VERSION} %{RELEASE} %{VENDOR}\n"
+}
+
+# Show content of rpm file
+rpmdump() {
+  for f in "$@"; do
+    echo ${f}
+    try rpm2cpio "${f}" | cpio -tv
+    echo
+  done
+}
+
+# Find C files at
+rfindc() {
+  for d in "$@"; do
+    find ${d} -type f -name "*.[ch]"
+  done
+}
+
+# Git formatted log
+# gll() {
+#  git --no-pager log -n32 \
+#    --abbrev-commit --decorate --date=short \
+#    --format=tformat:'%C(green)%h %C(yellow)%an%x09 %C(bold blue)%ad%C(reset) %C(red)| %C(bold yellow)%d%C(reset) %C(white)%s%C(reset)' \
+#    $@
+# }
+
+# Git remote update shorten
+gru() {
+  git remote update $@
+}
+
+# Git tag by date
+git-tag-by-date() {
+  prefix="$1"
+  datenow=$(date -I | tr -d '-')
+  if [ ! -z ${prefix} ]; then
+    git tag ${prefix}-${datenow}
+  fi
+}
+
+# Pipe "git show" into vi
+git-view() {
+  git show "$1" | view - "+set filetype=${1##*.}" ;
+}
+
+
+
+

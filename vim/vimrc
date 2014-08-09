@@ -1,0 +1,106 @@
+" vimrc
+"
+
+" call pathogen#infect()
+" call pathogen#helptags()
+
+" Use Vim settings, rather then Vi settings (much better!).
+" Must be first: it changes other options as a side effect.
+set nocompatible
+
+" Enable true colors
+set termguicolors
+
+" Enable line numbers by default
+set nu
+set numberwidth=4
+
+" Add a bit extra margin to the left
+set foldcolumn=1
+
+" Show whitespace characters
+set list
+
+" Mark white-character visible
+"set list listchars=tab:>-,nbsp:.,trail:.,extends:>,precedes:<
+set listchars=tab:»\ ,extends:›,precedes:‹,nbsp:·,trail:·
+set showbreak=\\ "
+
+" Keep 100 lines of command line history
+set history=100
+
+" Show the cursor position all the time
+set ruler
+
+" Highlight current line
+set cursorline
+
+" Set to auto read when a file is changed from the outside
+set autoread
+
+" Highlight search results
+set hlsearch
+
+" Makes search act like search in modern browsers
+set incsearch
+
+" Show matching brackets when text indicator is over them
+set showmatch
+
+" Enable syntax highlighting
+syntax enable
+
+" Indentation
+set autoindent
+set smartindent
+set smarttab
+set shiftround
+
+" Enable filetype plugins
+filetype plugin on
+filetype indent on
+
+" XTerm Color
+set t_Co=256
+
+" Color scheme (jellybeans|desert)
+colorscheme jellybeans
+set background=dark
+
+" Colored line-numbers
+highlight LineNr term=bold cterm=NONE ctermfg=DarkGray ctermbg=NONE
+	\ gui=NONE guifg=Gray16 guibg=NONE
+
+" Colored colum at 80
+highlight ColorColumn ctermbg=8 guibg=Gray8
+set colorcolumn=80
+
+" Set utf8 as standard encoding and en_US as the standard language
+set encoding=utf8
+
+" Use Unix as the standard file type
+set ffs=unix,dos,mac
+
+" Turn backup off
+set noswapfile
+set nobackup
+set nowritebackup
+
+" Encypt strongly
+set cm=blowfish2
+set viminfo=
+
+" Scrolling
+set sidescroll=1
+
+" Spell-check in git commits
+autocmd FileType gitcommit setlocal spell
+
+" Display status line with nice colors
+set laststatus=2
+highlight StatusLine cterm=NONE ctermfg=DarkGray ctermbg=NONE
+	\ gui=NONE guifg=Gray32 guibg=NONE
+
+
+
+

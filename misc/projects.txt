@@ -1,0 +1,12 @@
+funex: File-system
+
+cauta: Programing language
+
+dicasa: Dicasa is a content addressable storage archive
+
+refus: Reference file-system in user-space
+
+voluta: Encrypted data vault
+
+kis: Keep it simple
+

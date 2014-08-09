@@ -1,0 +1,42 @@
+#!/bin/bash
+#
+# Pre-commit hook:
+# 1) Adds an empty line at the end of the file
+# 2) Removes trailing spaces
+#
+# References:
+# http://eng.wealthfront.com/2011/03/corrective-action-with-gits-pre-commit.html
+# http://stackoverflow.com/questions/591923/make-git-automatically-remove-trailing-whitespace-before-committing
+#
+
+_print() { 
+  local self=$(basename ${BASH_SOURCE[0]})
+
+  echo "${self}: $*" >&2; 
+}
+
+_rtrim_spaces() {
+  local path="$1"
+
+  if grep -q "[[:blank:]]$" "${path}"; then
+    _print "Remove trailing spaces:" "${path}"
+    sed -i 's/[[:space:]]*$//' "${path}"
+  fi
+}
+
+_git_readd() {
+  git add "$1"
+}
+
+_git_precommit_files() {
+  # files (not deleted) in the index
+  git diff-index --name-status --cached HEAD | grep -v ^D | cut -c3-
+}
+
+  
+for f in $(_git_precommit_files); do
+  _rtrim_spaces "$f"
+  _git_readd "$f"
+done
+
+

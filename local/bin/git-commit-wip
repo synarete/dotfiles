@@ -1,0 +1,5 @@
+#!/bin/sh
+#now=$(date -Iseconds)
+now=$(date)
+git commit --all --message="+WIP (${now})" "$@"
+

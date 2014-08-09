@@ -1,1 +1,2 @@
-Yet another dotfiles collection...
+# Synarete's collection of dotfiles
+

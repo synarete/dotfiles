@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+#
+# gll -- Wrapper of 'git log' with pretty colorful format
+#
+# Copyright (C) 2019 Shachar Sharon
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+#
+
+import sys
+import os
+import getopt
+import shlex
+import subprocess
+import distutils.spawn
+import colorama
+
+
+WHITE = colorama.Fore.WHITE
+GREEN = colorama.Fore.GREEN
+YELLOW = colorama.Fore.YELLOW
+BLUE = colorama.Fore.BLUE
+CYAN = colorama.Fore.CYAN
+RED = colorama.Fore.RED
+MAGENTA = colorama.Fore.MAGENTA
+LIGHTRED_EX = colorama.Fore.LIGHTRED_EX
+LIGHTBLUE_EX = colorama.Fore.LIGHTBLUE_EX
+LIGHTGREEN_EX = colorama.Fore.LIGHTGREEN_EX
+LIGHTYELLOW_EX = colorama.Fore.LIGHTYELLOW_EX
+LIGHTMAGENTA_EX = colorama.Fore.LIGHTMAGENTA_EX
+RESET = colorama.Fore.RESET
+DIM = colorama.Style.DIM
+BRIGHT = colorama.Style.BRIGHT
+RESET_ALL = colorama.Style.RESET_ALL
+NLINES_DEFAULT = 24
+
+
+def msg(txt: str) -> None:
+    name = os.path.basename(__file__)
+    print(name + ': ' + txt)
+
+
+def die(txt: str) -> None:
+    msg(txt)
+    sys.exit(-1)
+
+
+def locate_bin(name: str) -> str:
+    xbin = distutils.spawn.find_executable(name)
+    if not xbin:
+        die('failed to find ' + name)
+    return str(xbin).strip()
+
+
+def subexec(cmd, work_dir=None) -> str:
+    '''Execute command as sub-process, die upon failure'''
+    pipes = subprocess.Popen(shlex.split(cmd),
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE,
+                             cwd=work_dir,
+                             shell=False,
+                             env=os.environ.copy())
+    std_out, std_err = pipes.communicate()
+    if pipes.returncode != 0:
+        die('failed: ' + cmd)
+    out = std_err or std_out
+    return out.decode('UTF-8')
+
+
+def git_log_format(work_dir: str, ref_name: str, nlines: int) -> str:
+    '''Calls git-log-format without colors and with | as seperator'''
+    cmd = locate_bin('git')
+    cmd = cmd + ' --no-pager log --abbrev-commit --decorate --date=short'
+    cmd = cmd + ' -n{} '.format(nlines)
+    cmd = cmd + ' --format=tformat:\'%h|%an|%ad|%d|%s\' '
+    cmd = cmd + ref_name
+    return subexec(cmd, work_dir)
+
+
+def parse_git_log(lines: str) -> list:
+    gll_dat = []
+    for ln in lines.split('\n'):
+        t = tuple(ln.split('|', 5))
+        if len(t) != 5:
+            continue
+        gll_dat.append(t)
+    return gll_dat
+
+
+def color_branch_tags(tag_token: str) -> str:
+    tags_in = [ tag.strip() for tag in tag_token.strip("()").split(",") ]
+    if not tag_token or not tags_in:
+        return ''
+    tags_out = []
+    for tag in tags_in:
+        ctag = ''
+        if '/' in tag:
+            ctag = DIM + LIGHTRED_EX + tag
+        elif 'HEAD' in tag:
+            if ' -> ' in tag:
+                head, tail = tuple(tag.split(' ', 1))
+                tag = head + ' ' + LIGHTGREEN_EX + tail
+            ctag = BRIGHT + LIGHTBLUE_EX + tag
+        elif 'tag: ' in tag:
+            ctag = LIGHTYELLOW_EX + tag.replace('tag: ', '')
+        else:
+            ctag = LIGHTMAGENTA_EX + tag
+        tags_out.append(RESET_ALL + ctag + RESET_ALL)
+    return '(' + ', '.join(tags_out) + ') '
+
+
+def print_gll_line(sha: str, author: str, date: str,
+                   tag_token: str, commit_msg: str) -> None:
+    hsep = RED + BRIGHT + '|' + RESET_ALL
+    sha = GREEN + sha
+    author = YELLOW + '{:<20s}'.format(author)
+    date = LIGHTBLUE_EX + date
+    tags = color_branch_tags(tag_token)
+    cmsg = RESET_ALL + commit_msg + RESET_ALL
+    tail = tags + RESET_ALL + commit_msg + RESET_ALL
+    print('{} {} {} {} {}'.format(sha, author, date, hsep, tail))
+
+
+def print_gll(gll_dat: list) -> None:
+    for dat in gll_dat:
+        ent = [field.strip() for field in dat]
+        print_gll_line(ent[0], ent[1], ent[2], ent[3], ent[4])
+
+
+def usage(exit_code: int) -> None:
+    prog = os.path.basename(sys.argv[0])
+    print("usage: {} [-n NLINES] [<git-path>]".format(prog))
+    sys.exit(exit_code)
+
+
+def parse_args() -> tuple:
+    nlines = NLINES_DEFAULT
+    work_dir = os.getcwd()
+    ref_name = ''
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "hn:", ["help", "nlines="])
+    except getopt.GetoptError as err:
+        print(err)
+        usage(1)
+    for opt, arg in opts:
+        if opt in ("-n", "--nlines"):
+            nlines = int(arg)
+        else:
+            usage(2)
+    if len(args) > 1:
+        usage(3)
+    if args:
+        ref_name = args[0]
+        if os.path.isdir(ref_name):
+            ref_name = work_dir = os.path.realpath(ref_name)
+        elif os.path.isfile(ref_name):
+            ref_name = os.path.realpath(ref_name)
+            work_dir = os.path.dirname(ref_name)
+
+    return (work_dir, ref_name, nlines)
+
+
+def main() -> None:
+    colorama.init()
+    (work_dir, ref_name, nlines) = parse_args()
+    git_out = git_log_format(work_dir, ref_name, nlines)
+    gll_dat = parse_git_log(git_out)
+    print_gll(gll_dat)
+    sys.exit(0)
+
+
+if __name__ == '__main__':
+    main()

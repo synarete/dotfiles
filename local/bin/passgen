@@ -1,0 +1,52 @@
+#!/bin/sh
+set -euo pipefail
+IFS=$'\n\t'
+self=$(readlink -f $0)
+
+
+die() {
+  echo "$*";
+  exit 1;
+}
+
+require_prog () {
+    type "$1" &> /dev/null || die "missing $*";
+}
+
+do_apg() {
+  local ex="oO\`:-|/\\\()[]{},;"
+
+  require_prog apg
+  apg -n 1 -E "${ex}" -p 9 -M SNC | tr "oO" "00"
+}
+
+do_pwgen() {
+
+  require_prog pwgen
+  pwgen -1 -s -c -n
+}
+
+do_gpg_gen() {
+
+  require_prog gpg
+  gpg --gen-random --armor 1 9
+}
+
+arg=${1:-}
+case "$arg" in
+  -h|--help)
+    echo ${self} "[-a|-p|-g]"
+    ;;
+  -a)
+    do_apg
+    ;;
+  -p)
+    do_pwgen
+    ;;
+  -g)
+    do_gpg_gen
+    ;;
+  *)
+    do_pwgen
+    ;;
+esac

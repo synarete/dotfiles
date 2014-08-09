@@ -1,12 +1,14 @@
-[user]
-	name = Shachar Sharon
-	email = shachars@xxxxxx
+#[user]
+#	name = Shachar Sharon
+#	email = synarete@xxxxxxxx
 
 [core]
 	whitespace = trailing-space,space-before-tab
-	#editor = "emacs -nw"
-	editor = "emacsclient -t"
-	bigfilethreshold = 200k
+	# editor = "emacsclient -t"
+        editor = vim
+	bigfilethreshold = 256k
+	autocrlf = input
+	# excludesfile = ${HOME}/.gitignore_global
 
 [sendemail]
 	from = Shachar Sharon <shachars@xxxxxx>
@@ -22,39 +24,21 @@
 	chainreplyto = no
 
 [push]
-	default = current
+	default = simple
 
 [branch]
 	autosetuprebase = always
 
 [color]
-	ui = true
+	ui = auto
 	branch = auto
 	diff = auto
 	status = auto
 
-#[color "branch"]
-#	current = yellow bold
-#	local = normal
-#	remote = green
-
-#[color "diff"]
-#	plain = normal
-#	meta = yellow bold
-#	frag = magenta bold
-#	old = red bold
-#	new = green bold
-
-#[color "status"]
-#	header = normal
-#	branch = yellow bold
-#	nobranch = magenta
-#	added = green
-#	changed = red
-#	untracked = yellow
-
 [color "grep"]
-	external = --color=always
+	linenumber = yellow bold
+	match = red
+	filename = magenta
 
 [guitool "Rebase onto..."]
 	cmd = git rebase
@@ -68,17 +52,29 @@
 [guitool "Pull with Rebase"]
 	cmd = git pull --rebase
 
+[log]
+	decorate = short
+
+
 [alias]
 	st = status -sb
 	br = branch
 	df = diff
-#	co = checkout
-	push-tags = push --tags
+	co = checkout
+	nb = checkout -b
 	clean-fxd = clean -fxd
 	add-commit = commit -a
 	reset-head = reset --hard HEAD
 	ls = log --oneline --decorate
 	ll = log --oneline --decorate --all --graph --date=iso --pretty
-	lll = log --graph --all --format=format:'%C(yellow)%h%C(reset) - %C(blue)%ci%C(reset) %C(red)%d%C(reset)%n''  %C(normal)%s%C(reset) %C(bold)- %an %C(dim)<%cE> %C(reset)' --abbrev-commit
+	lg = log --pretty=oneline --abbrev-commit --graph --decorate
+
+
+[merge]
+	conflictstyle = diff3
+
+[credential]
+	helper = cache
+
 
 

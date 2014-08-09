@@ -3,7 +3,16 @@ set $COLOUREDPROMPT = 1
 set $USECOLOR = 1
 
 set history filename ~/.gdb_history
-set history save
+set history save on
+# set history remove-duplicates on
 
-set input-radix 0x10
-set output-radix 0xa
+# set input-radix 0x10
+# set output-radix 0xa
+
+set print pretty on
+set print array on
+
+# ignore some signals (Boehm–Demers–Weiser GC)
+handle SIGPWR noprint nostop pass
+handle SIGXCPU noprint nostop pass
+

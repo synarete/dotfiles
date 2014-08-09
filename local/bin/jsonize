@@ -1,0 +1,4 @@
+#!/usr/bin/env python3
+import sys
+import json
+print(json.dumps(json.load(sys.stdin), indent=4, sort_keys=False))
