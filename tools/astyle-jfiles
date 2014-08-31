@@ -1,5 +1,5 @@
 #! /bin/bash
-# Custom wrapper-script over command-lint utility 'astyle'
+# Custom wrapper-script over command-line utility 'astyle' for Java sources
 
 # Require input
 $([[ ! -z "$@" ]]) || { exit 0; }
@@ -11,21 +11,16 @@ versnum=$(echo "$version" | awk '{print 100*$4}')
 $([ "$versnum" -gt "203" ]) || { echo "$version" "-- unsupported" ; exit 2; }
 
 # Run astyle
-astyle --style=1tbs \
-    --indent=tab=4 \
+astyle --style=java \
+    --indent=spaces=4 \
     --indent-switches \
     --convert-tabs \
-    --align-pointer=name \
     --pad-oper \
     --pad-header \
     --unpad-paren -n \
     --min-conditional-indent=0 \
-    --indent-preprocessor \
     --add-brackets \
     --break-after-logical \
-    --max-code-length=80 \
+    --max-code-length=120 \
     --indent-col1-comments \
-    --lineend=linux "$@" | egrep -v Unchanged
-
-
-# --keep-one-line-blocks
+    --lineend=linux -W "$@" | egrep -v Unchanged
