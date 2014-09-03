@@ -30,7 +30,7 @@
 (tool-bar-mode -1)
 
 ;; Disable menu-bar (toggle with "M-m", see key-binding below)
-;;(menu-bar-mode -99)
+(menu-bar-mode -99)
 
 ;; Show time
 (display-time)
@@ -287,8 +287,10 @@
 
 ;;;; Colors:
 
-;; Prefered color theme + few customizations
+;; Prefered color theme + private customizations
 (color-theme-initialize)
 (load-theme 'wombat t)
 (set-face-underline-p 'highlight nil)
 (set-background-color "black")
+(custom-set-faces
+ '(linum ((t (:foreground "gray90" :background "gray10" :box nil)))) )
