@@ -7,6 +7,7 @@
 	#editor = "emacs -nw"
 	editor = "emacsclient -t"
 	bigfilethreshold = 200k
+	autocrlf = input
 
 [sendemail]
 	from = Shachar Sharon <shachars@xxxxxx>
@@ -22,13 +23,13 @@
 	chainreplyto = no
 
 [push]
-	default = current
+	default = tracking
 
 [branch]
 	autosetuprebase = always
 
 [color]
-	ui = true
+	ui = auto
 	branch = auto
 	diff = auto
 	status = auto
@@ -78,7 +79,12 @@
 	add-commit = commit -a
 	reset-head = reset --hard HEAD
 	ls = log --oneline --decorate
+	lg = log --graph --decorate --date=iso
 	ll = log --oneline --decorate --all --graph --date=iso --pretty
 	lll = log --graph --all --format=format:'%C(yellow)%h%C(reset) - %C(blue)%ci%C(reset) %C(red)%d%C(reset)%n''  %C(normal)%s%C(reset) %C(bold)- %an %C(dim)<%cE> %C(reset)' --abbrev-commit
 
 
+[merge]
+	conflictstyle = diff3
+[credential]
+	helper = cache

@@ -8,8 +8,11 @@
 
 (message "[ Loading Emacs init file of %s ]" (user-login-name))
 
-;; Load-path
-(add-to-list 'load-path "~/.emacs.d/site-lisp/")
+;; Load-path (where to look for extra emacs lisp files)
+(add-to-list 'load-path "~/.emacs.d/lisp/")
+
+;; Where to look for extra emacs themes
+(add-to-list 'custom-theme-load-path "~/.emacs.d/themes/")
 
 
 ;;;; Extra-modes:
@@ -19,6 +22,8 @@
 (require 'rst)
 (require 'color-theme)
 (require 'smart-tabs-mode)
+(require 'generic-x)
+(require 'cauta-mode)
 
 
 ;;;; Appearence:
@@ -104,7 +109,6 @@
 (add-hook 'text-mode-hook 'turn-on-auto-fill)
 ;;(add-hook 'c-mode-hook 'turn-on-auto-fill)
 ;;(add-hook 'python-mode-hook 'turn-on-auto-fill)
-
 
 ;; Skip the startup screens
 (setq-default inhibit-startup-screen t)
@@ -225,8 +229,8 @@
 (global-set-key "\C-x\ \C-r" 'recentf-open-files)
 
 ;; Easy navigation pane
-(require 'nav)
-(nav-disable-overeager-window-splitting)
+;;(require 'nav)
+;;(nav-disable-overeager-window-splitting)
 ;;(global-set-key (kbd "M-n") 'nav-toggle)
 
 ;; Use ibuffer for buffer-listing
@@ -253,7 +257,7 @@
 ;; Improved TAB behaviour
 (setq c-backspace-function 'backward-delete-char)
 
-;; Usae spart tabs
+;; Use smart tabs
 (smart-tabs-insinuate 'c)
 (setq-default indent-tabs-mode nil)
 
@@ -293,4 +297,4 @@
 (set-face-underline-p 'highlight nil)
 (set-background-color "black")
 (custom-set-faces
- '(linum ((t (:foreground "gray90" :background "gray10" :box nil)))) )
+ '(linum ((t (:foreground "gray50" :background "gray10" :box nil)))))

@@ -147,6 +147,7 @@ sparse-devel
 sqlite-devel
 strace
 syslinux
+sysstat
 tcl
 tcp_wrappers-devel
 tk
