@@ -2,8 +2,7 @@
 #                                                                             #
 #  cstylechecker.py -- Style-checker for C-source files                       #
 #                                                                             #
-#  Copyright (C) 2010, 2011, 2012, 2013, 2014                                 #
-#                Shachar Sharon, <shablool@users.sf.net>                      #
+#  Copyright (C) 2010, 2011, 2012, 2013, 2014, Synarete                       #
 #                                                                             #
 #  Permission is hereby granted, free of charge, to any person obtaining a    #
 #  copy of this software and associated documentation files (the "Software"), #
@@ -175,6 +174,7 @@ COMPILER_PRIVATE = \
         __USE_GNU
         __INTEL_COMPILER
         __i386__
+        __x86_64__
     '''
 
 SYS_PRIVATE = \
