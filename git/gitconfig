@@ -73,7 +73,8 @@
 	st = status -sb
 	br = branch
 	df = diff
-#	co = checkout
+	co = checkout
+    nb = checkout -b
 	push-tags = push --tags
 	clean-fxd = clean -fxd
 	add-commit = commit -a

@@ -96,6 +96,7 @@ liberation-narrow-fonts
 libevent-devel
 libgcc
 libmount-devel
+libmpc-devel
 libnfsidmap-devel
 libtirpc-devel
 libtool
@@ -111,6 +112,7 @@ man-pages
 maven
 moreutils
 most
+mpfr-devel
 net-tools
 newt-devel
 nfs-utils
