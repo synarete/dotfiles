@@ -3,4 +3,4 @@ import sys
 import json
 
 data = json.load(sys.stdin)
-print json.dumps(data, indent=2, sort_keys=True)
+print json.dumps(data, indent=4, sort_keys=False)

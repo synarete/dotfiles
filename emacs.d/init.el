@@ -295,6 +295,6 @@
 (color-theme-initialize)
 (load-theme 'wombat t)
 (set-face-underline-p 'highlight nil)
-(set-background-color "black")
+;;(set-background-color "black")
 (custom-set-faces
  '(linum ((t (:foreground "gray50" :background "gray10" :box nil)))))
