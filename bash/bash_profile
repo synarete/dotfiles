@@ -2,6 +2,10 @@
 # USER SPECIFIC:
 #
 
+# If not running interactively, don't do anything
+[ -z "$PS1" ] && return
+
+# Private dirs into PATH
 root_private=$(realpath $(dirname $BASH_SOURCE[0])/../)
 bin_private=${root_private}/tools
 
@@ -9,6 +13,10 @@ bin_private=${root_private}/tools
 export HISTSIZE=10000
 export HISTCONTROL=ignoreboth:erasedups
 export EDITOR=emacs
+
+# Check the window size after each command and, if necessary,
+# update the values of LINES and COLUMNS.
+shopt -s checkwinsize
 
 # Colors
 . ${root_private}/bash/bash_colors

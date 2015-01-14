@@ -1,0 +1,3 @@
+Vim goodies are at:
+
+https://github.com/gavrie/vim
