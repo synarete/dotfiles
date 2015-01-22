@@ -31,11 +31,12 @@
 ;; Minbuffer's messages color
 (set-face-foreground 'minibuffer-prompt "orange")
 
-;; Disable toolbar
+;; Disable toolbar in terminal-mode
 (tool-bar-mode -1)
 
 ;; Disable menu-bar (toggle with "M-m", see key-binding below)
-(menu-bar-mode -99)
+;; (menu-bar-mode -99)
+(if (not window-system) (menu-bar-mode -99))
 
 ;; Show time
 (display-time)
