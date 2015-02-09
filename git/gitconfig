@@ -69,20 +69,24 @@
 [guitool "Pull with Rebase"]
 	cmd = git pull --rebase
 
+[log]
+	decorate = short
+
+
 [alias]
 	st = status -sb
 	br = branch
 	df = diff
 	co = checkout
-    nb = checkout -b
+	nb = checkout -b
 	push-tags = push --tags
 	clean-fxd = clean -fxd
 	add-commit = commit -a
 	reset-head = reset --hard HEAD
 	ls = log --oneline --decorate
-	lg = log --graph --decorate --date=iso
 	ll = log --oneline --decorate --all --graph --date=iso --pretty
 	lll = log --graph --all --format=format:'%C(yellow)%h%C(reset) - %C(blue)%ci%C(reset) %C(red)%d%C(reset)%n''  %C(normal)%s%C(reset) %C(bold)- %an %C(dim)<%cE> %C(reset)' --abbrev-commit
+	lg = log --color --pretty=format:'%C(auto)%h %Cred %<(10,trunc)%an %Creset%C(auto)%s %Cgreen(%cr,%ar) %Creset%C(auto)%d'
 
 
 [merge]
