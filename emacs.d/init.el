@@ -290,6 +290,13 @@
 (setq auto-mode-alist
       (cons '("SConscript" . python-mode) auto-mode-alist))
 
+;; Shell-mode
+(add-hook 'sh-mode-hook
+          (lambda ()
+            (setq tab-width 8
+                  sh-basic-offset 8
+                  indent-tabs-mode t)))
+
 ;;;; Colors:
 
 ;; Prefered color theme + private customizations
