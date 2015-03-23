@@ -1,0 +1,17 @@
+# Emacs helpers
+emacsclnt() {
+	emacsclient -t -a "" $@
+}
+
+emacsd_start() {
+	emacs --daemon
+}
+
+emacsd_stop() {
+	emacsclient --eval '(kill-emacs)'
+}
+
+# Use 'most' pager for man
+man() {
+	env MANPAGER="most -s" man "$@"
+}
