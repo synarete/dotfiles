@@ -53,6 +53,10 @@
 ;; Highligh current line
 (global-hl-line-mode 1)
 
+;; Highlight selected region
+(set-face-attribute
+ 'region nil :background "black" :foreground "ivory")
+
 ;; Display line, column numbers and buffer-size
 (setq-default line-number-mode 't)
 (setq-default column-number-mode 't)
@@ -247,8 +251,8 @@
 ;;;; Mode-setup:
 
 ;; Indentation rules
-(setq-default c-basic-offset 4)
-(setq-default tab-width 4)
+(setq-default c-basic-offset 8)
+(setq-default tab-width 8)
 
 (setq indent-line-function 'insert-tab)
 (setq-default indent-tabs-mode t)

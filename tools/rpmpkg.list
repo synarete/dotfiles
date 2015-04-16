@@ -138,6 +138,7 @@ python-pygments
 python-pyudev
 python-setproctitle
 python-sphinx
+python-tools
 readline-debuginfo
 readline-devel
 redhat-rpm-config
