@@ -25,6 +25,8 @@
 (require 'generic-x)
 (require 'cauta-mode)
 
+(load-library "python")
+
 
 ;;;; Appearence:
 
@@ -300,6 +302,19 @@
             (setq tab-width 8
                   sh-basic-offset 8
                   indent-tabs-mode t)))
+
+;; Python
+(autoload 'python-mode "python-mode" "Python Mode." t)
+(add-to-list 'auto-mode-alist '("\\.py\\'" . python-mode))
+(add-to-list 'interpreter-mode-alist '("python" . python-mode))
+
+(setq interpreter-mode-alist
+      (cons '("python" . python-mode)
+            interpreter-mode-alist)
+      python-mode-hook
+      '(lambda () (progn
+                    (set-variable 'py-indent-offset 4)
+                    (set-variable 'indent-tabs-mode nil))))
 
 ;;;; Colors:
 

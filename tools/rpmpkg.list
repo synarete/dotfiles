@@ -167,3 +167,5 @@ vim-X11
 xmlto
 zlib-debuginfo
 zlib-devel
+pyflakes
+python3-pyflakes
