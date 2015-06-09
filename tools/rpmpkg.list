@@ -171,3 +171,4 @@ pyflakes
 python3-pyflakes
 python3-pylint
 python3-setproctitle
+emacs-rpm-spec-mode

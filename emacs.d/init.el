@@ -15,7 +15,10 @@
 (add-to-list 'custom-theme-load-path "~/.emacs.d/themes/")
 
 
-;;;; Extra-modes:
+(load-library "python")
+
+
+;;;; Extras:
 (require 'cc-mode)
 (require 'make-mode)
 (require 'magit)
@@ -24,9 +27,8 @@
 (require 'smart-tabs-mode)
 (require 'generic-x)
 (require 'cauta-mode)
-
-(load-library "python")
-
+(require 'whitespace)
+(require 'thrift-mode)
 
 ;;;; Appearence:
 
@@ -127,7 +129,7 @@
 ;; Force newline at ent-of-file
 (setq require-final-newline 't)
 
-;; Remove trailing whitespaces
+;; Remove trailing whitespaces upon save
 (add-hook 'before-save-hook 'delete-trailing-whitespace)
 (add-hook 'before-save-hook 'whitespace-cleanup)
 
@@ -324,4 +326,14 @@
 (set-face-underline-p 'highlight nil)
 ;;(set-background-color "black")
 (custom-set-faces
+ ;; custom-set-faces was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
  '(linum ((t (:foreground "gray50" :background "gray10" :box nil)))))
+(custom-set-variables
+ ;; custom-set-variables was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ '(safe-local-variable-values (quote ((eval setq dir-local-curdir (file-name-directory (let ((d (dir-locals-find-file "."))) (if (stringp d) d (car d)))))))))
