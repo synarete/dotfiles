@@ -1,0 +1,19 @@
+#!/bin/bash
+
+self=${BASH_SOURCE[0]}
+base=$(dirname ${self})
+redhat=/etc/redhat-release
+
+if [ ! -f ${redhat} ]; then
+	echo ${self}: "not readhat-release"
+	exit 1
+fi
+
+release=$(head -1 ${redhat})
+if [ "${release}" = "Fedora release 22 (Twenty Two)" ]; then
+	pkgs=( $( < ${base}/data/fedora22-pkgs.txt ) )
+	dnf install ${pkgs[@]}
+else
+	echo ${self}: "unsupported:" ${release}
+	exit 2
+fi
