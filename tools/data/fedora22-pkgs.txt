@@ -217,6 +217,7 @@ easymock
 ebtables
 ecj
 eclipse-cdt
+eclipse-color-theme
 eclipse-ecf-core
 eclipse-emf-core
 eclipse-emf-runtime
