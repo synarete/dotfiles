@@ -46,12 +46,11 @@ sedireplace() {
 ptop() {
 	name="$1"
 	if [ -z "${name}" ]; then
-    		exit
+    		return
 	fi
-
 	pids=$(pgrep -d',' -x ${name})
 	if [ -z "${pids}" ]; then
-		exit
+		return
 	fi
 	top -p ${pids}
 }
