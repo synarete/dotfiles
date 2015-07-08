@@ -1,0 +1,85 @@
+# Emacs helpers
+emacsclnt() {
+	emacsclient -t -a "" $@
+}
+
+emacsd_start() {
+	emacs --daemon
+}
+
+emacsd_stop() {
+	emacsclient --eval '(kill-emacs)'
+}
+
+# Use 'most' pager for man
+man() {
+	env MANPAGER="most -s" man "$@"
+}
+
+# Run in quite mode
+mute() {
+	exec "$@" > /dev/null 2>&1 &
+}
+
+
+# Run Vim with less.vim. Read stdin if no arguments were given.
+vmore() {
+	if test $# = 0; then
+		vim --cmd 'let no_plugin_maps = 1' -c 'runtime! macros/less.vim' -
+	else
+		vim --cmd 'let no_plugin_maps = 1' -c 'runtime! macros/less.vim' "$@"
+	fi
+}
+
+# Replace-inplace with sed;
+# Usage: sedireplace <word> <repr> <files...>
+sedireplace() {
+	word="$1"
+	next="$2"
+	shift 2
+	for f in $@; do
+		sed -i "s,${word},${next},g" "$f"
+	done
+}
+
+# Top by process-name
+ptop() {
+	name="$1"
+	if [ -z "${name}" ]; then
+    		exit
+	fi
+
+	pids=$(pgrep -d',' -x ${name})
+	if [ -z "${pids}" ]; then
+		exit
+	fi
+	top -p ${pids}
+}
+
+# Show installed packages using white-seperator delimiter
+rpmqaf() {
+	rpm -qa --qf "%{NAME} %{VERSION} %{RELEASE} %{VENDOR}\n"
+}
+
+# Show content of rpm file
+rpmdump() {
+	if [ $# -ne 1 ] ; then
+		printf "\aUSAGE: $FUNCNAME <rpm-path>\n" 1>&2
+		return 1
+	fi
+	if [ ! -e "$1" -o ! -r "$1" -o ! -f "$1" ] ; then
+		printf "'$1' does not exist or not accessible\n" 1>&2
+		return 2
+	fi
+	local path=$(readlink -f "$1")
+	if [ ! file -b "$path" | grep '^RPM' ] ; then
+		printf "'$1' does not appear to be an RPM file\n"
+		return 3
+	fi
+
+	rpm2cpio "$path" | cpio -tv
+}
+
+
+
+

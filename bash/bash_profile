@@ -6,8 +6,11 @@
 [ -z "$PS1" ] && return
 
 # Source system files
-sysfiles=( /etc/bashrc /etc/profile
-        /usr/share/git-core/contrib/completion/git-prompt.sh )
+sysfiles=(
+	/etc/bashrc
+	/etc/profile
+        /usr/share/git-core/contrib/completion/git-prompt.sh
+	 )
 for f in "${sysfiles[@]}"; do
 	if [ -f "$f" ]; then
 		source "$f"
@@ -20,9 +23,9 @@ ROOT=${HOME}/synarete/dotfiles
 
 # Colors & functions
 source ${ROOT}/bash/bash_colors
-source ${ROOT}/bash/bash_funcs
+source ${ROOT}/bash/bash_functions
 
-# Environment
+# Bash history
 export HISTSIZE=10000
 export HISTCONTROL=ignoreboth:erasedups
 
@@ -49,5 +52,9 @@ alias emc='emacsclnt'
 alias emd-start='emacsd_start'
 alias emd-stop='emacsd_stop'
 
+
 # Check the window size after each command and update
 shopt -s checkwinsize
+
+# Be generous to Java apps (eclipse)
+export _JAVA_OPTIONS="-Xms512m -Xmx1g"
