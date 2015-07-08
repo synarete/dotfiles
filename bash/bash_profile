@@ -49,9 +49,5 @@ alias emc='emacsclnt'
 alias emd-start='emacsd_start'
 alias emd-stop='emacsd_stop'
 
-# Extended PATH
-export PATH=${ROOT}/tools:$PATH:$HOME/.local/bin:$HOME/bin
-
-
 # Check the window size after each command and update
 shopt -s checkwinsize

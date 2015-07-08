@@ -2208,3 +2208,5 @@ zlib
 zlib-devel
 zvbi
 zziplib
+python-netifaces
+python-thrift
