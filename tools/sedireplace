@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# Replace-inplace with sed;
+# Usage: sedireplace <word> <repr> <files...>
+word="$1"
+next="$2"
+shift 2
+for f in $@; do
+	sed -i "s,${word},${next},g" "$f"
+done

@@ -31,17 +31,6 @@ vmore() {
 	fi
 }
 
-# Replace-inplace with sed;
-# Usage: sedireplace <word> <repr> <files...>
-sedireplace() {
-	word="$1"
-	next="$2"
-	shift 2
-	for f in $@; do
-		sed -i "s,${word},${next},g" "$f"
-	done
-}
-
 # Top by process-name
 ptop() {
 	name="$1"
@@ -78,7 +67,3 @@ rpmdump() {
 
 	rpm2cpio "$path" | cpio -tv
 }
-
-
-
-
