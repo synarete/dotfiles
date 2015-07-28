@@ -16,12 +16,6 @@ man() {
 	env MANPAGER="most -s" man "$@"
 }
 
-# Run in quite mode
-mute() {
-	exec "$@" > /dev/null 2>&1 &
-}
-
-
 # Run Vim with less.vim. Read stdin if no arguments were given.
 vmore() {
 	if test $# = 0; then

@@ -56,7 +56,7 @@ alias emd-stop='emacsd_stop'
 shopt -s checkwinsize
 
 # Be generous to Java apps (eclipse)
-export _JAVA_OPTIONS="-Xms512m -Xmx1g"
+# export _JAVA_OPTIONS="-Xms512m -Xmx1g"
 
 # Have python history file
 export PYTHONSTARTUP=${ROOT}/bash/pystartup
