@@ -1,3 +1,14 @@
+# Common helpers
+yell() {
+	echo "$0: $*" >&2;
+}
+die() {
+	yell "$*"; exit 1;
+}
+try() {
+	"$@" || die "Failed to execute: $*";
+}
+
 # Emacs helpers
 emacsclnt() {
 	emacsclient -t -a "" $@
@@ -45,19 +56,7 @@ rpmqaf() {
 
 # Show content of rpm file
 rpmdump() {
-	if [ $# -ne 1 ] ; then
-		printf "\aUSAGE: $FUNCNAME <rpm-path>\n" 1>&2
-		return 1
-	fi
-	if [ ! -e "$1" -o ! -r "$1" -o ! -f "$1" ] ; then
-		printf "'$1' does not exist or not accessible\n" 1>&2
-		return 2
-	fi
-	local path=$(readlink -f "$1")
-	if [ ! file -b "$path" | grep '^RPM' ] ; then
-		printf "'$1' does not appear to be an RPM file\n"
-		return 3
-	fi
-
-	rpm2cpio "$path" | cpio -tv
+	for f in "$@"; do
+		try rpm2cpio "${f}" | cpio -tv
+	done
 }
