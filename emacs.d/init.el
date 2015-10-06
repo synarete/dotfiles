@@ -26,7 +26,6 @@
 (require 'color-theme)
 (require 'smart-tabs-mode)
 (require 'generic-x)
-(require 'cauta-mode)
 (require 'whitespace)
 (require 'thrift-mode)
 
