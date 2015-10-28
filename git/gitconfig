@@ -23,7 +23,7 @@
 	chainreplyto = no
 
 [push]
-	default = tracking
+	default = simple
 
 [branch]
 	autosetuprebase = always
@@ -33,26 +33,6 @@
 	branch = auto
 	diff = auto
 	status = auto
-
-#[color "branch"]
-#	current = yellow bold
-#	local = normal
-#	remote = green
-
-#[color "diff"]
-#	plain = normal
-#	meta = yellow bold
-#	frag = magenta bold
-#	old = red bold
-#	new = green bold
-
-#[color "status"]
-#	header = normal
-#	branch = yellow bold
-#	nobranch = magenta
-#	added = green
-#	changed = red
-#	untracked = yellow
 
 [color "grep"]
 	external = --color=always
@@ -93,3 +73,6 @@
 	conflictstyle = diff3
 [credential]
 	helper = cache
+
+
+
