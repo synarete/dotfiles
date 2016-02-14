@@ -31,7 +31,7 @@ export HISTCONTROL=ignoreboth:erasedups
 
 # Prompt
 #export PS1='[\u@\h \W]\$ '
-export PROMPT_DIRTRIM=3
+export PROMPT_DIRTRIM=4
 export GIT_PS1_SHOWDIRTYSTATE=1
 export GIT_PS1_SHOWSTASHSTATE=1
 export GIT_PS1_SHOWUNTRACKEDFILES=1
