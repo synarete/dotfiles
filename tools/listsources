@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+import os
+import sys
+import shlex
+import subprocess
+
+
+def subexec(cmd, workdir=None):
+    '''Execute command as sub-process, raise exception upon failure'''
+    out = subprocess.PIPE
+    pipes = subprocess.Popen(shlex.split(cmd),
+                             stdout=out,
+                             stderr=out,
+                             cwd=workdir,
+                             shell=False)
+    std_out, std_err = pipes.communicate()
+    if len(std_err) > 0:
+        res = std_err
+    else:
+        res = std_out
+    if pipes.returncode != 0:
+        raise Exception('failed: ' + cmd)
+    return res.decode('UTF-8')
+
+
+def main():
+    '''Command-line utility to list C source/header files'''
+    subs = sys.argv[1:]
+    maxd = 1
+    if not subs:
+        subs = [os.path.realpath(os.getcwd())]
+        maxd = 5
+    names = []
+    for sub in subs:
+        cmd = 'find {0} -maxdepth {1} '.format(sub, maxd)
+        cmd = cmd + "-type f -name '*.[ch]' "
+        srcs = subexec(cmd)
+        for src in srcs.split():
+            base = os.path.realpath(sub)
+            path = os.path.realpath(src)
+            name = str(path).replace(base, '').lstrip('/')
+            names.append(name)
+    names.sort()
+    for name in names:
+        print(name + ' \\')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
+    sys.exit(0)
