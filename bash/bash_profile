@@ -44,6 +44,7 @@ export EDITOR=emacs
 # Aliases
 alias ll='ls -lh'
 alias ltr='ls -ltrh'
+alias lss='ls -lhs'
 alias la='ls -A'
 alias l='ls -CF'
 alias cd..='cd ..'

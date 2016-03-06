@@ -1,0 +1,16 @@
+# Global user-specific git-ignores
+#   git config --global core.excludesfile ~/.gitignore_global
+
+# Temp files & build outputs
+*~
+*.pyc
+\#*\#
+.\#*
+
+# IDE files
+.cproject
+.project
+.pydevproject
+.settings
+
+
