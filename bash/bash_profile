@@ -10,6 +10,7 @@ sysfiles=(
 	/etc/bashrc
 	/etc/profile
         /usr/share/git-core/contrib/completion/git-prompt.sh
+        /etc/bash_completion.d/git-prompt
 	 )
 for f in "${sysfiles[@]}"; do
 	if [ -f "$f" ]; then
