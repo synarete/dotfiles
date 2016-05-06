@@ -1,0 +1,21 @@
+#!/bin/bash 
+# Wrapper script over blender's command-line rendering for converting 
+# single-frame blend file into png image.
+
+engine=CYCLES
+format=PNG
+ext=1
+frame=1
+
+for f in "$@"; do
+	base=$(basename $f)
+	name=${base%%.*}
+	output="//"${name}"#"
+	blender --background $f \
+		--engine ${engine} \
+		--render-output ${output} \
+		--render-format ${format} \
+		--use-extension ${ext} \
+		--render-frame ${frame}
+done	
+
