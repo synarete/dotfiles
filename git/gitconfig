@@ -8,6 +8,7 @@
 	editor = "emacsclient -t"
 	bigfilethreshold = 200k
 	autocrlf = input
+	# excludesfile = ${HOME}/.gitignore_global
 
 [sendemail]
 	from = Shachar Sharon <shachars@xxxxxx>
@@ -68,6 +69,7 @@
 	# lll = log --graph --all --format=format:'%C(yellow)%h%C(reset) - %C(blue)%ci%C(reset) %C(red)%d%C(reset)%n''  %C(normal)%s%C(reset) %C(bold)- %an %C(dim)<%cE> %C(reset)' --abbrev-commit
 	# lg = log --color --pretty=format:'%C(auto)%h %Cred %<(10,trunc)%an %Creset%C(auto)%s %Cgreen(%cr,%ar) %Creset%C(auto)%d'
 	lg = log  --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)%aN%Creset' --abbrev-commit --date=relative
+	reflist = for-each-ref --format='%(committerdate:iso8601)  %(objectname:short) %(refname:short) ' --sort -committerdate
 
 
 [merge]
