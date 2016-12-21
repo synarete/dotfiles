@@ -17,20 +17,6 @@ if [ "$files" != "" ]
 then
 	for f in $files
 	do
-		# Add a line-break to the file if it doesn't have one
-		# (only for known text files)
-		if [[ "$f" =~ [.](c|h|cpp|hpp|conf|html|log|properties|txt|xml|am|sh|md)$ ]]
-		then
-			# Add a line-break to the file if it doesn't have one
-			lln=$(tail -c1 "$f" | sed -e 's/[[:space:]]*$//')
-			if [ -n "${lln}" ]
-			then
-				print "Add line-break:" "$f"
-				echo >> "$f"
-				git add "$f"
-			fi
-		fi
-
 		# Remove trailing whitespace if it exists
 		if grep -q "[[:blank:]]$" "$f"
 		then
