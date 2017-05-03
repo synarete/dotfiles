@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # Pre-commit hook:
 # 1) Adds an empty line at the end of the file
@@ -9,22 +9,20 @@
 # http://stackoverflow.com/questions/591923/make-git-automatically-remove-trailing-whitespace-before-committing
 #
 
-print() { echo "$0: $*" >&2; }
+self=$(basename ${BASH_SOURCE[0]})
+print() { echo "${self}: $*" >&2; }
 
 # Files (not deleted) in the index
 files=$(git diff-index --name-status --cached HEAD | grep -v ^D | cut -c3-)
-if [ "$files" != "" ]
-then
-	for f in $files
-	do
-		# Remove trailing whitespace if it exists
-		if grep -q "[[:blank:]]$" "$f"
-		then
-			print "Remove trailing spaces:" "$f"
-			sed -i 's/[[:space:]]*$//' "$f"
-			git add "$f"
-		fi
-	done
+if [ "$files" != "" ]; then
+  for f in $files; do
+    # Remove trailing whitespace if it exists
+    if grep -q "[[:blank:]]$" "$f"; then
+      print "Remove trailing spaces:" "$f"
+      sed -i 's/[[:space:]]*$//' "$f"
+      git add "$f"
+    fi
+  done
 fi
-
 exit 0
+
