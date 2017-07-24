@@ -21,7 +21,7 @@
 
 |
 
-|TS|
+|TS| |Wired| |TS|
 
 |
 
@@ -91,4 +91,9 @@
 
 .. |DuckDuckGo| image:: https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/DuckDuckGo_logo_and_wordmark_%282014-present%29.svg/208px-DuckDuckGo_logo_and_wordmark_%282014-present%29.svg.png
    :target: https://duckduckgo.com/
+
+.. |Wired| image:: https://www.wired.com/images/logos/wired.png
+   :target: https://www.wired.com/
+   :height: 50px
+
 
