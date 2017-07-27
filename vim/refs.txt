@@ -1,3 +1,4 @@
 Vim goodies are at:
 
+https://github.com/amix/vimrc
 https://github.com/gavrie/vim

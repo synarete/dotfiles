@@ -1,33 +1,29 @@
-#!/bin/bash 
-# Wrapper script over blender's command-line rendering for converting 
+#!/bin/bash
+# Wrapper script over blender's command-line rendering for converting
 # single-frame blend file into png image.
 set -euo pipefail
 IFS=$'\n\t'
 export LC_ALL=C
-self=${BASH_SOURCE[0]}
 
-
-run() { echo "Running:" "'$@'" ; $@ ; }
-
-run_blender_render() {
-	engine=CYCLES
-	format=PNG
-	ext=1
-	frame=1
-        blend=$(realpath $1)
-	base=$(basename ${blend})
-	name=${base%%.*}
-	output="//"${name}"#"
-	run blender \
-		--background ${blend} \
-		--engine ${engine} \
-		--render-output ${output} \
-		--render-format ${format} \
-		--use-extension ${ext} \
-		--render-frame ${frame}
+blender_cycles_render() {
+  engine=CYCLES
+  format=PNG
+  ext=1
+  frame=1
+  blend=$(realpath $1)
+  base=$(basename ${blend})
+  name=${base%%.*}
+  output="//"${name}"#"
+  blender \
+    --background ${blend} \
+    --engine ${engine} \
+    --render-output ${output} \
+    --render-format ${format} \
+    --use-extension ${ext} \
+    --render-frame ${frame}
 }
 
 for f in "$@"; do
-	run_blender_render ${f}
-done	
+  blender_cycles_render ${f}
+done
 

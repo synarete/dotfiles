@@ -1,6 +1,0 @@
-#!/bin/bash
-export _JAVA_OPTIONS="-Dawt.useSystemAAFontSettings=on"
-jnlp=$(dirname ${BASH_SOURCE[0]})/cgoban.jnlp
-javaws ${jnlp} > /dev/null 2>&1 &
-
-
