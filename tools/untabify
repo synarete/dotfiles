@@ -1,0 +1,3 @@
+#!/bin/sh
+# Replace each TAB character with 4-spaces
+for f in "$@"; do sed -i "s,\t,    ,g" "$f" ; done
