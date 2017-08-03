@@ -116,7 +116,7 @@ def astylecfiles(files: list) -> None:
     for src in [f for f in files if issource(f)]:
         cmd = astyle + ' ' + astyle_args + ' ' + src
         res = subexec(cmd)
-        if not 'Unchanged' in res:
+        if 'Unchanged' not in res:
             msg(str(res).strip())
 
 
