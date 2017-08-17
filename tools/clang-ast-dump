@@ -1,0 +1,11 @@
+#!/bin/sh
+# Wrapper over Clang's AST-dump mode:
+#
+#   $ clang-ast-dump ./foo.c
+#   $ clang-ast-dump -Iinclude bar.c
+
+exec clang -Xclang -ast-dump \
+  -fsyntax-only -fno-diagnostics-color -fdiagnostics-color=never "$@"
+
+
+
