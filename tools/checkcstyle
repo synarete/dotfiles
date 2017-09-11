@@ -187,6 +187,8 @@ COMPILER_PRIVATE = \
     __uint128_t
     __restrict__
     __restrict
+    __RESTRICT
+    __EXTENSIONS__
     '''
 
 SYS_PRIVATE = \
@@ -199,6 +201,7 @@ SYS_PRIVATE = \
     __le16 __le32 __le64
     __be16 __be32 __be64
     __rlimit_resource_t
+    __KERNEL__
     '''
 
 CSOURCE_EXCLUDE = \
