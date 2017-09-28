@@ -37,7 +37,7 @@ export GIT_PS1_SHOWDIRTYSTATE=1
 export GIT_PS1_SHOWSTASHSTATE=1
 export GIT_PS1_SHOWUNTRACKEDFILES=1
 export GIT_PS1_SHOWUPSTREAM="auto"
-export GIT_PS1_SHOWUPSTREAM=verbose 
+#export GIT_PS1_SHOWUPSTREAM=verbose 
 export GIT_PS1_DESCRIBE_STYLE=branch 
 export GIT_PS1_SHOWCOLORHINTS=1
 export GIT_PS1_HIDE_IF_PWD_IGNORED=1
@@ -55,10 +55,11 @@ alias l='ls -CF'
 alias cd..='cd ..'
 alias tailf='tail -f'
 alias tree='tree -C -F --dirsfirst'
-alias find-ch='find -type f -name "*.[ch]" '
 alias emc='emacsclnt'
 alias emd-start='emacsd_start'
 alias emd-stop='emacsd_stop'
+alias rgrepc='egrep -Rn --include="*.[ch]" '
+alias rfindc='find -type f -name "*.[ch]" '
 
 # Check the window size after each command and update
 shopt -s checkwinsize

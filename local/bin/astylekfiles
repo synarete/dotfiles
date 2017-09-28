@@ -1,6 +1,6 @@
 #!/bin/bash -e
 #
-# astylefiles -- Wrapper over 'astyle' utility with 1tbs style
+# astylefiles -- Wrapper over 'astyle' utility with linux kernel style
 #
 # Copyright (C) 2017 Synarete
 #
@@ -9,9 +9,9 @@
 
 which astyle &> /dev/null
 
-astyle1tbs() {
+astylelinux() {
   astyle -Q \
-    --style=1tbs \
+    --style=linux \
     --suffix=none \
     --indent=tab=4 \
     --convert-tabs \
@@ -19,9 +19,9 @@ astyle1tbs() {
     --pad-oper \
     --pad-header \
     --unpad-paren \
+    --remove-braces \
     --min-conditional-indent=0 \
     --indent-preprocessor \
-    --add-brackets \
     --break-after-logical \
     --max-code-length=80 \
     --indent-col1-comments \
@@ -32,9 +32,9 @@ astyle1tbs() {
 
 for arg in "$@"; do
   if [ -f ${arg} ]; then
-    astyle1tbs ${arg}
+    astylelinux ${arg}
   elif [ -d ${arg} ]; then
-    astyle1tbs $(find ${arg} -type f -name "*.[ch]")
+    astylelinux $(find ${arg} -type f -name "*.[ch]")
   fi
 done
 
