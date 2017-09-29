@@ -1,0 +1,36 @@
+#!/bin/bash -e
+#
+# astylefiles -- Wrapper over 'astyle' utility
+#
+# Copyright (C) 2017 Synarete
+#
+# Licensed under the MIT License.
+#
+self=$(basename ${BASH_SOURCE[0]})
+msg() { echo "$self: $*" >&2; }
+die() { msg "$*"; exit 1; }
+try() { "$@" || die "Failed to execute: $*"; }
+run() { echo "$self: $@" >&2; try "$@"; }
+
+
+try which astyle &> /dev/null
+try cat "$1" &> /dev/null
+conf=$(grep -v '#' "$1" | tr "\n\t\v" " ")
+shift 
+
+for arg in "$@"; do
+  if [ -d ${arg} ]; then
+    cfiles=$(try find ${arg} -type f -name "*.[ch]")
+  elif [ -f ${arg} ]; then
+    cfiles=${arg}
+  else
+    continue
+  fi    
+  for cfile in ${cfiles}; do
+    try astyle -Q ${conf} ${cfile}  
+  done
+done
+
+
+
+

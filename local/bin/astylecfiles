@@ -1,0 +1,6 @@
+#!/bin/bash -e
+selfdir=$(dirname ${BASH_SOURCE[0]})
+conf=$(realpath ${selfdir}/../etc/astyle1tbs.conf)
+exec ${selfdir}/astylefiles ${conf} "$@"
+
+
