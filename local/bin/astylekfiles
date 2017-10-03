@@ -13,7 +13,7 @@ astylelinux() {
   astyle -Q \
     --style=linux \
     --suffix=none \
-    --indent=tab=4 \
+    --indent=tab=8 \
     --convert-tabs \
     --align-pointer=name \
     --pad-oper \
@@ -25,7 +25,6 @@ astylelinux() {
     --break-after-logical \
     --max-code-length=80 \
     --indent-col1-comments \
-    --indent-switches \
     --lineend=linux \
     "$@"
 }
