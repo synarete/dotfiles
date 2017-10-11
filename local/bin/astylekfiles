@@ -13,8 +13,7 @@ astylelinux() {
   astyle -Q \
     --style=linux \
     --suffix=none \
-    --indent=tab=8 \
-    --convert-tabs \
+    --indent=force-tab=8 \
     --align-pointer=name \
     --pad-oper \
     --pad-header \

@@ -37,8 +37,8 @@ export GIT_PS1_SHOWDIRTYSTATE=1
 export GIT_PS1_SHOWSTASHSTATE=1
 export GIT_PS1_SHOWUNTRACKEDFILES=1
 export GIT_PS1_SHOWUPSTREAM="auto"
-#export GIT_PS1_SHOWUPSTREAM=verbose 
-export GIT_PS1_DESCRIBE_STYLE=branch 
+#export GIT_PS1_SHOWUPSTREAM=verbose
+export GIT_PS1_DESCRIBE_STYLE=branch
 export GIT_PS1_SHOWCOLORHINTS=1
 export GIT_PS1_HIDE_IF_PWD_IGNORED=1
 export PS1="[${GREEN}\u@\h${NORMAL} ${BRIGHT_VIOLET}\w${NORMAL}${NORMAL}]${BRIGHT_YELLOW}\$(__git_ps1)${NORMAL}\$ ${RESET}"
@@ -59,7 +59,6 @@ alias emc='emacsclnt'
 alias emd-start='emacsd_start'
 alias emd-stop='emacsd_stop'
 alias rgrepc='egrep -Rn --include="*.[ch]" '
-alias rfindc='find -type f -name "*.[ch]" '
 
 # Check the window size after each command and update
 shopt -s checkwinsize
