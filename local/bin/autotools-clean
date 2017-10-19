@@ -1,0 +1,28 @@
+#!/bin/bash
+self=$(basename ${BASH_SOURCE[0]})
+msg() { echo "$self: $*" >&2; }
+die() { msg "$*"; exit 1; }
+try() { "$@" || die "Failed to execute: $*"; }
+run() { echo "$self: $@" >&2; try "$@"; }
+
+export LC_ALL=C
+unset CDPATH
+
+
+autotools_rm() {
+  base=$1
+  run rm -rf ${base}/autom4te.cache
+  run rm -f ${base}/configure
+  run rm -f ${base}/aclocal.m4
+  run find ${base} -type f -name config.h.in -exec rm -f {} \;
+  run find ${base} -type f -name Makefile.in -exec rm -f {} \;
+  run rm -rf ${base}/build
+}
+
+
+for d in $@; do
+  if [ -d ${d} ]; then
+    autotools_rm ${d}
+  fi
+done
+

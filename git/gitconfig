@@ -60,16 +60,12 @@
 	df = diff
 	co = checkout
 	nb = checkout -b
-	push-tags = push --tags
 	clean-fxd = clean -fxd
 	add-commit = commit -a
 	reset-head = reset --hard HEAD
 	ls = log --oneline --decorate
 	ll = log --oneline --decorate --all --graph --date=iso --pretty
-	# lll = log --graph --all --format=format:'%C(yellow)%h%C(reset) - %C(blue)%ci%C(reset) %C(red)%d%C(reset)%n''  %C(normal)%s%C(reset) %C(bold)- %an %C(dim)<%cE> %C(reset)' --abbrev-commit
-	# lg = log --color --pretty=format:'%C(auto)%h %Cred %<(10,trunc)%an %Creset%C(auto)%s %Cgreen(%cr,%ar) %Creset%C(auto)%d'
-	lg = log  --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)%aN%Creset' --abbrev-commit --date=relative
-	reflist = for-each-ref --format='%(committerdate:iso8601)  %(objectname:short) %(refname:short) ' --sort -committerdate
+	lg = log --pretty=oneline --abbrev-commit --graph --decorate
 
 
 [merge]
