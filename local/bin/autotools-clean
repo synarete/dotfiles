@@ -16,7 +16,7 @@ autotools_rm() {
   run rm -f ${base}/aclocal.m4
   run find ${base} -type f -name config.h.in -exec rm -f {} \;
   run find ${base} -type f -name Makefile.in -exec rm -f {} \;
-  run rm -rf ${base}/build
+  run rm -rf ${base}/build/*
 }
 
 

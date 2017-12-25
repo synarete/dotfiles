@@ -13,7 +13,7 @@ astyle1tbs() {
   astyle -Q \
     --style=1tbs \
     --suffix=none \
-    --indent=tab=4 \
+    --indent=tab=8 \
     --convert-tabs \
     --align-pointer=name \
     --pad-oper \
