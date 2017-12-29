@@ -19,8 +19,8 @@ for f in "${sysfiles[@]}"; do
 done
 
 # Dotfiles' root-dir
-#ROOT=$(realpath $(dirname $BASH_SOURCE[0])/../)
-ROOT=${HOME}/synarete/dotfiles
+ROOT=$(realpath $(dirname $BASH_SOURCE[0])/../)
+#ROOT=${HOME}/synarete/dotfiles
 
 # Colors & functions
 source ${ROOT}/bash/bash_colors
