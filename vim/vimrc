@@ -1,0 +1,53 @@
+" vimrc
+"
+" Vim goodies are at:
+"
+"  https://github.com/amix/vimrc
+"  https://github.com/gavrie/vim
+"
+
+
+" Enable true colors
+set termguicolors
+
+" Enable line numbers by default
+set nu
+
+" Show trailing newline characters
+set list
+
+" Show the cursor position all the time
+set ruler
+
+" Set to auto read when a file is changed from the outside
+set autoread
+
+" Enable filetype plugins
+filetype plugin on
+filetype indent on
+
+" Enable spell check by default for commit messages
+autocmd FileType gitcommit setlocal spell
+
+
+" Plugins
+call plug#begin()
+Plug 'tpope/vim-sensible'
+Plug 'vim-airline/vim-airline'
+Plug 'lifepillar/vim-solarized8'
+call plug#end()
+
+
+" Color scheme
+"colorscheme solarized8
+colorscheme desert
+set background=dark
+
+" Special characters such as trailing whitespace, tabs, newlines, when displayed
+" using ":set list" can be set to one of three levels depending on your needs.
+" Default value is "normal". Provide "high" and "low" options.
+let g:solarized_visibility = "low"
+
+let &t_8f = "\<Esc>[38;2;%lu;%lu;%lum"
+let &t_8b = "\<Esc>[48;2;%lu;%lu;%lum"
+
