@@ -5,16 +5,22 @@
 "  https://github.com/amix/vimrc
 "  https://github.com/gavrie/vim
 "
+call pathogen#infect()
+call pathogen#helptags()
 
+" Use Vim settings, rather then Vi settings (much better!).
+" Must be first: it changes other options as a side effect.
+set nocompatible
 
 " Enable true colors
 set termguicolors
 
 " Enable line numbers by default
 set nu
+set numberwidth=4
 
 " Show trailing newline characters
-set list
+"set list
 
 " Show the cursor position all the time
 set ruler
@@ -31,11 +37,12 @@ autocmd FileType gitcommit setlocal spell
 
 
 " Plugins
-call plug#begin()
-Plug 'tpope/vim-sensible'
-Plug 'vim-airline/vim-airline'
-Plug 'lifepillar/vim-solarized8'
-call plug#end()
+
+"call plug#begin()
+"Plug 'tpope/vim-sensible'
+"Plug 'vim-airline/vim-airline'
+"Plug 'lifepillar/vim-solarized8'
+"call plug#end()
 
 
 " Color scheme
