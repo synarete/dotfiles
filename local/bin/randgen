@@ -1,0 +1,3 @@
+#!/bin/sh
+count=${1:-16}
+openssl rand -base64 ${count}
