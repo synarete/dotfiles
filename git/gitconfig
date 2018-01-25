@@ -4,9 +4,9 @@
 
 [core]
 	whitespace = trailing-space,space-before-tab
-	#editor = "emacs -nw"
 	editor = "emacsclient -t"
-	bigfilethreshold = 200k
+	# editor = vim
+	bigfilethreshold = 256k
 	autocrlf = input
 	# excludesfile = ${HOME}/.gitignore_global
 

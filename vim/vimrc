@@ -19,14 +19,32 @@ set termguicolors
 set nu
 set numberwidth=4
 
+" Add a bit extra margin to the left
+set foldcolumn=1
+
 " Show trailing newline characters
 "set list
+
+" Keep 100 lines of command line history
+set history=100
 
 " Show the cursor position all the time
 set ruler
 
 " Set to auto read when a file is changed from the outside
 set autoread
+
+" Highlight search results
+set hlsearch
+
+" Makes search act like search in modern browsers
+set incsearch
+
+" Show matching brackets when text indicator is over them
+set showmatch
+
+" Enable syntax highlighting
+syntax enable
 
 " Enable filetype plugins
 filetype plugin on
@@ -36,25 +54,21 @@ filetype indent on
 autocmd FileType gitcommit setlocal spell
 
 
-" Plugins
-
-"call plug#begin()
-"Plug 'tpope/vim-sensible'
-"Plug 'vim-airline/vim-airline'
-"Plug 'lifepillar/vim-solarized8'
-"call plug#end()
-
-
 " Color scheme
-"colorscheme solarized8
 colorscheme desert
 set background=dark
 
-" Special characters such as trailing whitespace, tabs, newlines, when displayed
-" using ":set list" can be set to one of three levels depending on your needs.
-" Default value is "normal". Provide "high" and "low" options.
-let g:solarized_visibility = "low"
+" Gray line-numbers
+highlight LineNr term=bold cterm=NONE ctermfg=DarkGrey ctermbg=NONE gui=NONE guifg=DarkGrey guibg=NONE
 
-let &t_8f = "\<Esc>[38;2;%lu;%lu;%lum"
-let &t_8b = "\<Esc>[48;2;%lu;%lu;%lum"
+" Set utf8 as standard encoding and en_US as the standard language
+set encoding=utf8
+
+" Use Unix as the standard file type
+set ffs=unix,dos,mac
+
+" Turn backup off
+set nobackup
+set nowb
+set noswapfile
 
