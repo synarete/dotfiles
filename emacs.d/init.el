@@ -321,18 +321,7 @@
 
 ;; Prefered color theme + private customizations
 (color-theme-initialize)
-(load-theme 'wombat t)
+;(load-theme 'wombat t)
+(load-theme 'twilight t)
 (set-face-underline-p 'highlight nil)
-;;(set-background-color "black")
-(custom-set-faces
- ;; custom-set-faces was added by Custom.
- ;; If you edit it by hand, you could mess it up, so be careful.
- ;; Your init file should contain only one such instance.
- ;; If there is more than one, they won't work right.
- '(linum ((t (:foreground "gray50" :background "gray10" :box nil)))))
-(custom-set-variables
- ;; custom-set-variables was added by Custom.
- ;; If you edit it by hand, you could mess it up, so be careful.
- ;; Your init file should contain only one such instance.
- ;; If there is more than one, they won't work right.
- '(safe-local-variable-values (quote ((eval setq dir-local-curdir (file-name-directory (let ((d (dir-locals-find-file "."))) (if (stringp d) d (car d)))))))))
+
