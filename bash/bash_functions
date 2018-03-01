@@ -70,7 +70,7 @@ rfindc() {
 
 # Git formatted log
 gll() {
-  git --no-pager log -n17 \
+  git --no-pager log -n24 \
     --abbrev-commit --decorate --date=short \
     --format=tformat:'%C(green)%h %C(yellow)%an%x09 %C(bold blue)%ad%C(reset) %C(red)| %C(bold yellow)%d%C(reset) %C(white)%s%C(reset)' \
     $@

@@ -5,8 +5,9 @@
 "  https://github.com/amix/vimrc
 "  https://github.com/gavrie/vim
 "
-call pathogen#infect()
-call pathogen#helptags()
+
+" call pathogen#infect()
+" call pathogen#helptags()
 
 " Use Vim settings, rather then Vi settings (much better!).
 " Must be first: it changes other options as a side effect.
