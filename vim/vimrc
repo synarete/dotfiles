@@ -55,12 +55,12 @@ filetype indent on
 autocmd FileType gitcommit setlocal spell
 
 
-" Color scheme
-colorscheme desert
+" Color scheme (jellybeans|desert)
+colorscheme jellybeans
 set background=dark
 
-" Gray line-numbers
-highlight LineNr term=bold cterm=NONE ctermfg=DarkGrey ctermbg=NONE gui=NONE guifg=DarkGrey guibg=NONE
+" Colored line-numbers
+highlight LineNr term=bold cterm=NONE ctermfg=DarkGray ctermbg=NONE gui=NONE guifg=Gray16 guibg=NONE
 
 " Set utf8 as standard encoding and en_US as the standard language
 set encoding=utf8
