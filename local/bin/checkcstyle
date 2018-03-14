@@ -207,9 +207,6 @@ SYS_PRIVATE = \
 CSOURCE_EXCLUDE = \
     '''
     extern
-    true
-    false
-    bool
     new
     delete
     private
@@ -765,7 +762,7 @@ class FileChecker(Checker):
         for no, ln in self.xlines:
             if ln.strip().startswith('#include'):
                 inc = ln.split()[1]
-                if inc.startswith('"') and not 'config.h' in inc:
+                if inc.startswith('"') and not 'config' in inc:
                     sys_includes = False
                 elif inc.startswith('<') and not sys_includes:
                     self.warn("Wrong include order: "
