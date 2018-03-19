@@ -21,7 +21,7 @@
 
 |
 
-|TS| |Wired| |TS|
+|TS| |Wired| |TS| |NationalGeographic| |TS|
 
 |
 
@@ -95,5 +95,14 @@
 .. |Wired| image:: https://www.wired.com/images/logos/wired.png
    :target: https://www.wired.com/
    :height: 50px
+
+.. |NationalGeographic| image:: https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/National-Geographic-Logo.svg/640px-National-Geographic-Logo.svg.png
+   :target: https://www.nationalgeographic.com/
+   :height: 50px
+
+
+
+
+
 
 

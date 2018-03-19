@@ -32,6 +32,9 @@ set history=100
 " Show the cursor position all the time
 set ruler
 
+" Highlight current line
+set cursorline
+
 " Set to auto read when a file is changed from the outside
 set autoread
 
@@ -52,7 +55,7 @@ filetype plugin on
 filetype indent on
 
 " Enable spell check by default for commit messages
-autocmd FileType gitcommit setlocal spell
+" autocmd FileType gitcommit setlocal spell
 
 
 " Color scheme (jellybeans|desert)
