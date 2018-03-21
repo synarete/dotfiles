@@ -57,13 +57,17 @@ filetype indent on
 " Enable spell check by default for commit messages
 " autocmd FileType gitcommit setlocal spell
 
-
 " Color scheme (jellybeans|desert)
 colorscheme jellybeans
 set background=dark
 
 " Colored line-numbers
-highlight LineNr term=bold cterm=NONE ctermfg=DarkGray ctermbg=NONE gui=NONE guifg=Gray16 guibg=NONE
+highlight LineNr term=bold cterm=NONE ctermfg=DarkGray
+	\ ctermbg=NONE gui=NONE guifg=Gray16 guibg=NONE
+
+" Colored colum at 80
+highlight ColorColumn ctermbg=8 guibg=Gray8
+set colorcolumn=80
 
 " Set utf8 as standard encoding and en_US as the standard language
 set encoding=utf8
