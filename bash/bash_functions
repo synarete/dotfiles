@@ -76,6 +76,10 @@ gll() {
     $@
 }
 
+# Git remote update shorten
+gru() {
+  git remote update $@
+}
 
 
 
