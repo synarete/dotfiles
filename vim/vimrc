@@ -50,6 +50,11 @@ set showmatch
 " Enable syntax highlighting
 syntax enable
 
+" Indentation
+set autoindent
+set smartindent
+set smarttab
+
 " Enable filetype plugins
 filetype plugin on
 filetype indent on
@@ -76,7 +81,12 @@ set encoding=utf8
 set ffs=unix,dos,mac
 
 " Turn backup off
+set noswapfile
 set nobackup
 set nowb
-set noswapfile
+
+" Scrolling
+set sidescroll=1
+
+
 

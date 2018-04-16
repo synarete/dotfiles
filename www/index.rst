@@ -5,11 +5,11 @@
 
 |
 
-|TS| |Google| |TS| |Gmail| |TS| |YouTube| |TS|
+|TS| |Google| |TS| |Gmail| |TS|
 
 |
 
-|TS| |Bing| |TS| |LinkedIn| |TS| |Facebook| |TS|
+|TS| |LinkedIn| |TS| |Facebook| |TS|
 
 |
 
