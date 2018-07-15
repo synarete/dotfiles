@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import stat
+
+
+def isreg(path: str) -> bool:
+    try:
+        return stat.S_ISREG(os.stat(path).st_mode)
+    except (NameError, OSError):
+        pass
+
+
+def isrw(path: str) -> bool:
+    return os.access(path, os.R_OK) and os.access(path, os.W_OK)
+
+
+def rwregs(files: list) -> list:
+    out = []
+    for f in files:
+        if isreg(f) and isrw(f):
+            out.append(f)
+    return out
+
+
+def read_file(path: str) -> str:
+    dat = ''
+    with open(path, 'r') as inf:
+        dat = inf.read()
+    return dat
+
+
+def write_file(path: str, dat: str) -> None:
+    with open(path, 'w+') as outf:
+        outf.write(dat)
+
+
+def replace_pat(dat: str, old_pat: str, new_pat: str) -> str:
+    return dat.replace(old_pat, new_pat)
+
+
+def main() -> None:
+    if len(sys.argv) < 4:
+        sys.exit(1)
+    old_pat = sys.argv[1]
+    new_pat = sys.argv[2]
+
+    for reg in rwregs(sys.argv[3:]):
+        dat = read_file(reg)
+        res = replace_pat(dat, old_pat, new_pat)
+        write_file(reg, res)
+
+
+if __name__ == '__main__':
+    main()
