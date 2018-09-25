@@ -62,6 +62,9 @@ filetype indent on
 " Enable spell check by default for commit messages
 " autocmd FileType gitcommit setlocal spell
 
+" XTerm Color
+set t_Co=256
+
 " Color scheme (jellybeans|desert)
 colorscheme jellybeans
 set background=dark
@@ -88,5 +91,7 @@ set nowb
 " Scrolling
 set sidescroll=1
 
+" Spell-check in git commits
+autocmd FileType gitcommit setlocal spell
 
 

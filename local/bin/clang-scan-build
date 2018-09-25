@@ -140,8 +140,8 @@ def settitle(title: str) -> None:
 
 def main() -> None:
     settitle(os.path.basename(sys.argv[0]))
-    for path in sys.argv[1:]:
-        clang_scan_build(resolve_srcdir(path))
+    srcroot = '.' if (len(sys.argv[1:]) == 0) else sys.argv[1]
+    clang_scan_build(resolve_srcdir(srcroot))
 
 
 if __name__ == '__main__':

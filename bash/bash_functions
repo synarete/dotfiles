@@ -36,6 +36,11 @@ vmore() {
   fi
 }
 
+# Start Vim in insert mode
+vii() {
+  vim +startinsert "$@"
+}
+
 # Top by process-name
 ptop() {
   name="$1"
