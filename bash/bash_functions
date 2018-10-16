@@ -86,5 +86,14 @@ gru() {
   git remote update $@
 }
 
+# Git tag by date
+git-tag-by-date() {
+  prefix="$1"
+  datenow=$(date -I | tr -d '-')
+  if [ ! -z ${prefix} ]; then
+    git tag ${prefix}-${datenow}
+  fi
+}
+
 
 
