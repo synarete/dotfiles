@@ -62,7 +62,9 @@ rpmqaf() {
 # Show content of rpm file
 rpmdump() {
   for f in "$@"; do
+    echo ${f}
     try rpm2cpio "${f}" | cpio -tv
+    echo
   done
 }
 
