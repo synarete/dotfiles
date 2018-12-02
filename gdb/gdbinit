@@ -12,4 +12,7 @@ set history remove-duplicates
 set print pretty on
 set print array on
 
+# ignore some signals (Boehm–Demers–Weiser GC)
+handle SIGPWR noprint nostop pass
+handle SIGXCPU noprint nostop pass
 

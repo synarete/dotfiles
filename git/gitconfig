@@ -36,7 +36,9 @@
 	status = auto
 
 [color "grep"]
-	external = --color=always
+	linenumber = yellow bold
+	match = red
+	filename = magenta
 
 [guitool "Rebase onto..."]
 	cmd = git rebase
