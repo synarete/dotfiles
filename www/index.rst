@@ -9,22 +9,6 @@
 
 |
 
-|TS| |LinkedIn| |TS| |Facebook| |TS|
-
-|
-
-|TS| |GitHub| |TS| |LWN| |TS| |Slashdot| |TS|
-
-|
-
-|TS| |Aeon| |TS| |ScientificAmerican| |TS|
-
-|
-
-|TS| |Wired| |TS| |NationalGeographic| |TS|
-
-|
-
 |TS|
 
 |
