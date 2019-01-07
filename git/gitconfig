@@ -1,6 +1,6 @@
-[user]
-	name = Shachar Sharon
-	email = synarete@xxxxxxxx
+#[user]
+#	name = Shachar Sharon
+#	email = synarete@xxxxxxxx
 
 [core]
 	whitespace = trailing-space,space-before-tab
