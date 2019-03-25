@@ -1,10 +1,5 @@
 " vimrc
 "
-" Vim goodies are at:
-"
-"  https://github.com/amix/vimrc
-"  https://github.com/gavrie/vim
-"
 
 " call pathogen#infect()
 " call pathogen#helptags()
@@ -59,9 +54,6 @@ set smarttab
 filetype plugin on
 filetype indent on
 
-" Enable spell check by default for commit messages
-" autocmd FileType gitcommit setlocal spell
-
 " XTerm Color
 set t_Co=256
 
@@ -70,8 +62,8 @@ colorscheme jellybeans
 set background=dark
 
 " Colored line-numbers
-highlight LineNr term=bold cterm=NONE ctermfg=DarkGray
-	\ ctermbg=NONE gui=NONE guifg=Gray16 guibg=NONE
+highlight LineNr term=bold cterm=NONE ctermfg=DarkGray ctermbg=NONE
+	\ gui=NONE guifg=Gray16 guibg=NONE
 
 " Colored colum at 80
 highlight ColorColumn ctermbg=8 guibg=Gray8
@@ -93,5 +85,10 @@ set sidescroll=1
 
 " Spell-check in git commits
 autocmd FileType gitcommit setlocal spell
+
+" Display status line with nice colors
+set laststatus=2
+highlight StatusLine cterm=NONE ctermfg=DarkGray ctermbg=NONE
+	\ gui=NONE guifg=Gray32 guibg=NONE
 
 

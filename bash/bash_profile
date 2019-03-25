@@ -26,6 +26,12 @@ ROOT=$(realpath $(dirname $BASH_SOURCE[0])/../)
 source ${ROOT}/bash/bash_colors
 source ${ROOT}/bash/bash_functions
 
+# Editor
+export EDITOR=vim
+
+# Terminal type (for vim within tmux)
+export TERM=xterm-256color
+
 # Bash history
 export HISTSIZE=10000
 export HISTCONTROL=ignoreboth:erasedups
@@ -42,9 +48,6 @@ export GIT_PS1_DESCRIBE_STYLE=branch
 export GIT_PS1_SHOWCOLORHINTS=1
 export GIT_PS1_HIDE_IF_PWD_IGNORED=1
 export PS1="[${GREEN}\u@\h${NORMAL} ${BRIGHT_VIOLET}\w${NORMAL}${NORMAL}]${BRIGHT_YELLOW}\$(__git_ps1)${NORMAL}\$ ${RESET}"
-
-# Editor
-export EDITOR=emacs
 
 # Aliases
 alias ll='ls -lh'
@@ -68,3 +71,5 @@ shopt -s checkwinsize
 
 # Have python history file
 export PYTHONSTARTUP=${ROOT}/bash/pystartup
+
+
