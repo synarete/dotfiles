@@ -78,7 +78,11 @@ set ffs=unix,dos,mac
 " Turn backup off
 set noswapfile
 set nobackup
-set nowb
+set nowritebackup
+
+" Encypt strongly
+set cm=blowfish2
+set viminfo=
 
 " Scrolling
 set sidescroll=1
@@ -90,5 +94,7 @@ autocmd FileType gitcommit setlocal spell
 set laststatus=2
 highlight StatusLine cterm=NONE ctermfg=DarkGray ctermbg=NONE
 	\ gui=NONE guifg=Gray32 guibg=NONE
+
+
 
 
