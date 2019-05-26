@@ -77,7 +77,7 @@ rfindc() {
 
 # Git formatted log
 gll() {
-  git --no-pager log -n48 \
+  git --no-pager log -n32 \
     --abbrev-commit --decorate --date=short \
     --format=tformat:'%C(green)%h %C(yellow)%an%x09 %C(bold blue)%ad%C(reset) %C(red)| %C(bold yellow)%d%C(reset) %C(white)%s%C(reset)' \
     $@
@@ -96,6 +96,12 @@ git-tag-by-date() {
     git tag ${prefix}-${datenow}
   fi
 }
+
+# Pipe "git show" into vi
+git-view() {
+  git show "$1" | view - "+set filetype=${1##*.}" ;
+}
+
 
 
 
