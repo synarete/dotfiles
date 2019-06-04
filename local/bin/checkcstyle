@@ -2,7 +2,7 @@
 #
 # checkcstyle -- Style-checker for C-source files
 #
-# Copyright (C) 2015,2016,2017,2018 Synarete
+# Copyright (C) 2015,2016,2017,2018,2019 Synarete
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -193,6 +193,7 @@ COMPILER_PRIVATE = \
 
 SYS_PRIVATE = \
     '''
+    __GLIBC__ __GLIBC_MINOR__
     __STDC__
     __LITTLE_ENDIAN
     __BIG_ENDIAN
@@ -431,7 +432,8 @@ class Checker:
     @staticmethod
     def _using_function(line: str, fn: str) -> bool:
         '''Checks if function call exists in line'''
-        return fn + '(' in line or fn + ' (' in line
+        fn_prefix = ' ' + fn
+        return fn_prefix + '(' in line or fn_prefix + ' (' in line
 
     @staticmethod
     def _starts_with_pp(line: str, ppt: str) -> bool:
