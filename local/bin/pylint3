@@ -1,8 +1,10 @@
 #!/bin/sh
-$(which python3-pylint > /dev/null 2>&1) || (echo "no python3-pylint" && exit 1)
+# pylint=python3-pylint # obsolete
+pylint=pylint-3
+$(which ${pylint} > /dev/null 2>&1) || (echo "no ${pylint}" && exit 1)
 
 if [[ "$@" != "" ]]; then
-  exec python3-pylint \
+  exec ${pylint} \
     --output-format=colorized \
     --reports=no \
     --max-line-length=80 \
