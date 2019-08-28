@@ -1,5 +1,27 @@
 #!/usr/bin/env python3
-
+#
+# gll -- Wrapper of 'git log' with pretty colorful format
+#
+# Copyright (C) 2019 Shachar Sharon
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+#
 
 import sys
 import os
@@ -15,8 +37,13 @@ GREEN = colorama.Fore.GREEN
 YELLOW = colorama.Fore.YELLOW
 BLUE = colorama.Fore.BLUE
 CYAN = colorama.Fore.CYAN
-MAGENTA = colorama.Fore.MAGENTA
 RED = colorama.Fore.RED
+MAGENTA = colorama.Fore.MAGENTA
+LIGHTBLUE_EX = colorama.Fore.LIGHTBLUE_EX
+LIGHTGREEN_EX = colorama.Fore.LIGHTGREEN_EX
+LIGHTYELLOW_EX = colorama.Fore.LIGHTYELLOW_EX
+LIGHTMAGENTA_EX = colorama.Fore.LIGHTMAGENTA_EX
+RESET = colorama.Fore.RESET
 DIM = colorama.Style.DIM
 BRIGHT = colorama.Style.BRIGHT
 RESET_ALL = colorama.Style.RESET_ALL
@@ -78,19 +105,31 @@ def parse_git_log(lines: str) -> list:
     return gll_dat
 
 
+def color_tags(tag_token: str) -> str:
+    if not tag_token:
+        return ''
+    tags_in = [ tag.strip() for tag in tag_token.strip("()").split(",") ]
+    tags_out = []
+    for tag in tags_in:
+        if ' -> ' in tag:
+            tags_out.append(LIGHTGREEN_EX + tag)
+        elif 'tag: ' in tag:
+            tags_out.append(LIGHTYELLOW_EX + tag.replace('tag: ', ''))
+        else:
+            tags_out.append(LIGHTMAGENTA_EX + tag)
+    tags = ', '.join(tags_out)
+    return BRIGHT + WHITE + '(' + tags + WHITE + ') ' + RESET_ALL
+
+
 def print_gll_line(sha: str, author: str, date: str,
                    tag_token: str, commit_msg: str) -> None:
     hsep = RED + BRIGHT + '|' + RESET_ALL
     sha = GREEN + sha
     author = YELLOW + '{:<20s}'.format(author)
-    date = BLUE + date
-    tag_branch = MAGENTA + tag_token
-    commit_msg = WHITE + commit_msg
-    if tag_token:
-        print('{} {} {} {} {} {}'.format(sha, author, date, hsep,
-                                         tag_branch, RESET_ALL))
-    print('{} {} {} {} {} {}'.format(sha, author, date, hsep,
-                                     commit_msg, RESET_ALL))
+    date = LIGHTBLUE_EX + date
+    tags = color_tags(tag_token)
+    cmsg = WHITE + commit_msg + RESET_ALL
+    print('{} {} {} {} {}{}'.format(sha, author, date, hsep, tags, cmsg))
 
 
 def print_gll(gll_dat: list) -> None:
@@ -99,8 +138,10 @@ def print_gll(gll_dat: list) -> None:
         print_gll_line(ent[0], ent[1], ent[2], ent[3], ent[4])
 
 
-def usage() -> None:
-    die("usage: {} [-n NLINES] [<git-path>]".format(sys.argv[0]))
+def usage(exit_code: int) -> None:
+    prog = os.path.basename(sys.argv[0])
+    print("usage: {} [-n NLINES] [<git-path>]".format(prog))
+    sys.exit(exit_code)
 
 
 def parse_args() -> tuple:
@@ -116,9 +157,9 @@ def parse_args() -> tuple:
         if opt in ("-n", "--nlines"):
             nlines = int(arg)
         else:
-            usage()
+            usage(2)
     if len(args) > 1:
-        usage()
+        usage(3)
     if args:
         ref_name = args[0]
         if os.path.isdir(ref_name):
