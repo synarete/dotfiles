@@ -786,7 +786,7 @@ class FileChecker(Checker):
         for (no, ln) in self.xlines:
             if in_enum_def:
                 enum_lines.append((no, ln))
-            elif ln.startswith('enum ') or ' enum ' in ln:
+            elif ln.startswith('enum ') and ('{' in ln):
                 in_enum_def = True
             if ('}' in ln) or (';' in ln):
                 in_enum_def = False

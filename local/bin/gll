@@ -39,6 +39,7 @@ BLUE = colorama.Fore.BLUE
 CYAN = colorama.Fore.CYAN
 RED = colorama.Fore.RED
 MAGENTA = colorama.Fore.MAGENTA
+LIGHTRED_EX = colorama.Fore.LIGHTRED_EX
 LIGHTBLUE_EX = colorama.Fore.LIGHTBLUE_EX
 LIGHTGREEN_EX = colorama.Fore.LIGHTGREEN_EX
 LIGHTYELLOW_EX = colorama.Fore.LIGHTYELLOW_EX
@@ -76,12 +77,9 @@ def subexec(cmd, work_dir=None) -> str:
                              shell=False,
                              env=os.environ.copy())
     std_out, std_err = pipes.communicate()
-    if std_err:
-        out = std_err
-    else:
-        out = std_out
     if pipes.returncode != 0:
         die('failed: ' + cmd)
+    out = std_err or std_out
     return out.decode('UTF-8')
 
 
@@ -105,20 +103,26 @@ def parse_git_log(lines: str) -> list:
     return gll_dat
 
 
-def color_tags(tag_token: str) -> str:
-    if not tag_token:
-        return ''
+def color_branch_tags(tag_token: str) -> str:
     tags_in = [ tag.strip() for tag in tag_token.strip("()").split(",") ]
+    if not tag_token or not tags_in:
+        return ''
     tags_out = []
     for tag in tags_in:
-        if ' -> ' in tag:
-            tags_out.append(LIGHTGREEN_EX + tag)
+        ctag = ''
+        if '/' in tag:
+            ctag = DIM + LIGHTRED_EX + tag
+        elif 'HEAD' in tag:
+            if ' -> ' in tag:
+                head, tail = tuple(tag.split(' ', 1))
+                tag = head + ' ' + LIGHTGREEN_EX + tail
+            ctag = BRIGHT + LIGHTBLUE_EX + tag
         elif 'tag: ' in tag:
-            tags_out.append(LIGHTYELLOW_EX + tag.replace('tag: ', ''))
+            ctag = LIGHTYELLOW_EX + tag.replace('tag: ', '')
         else:
-            tags_out.append(LIGHTMAGENTA_EX + tag)
-    tags = ', '.join(tags_out)
-    return BRIGHT + WHITE + '(' + tags + WHITE + ') ' + RESET_ALL
+            ctag = LIGHTMAGENTA_EX + tag
+        tags_out.append(RESET_ALL + ctag + RESET_ALL)
+    return '(' + ', '.join(tags_out) + ') '
 
 
 def print_gll_line(sha: str, author: str, date: str,
@@ -127,9 +131,10 @@ def print_gll_line(sha: str, author: str, date: str,
     sha = GREEN + sha
     author = YELLOW + '{:<20s}'.format(author)
     date = LIGHTBLUE_EX + date
-    tags = color_tags(tag_token)
-    cmsg = WHITE + commit_msg + RESET_ALL
-    print('{} {} {} {} {}{}'.format(sha, author, date, hsep, tags, cmsg))
+    tags = color_branch_tags(tag_token)
+    cmsg = RESET_ALL + commit_msg + RESET_ALL
+    tail = tags + RESET_ALL + commit_msg + RESET_ALL
+    print('{} {} {} {} {}'.format(sha, author, date, hsep, tail))
 
 
 def print_gll(gll_dat: list) -> None:
