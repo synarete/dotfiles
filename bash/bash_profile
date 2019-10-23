@@ -58,11 +58,15 @@ alias l='ls -CF'
 alias cd..='cd ..'
 alias tailf='tail -f'
 alias tree='tree -C -F --dirsfirst'
-alias emc='emacsclnt'
-alias emd-start='emacsd_start'
-alias emd-stop='emacsd_stop'
+#alias emc='emacsclnt'
+#alias emd-start='emacsd_start'
+#alias emd-stop='emacsd_stop'
 alias rgrepc='egrep -Rn --include="*.[ch]" '
-alias gsw='git show -W'
+#alias gsw='git show -W'
+
+# Aliases from local bin
+alias gll='git-log-list'
+alias gcw='git-commit-wip'
 
 # Check the window size after each command and update
 shopt -s checkwinsize
