@@ -14,25 +14,24 @@
 ;; Where to look for extra emacs themes
 (add-to-list 'custom-theme-load-path "~/.emacs.d/themes/")
 
-
 (load-library "python")
-
 
 ;;;; Extras:
 (require 'cc-mode)
 (require 'make-mode)
 (require 'magit)
+(require 'git-commit)
 (require 'rst)
 (require 'color-theme)
 (require 'smart-tabs-mode)
 (require 'generic-x)
 (require 'whitespace)
-(require 'thrift-mode)
+(require 'smooth-scroll)
 
 ;;;; Appearence:
 
 ;; Minbuffer's messages color
-(set-face-foreground 'minibuffer-prompt "orange")
+(set-face-foreground 'minibuffer-prompt "yellow")
 
 ;; Disable toolbar in terminal-mode
 (tool-bar-mode -1)
@@ -134,7 +133,6 @@
 
 
 ;; Enable smoth-scrolling
-(require 'smooth-scroll)
 (smooth-scroll-mode t)
 
 ;;(setq mouse-wheel-scroll-amount '(1 ((shift) . 1)))
@@ -167,7 +165,6 @@
 
 ;; When on a tab, make the cursor the tab length
 (setq-default x-stretch-cursor t)
-
 
 ;;;; Key-binding:
 
@@ -317,11 +314,27 @@
                     (set-variable 'py-indent-offset 4)
                     (set-variable 'indent-tabs-mode nil))))
 
+;; Git
+(add-hook 'git-commit-setup-hook 'turn-off-auto-fill t)
+
 ;;;; Colors:
 
 ;; Prefered color theme + private customizations
 (color-theme-initialize)
-;(load-theme 'wombat t)
-(load-theme 'twilight t)
+(load-theme 'wombat t)
+                                        ;(load-theme 'twilight t)
 (set-face-underline-p 'highlight nil)
-
+(custom-set-variables
+ ;; custom-set-variables was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ '(custom-safe-themes
+   (quote
+    ("b46ee2c193e350d07529fcd50948ca54ad3b38446dcbd9b28d0378792db5c088" default))))
+(custom-set-faces
+ ;; custom-set-faces was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ )

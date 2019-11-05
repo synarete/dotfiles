@@ -1,4 +1,0 @@
-#!/bin/sh
-count=${1:-16}
-rands=$(openssl rand -base64 ${count})
-echo ${rands:0:${count}}
