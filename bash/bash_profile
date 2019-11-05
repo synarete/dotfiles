@@ -67,6 +67,7 @@ alias rgrepc='egrep -Rn --include="*.[ch]" '
 # Aliases from local bin
 alias gll='git-log-list'
 alias gcw='git-commit-wip'
+alias gri='git-rebase-interactive'
 
 # Check the window size after each command and update
 shopt -s checkwinsize

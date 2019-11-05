@@ -1,0 +1,4 @@
+#!/bin/bash
+export GIT_EDITOR=emacs
+git rebase --interactive $@
+exit $?
