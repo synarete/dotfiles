@@ -1,0 +1,300 @@
+.. include:: common.txt
+
+=======
+ funex
+=======
+
+-----------------------------------
+Funex file-system command-line tool
+-----------------------------------
+
+:Date:           |date|
+:Manual section: 1
+:Manual group:   Funex Manual
+
+..
+
+
+SYNOPSIS
+========
+*funex* -v
+..
+
+*funex* command [*option*]... [*arguments*]...
+..
+
+
+DESCRIPTION
+===========
+Command-line tool to control and query the Funex file-system. It is used to
+create filesystem, mount it or dump various meta-data information.
+
+For-each sub-command the *--help* option shows detailed help-info.
+
+
+..
+
+GENERAL OPTIONS
+===============
+..
+
+*-v, --version*
+  Show version information and exit.
+
+*-h, --help*
+  Show help message and exit.
+
+*-L, --license*
+  Show license information and exit.
+
+..
+
+
+MKFS
+====
+
+Synopsis
+--------
+*funex mkfs [-u FS-UUID] [-L <name>] [-s <size>] <volume>*
+
+
+Description
+-----------
+Create a Funex filesystem over raw volume.
+
+Format raw volume with Funex file-system layout. **volume** may be either a
+special block-device (usually a disk partition or MD/LVM virtual-device), or a
+regular-file within another file-system.
+
+In its simplest (and most commonly used form), the size of the filesystem is
+determined from the disk driver. As an example, to make a filesystem on the
+first partition of sdx, use: **funex mkfs /dev/sdx1**
+
+If a filesystem is to be constructed on a regular-file, the *--size* option must
+be specified to define the volume's capacity in bytes.
+
+
+Options
+-------
+*-U, --uuid <UUID>*
+  Create the filesystem with the specified *UUID*, which should not exist on
+  the system.
+
+*-L, --label <name>*
+  Specify a label for the filesystem. *name* should be less then 256 characters.
+
+*-s, --size <size>*
+  Volume's capacity, in bytes. *size* may be suffixed with M, G or T.
+
+*-z, --zfill*
+  Initialize data-blocks with zeros.
+
+*-r, --rfill*
+  Initialize data-blocks with random data.
+
+*-F, --force*
+  Override existing data. Any pervious data on *volume* will be destroyed.
+
+..
+
+HEADS
+=====
+
+Synopsis
+--------
+*funex heads [<path>]*
+
+Description
+-----------
+Show mount-points of currently mounted Funex filesystems on local machine. If
+*path* is specified, and it is an object within funex file-system, show it's
+file-system boundaries.
+
+Options
+-------
+*-a, --all*
+Show detailed information
+
+..
+
+MOUNT
+=====
+
+Synopsis
+--------
+*funex mount [-d <level>] [-Z] [--rdonly] <volume> <mntpoint>*
+
+Description
+-----------
+Attach a Funex filesystem into system's hierarchy. This sub-command forks a new
+daemon process called *funex-fsd*, which is responsible for the actual mount
+and serve of the filesystem operations.
+
+The *volume* argument should be a path to block-device or regular-file, which
+have been previously formatted with *mkfs*.
+
+The *mntpoint* option should be a path to directory which is an empty
+directoy, does not reside within FUSE based filesystem and has read-write-exec
+access.
+
+Options
+-------
+*-Z, --nodaemon*
+  Do not ran as daemon process
+
+*-d, --debug <level>*
+  Debug mode level
+
+..
+
+UMOUNT
+======
+
+Synopsis
+--------
+*funex umount <mntpoint>*
+
+*funex umount -a*
+
+
+Description
+-----------
+Dettach a mounted Funex filesystem into system's hierarchy.
+
+Options
+-------
+*-a, --all*
+  Detach all currently-mounted Funex filesystems
+
+..
+
+STATS
+=====
+
+Synopsis
+--------
+*funex stats [<opts>] [<path>]*
+
+Description
+-----------
+Show file-system counters and internal statistics via pseudo-fs. Output is
+printed as a list of ``key:value`` pairs.
+
+Options
+-------
+*-m, --meta*
+  Show meta-data counters
+
+*-i, --ioc*
+  Show I/O counters
+
+*-o, --opc*
+  Show operations counters
+
+*-c, --cs*
+  Show cache internal stats
+
+*-v, --vol*
+  Show volume's configuration
+
+*-a, --all*
+  Show all counters and stats configurations. Each counter is prefixed by its
+  meta-file name.
+
+..
+
+MNTD
+====
+
+Synopsis
+--------
+*funex mntd [--start|--status|--stop]*
+
+Description
+-----------
+Mounting auxiliary daemon.
+
+Options
+-------
+*-S, --start*
+  Start new mounting daemon
+
+*-T, --stop*
+  Stop active mounting daemon
+
+*-Q, --status*
+  Issue status request to mounting daemon
+
+..
+
+TEST
+====
+
+Synopsis
+--------
+*funex test [<testdir>]*
+
+Description
+-----------
+Run smoke-tests utility to verify basic file-system functionality. Performs a
+collection of sanity tests on a mounted file-system: namespace semantics and
+I/O correctness. All tests are made under *testdir* which should be empty at
+the beginning of run and expected to be empty upon successful end of run. If
+*testdir* is not specified, it uses the process' current working-directory.
+
+The test-utility halts upon first failed test.
+
+It is most likely that this utility will run properly on other Posix compliant
+file-systems, although its internals are tuned for Funex ("graybox" testing).
+
+Options
+-------
+*-p, --posix*
+  Run POSIX compatibility tests
+
+*-x, --rw*
+  Run read-write I/O tests
+
+*-S, --stress*
+  Run stress tests
+
+*-C, --custom*
+  Run Funex specific tests
+
+*-a, --all*
+  Run all tests
+
+*-B, --no-verify*
+  Do not try to verify fs between tests
+
+..
+
+FILES
+=====
+|mountd_sock|
+  Mount-daemon RPC socket. This ``AF_UNIX`` stream socket is used by an
+  unprivileged *funex-fsd* to communicate and mount/umount via its auxiliary
+  *funex-mntd* mounting daemon.
+
+..
+
+|funex_conf|
+  Configuration file
+
+
+
+SEE ALSO
+========
+
+**mount**\(8), **umount**\(8)
+
+..
+
+
+COPYING
+=======
+|copyright|
+..
+
+|copying_gpl|
+..

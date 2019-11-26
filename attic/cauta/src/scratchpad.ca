@@ -1,0 +1,103 @@
+@package
+cac-common-tests/tests/nested1;
+
+@import
+io ::= cauta-std/common/io_utils;
+
+@import
+fmt ::= cauta-std/common/format_utils;
+
+
+
+@const
+PI ::= 3.14159265359;
+
+@const
+DEBUG_MODE ::= @false;
+
+@const
+NULL_PTR ::= @null;
+
+@var [global]
+bool: DEBUG ::= @true;
+
+@var [global]
+uint: LIMIT ::= 0x01;
+
+@var [global]
+float64: float_value_1 = 1e-9L;
+
+@var [global]
+ulong^ ro_null_ptr = @NULL;
+
+@var [static]
+char** rw_char_null_pptr = @NULL;
+
+@var [static]
+bool: VERBOSE ::= @false;
+
+@var [static]
+float32: float_value_2 ::= 2.2;
+
+@var [static]
+long: octal_value ::= 07334;
+
+
+@enum
+color {
+	WHITE,
+	BLACK,
+	RED,
+	BLUE,
+	YELLOW,
+	GREEN,
+	PURPLE,
+	ORANGE,
+	BROWN
+}
+
+@enum
+day {
+	SUNDAY = 1,
+	MONDAY = 2,
+	TUESDAY = 3,
+	WEDNESDAY = 4,
+	THURSDAY = 5,
+	FRIDAY = 6,
+	SATURDAY = 7,
+}
+
+@struct
+inode {
+	inode*		next;
+	bool:		active;
+	os.ino: 	ino;
+	os.super^	super;
+}
+
+@union
+inode_meta {
+	int:		foo;
+	os.ino*		bar;
+}
+
+@func [static, inline]
+foo(io.ztype* z) --> io.ztype^
+{
+	@var size: sz ::= @sizeof(z);
+	@var bool: cond = @T;
+
+	@if ((z == @NULL) || (sz < 100)) {
+		@return (@NULL);
+	}
+	@return (z);
+}
+
+@func [inline]
+swap(int* a, int* b)
+{
+	@var int: c ::= *a;
+	*a = b;
+	*b = c;
+}
+

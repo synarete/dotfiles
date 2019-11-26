@@ -1,0 +1,78 @@
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#                                                                             #
+#                           The Funex File-System                             #
+#                                                                             #
+#  Copyright (C) 2014,2015 Synarete                                           #
+#                                                                             #
+#  Funex is a free software: you can redistribute it and/or modify it under   #
+#  the terms of the GNU General Public License as published by the Free       #
+#  Software Foundation, either version 3 of the License, or (at your option)  #
+#  any later version.                                                         #
+#                                                                             #
+#  Funex is distributed in the hope that it will be useful, but WITHOUT ANY   #
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS  #
+#  FOR A PARTICULAR PURPOSE. See the GNU General Public License for more      #
+#  details.                                                                   #
+#                                                                             #
+#  You should have received a copy of the GNU General Public License along    #
+#  with this program. If not, see <http://www.gnu.org/licenses/>              #
+#                                                                             #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+CCS  = gcc clang
+CXXS = g++ clang++
+OPTS = 0 1 2 3
+DBGS = 0 1
+#CPUS = $(shell grep 'processor' /proc/cpuinfo | wc -l)
+CPUS = 1
+
+# Vars:
+ifneq ($(CC), $(CCS))
+CC=gcc
+CXX=g++
+endif
+
+ifeq ($(CC), clang)
+CXX=clang++
+endif
+
+ifneq ($(OPTLEVEL), $(OPTS))
+OPTLEVEL=0
+endif
+
+ifneq ($(DEBUG), $(DBGS))
+DEBUG=1
+endif
+
+export PYTHONDONTWRITEBYTECODE=0
+
+SCONS=scons
+SCONS_ARGS := CC=$(CC) CXX=$(CXX) OPTLEVEL=$(OPTLEVEL) DEBUG=$(DEBUG) -j $(CPUS)
+
+
+# Targets:
+all:
+	$(SCONS) $(SCONS_ARGS)
+
+clean: no-tmp
+	$(SCONS) -c $(SCONS_ARGS)
+
+no-tmp:
+	find -type f -name '*~' | xargs $(RM)
+	find -type f -name '*.pyc' | xargs $(RM)
+
+clean-all: no-tmp
+	cd src; $(RM) -r _build/*
+	cd src; $(RM) .sconsign.dblite
+
+
+all-builds:
+	@for opt in $(OPTS); do \
+		for cc in $(CCS); do \
+			for dbg in $(DBGS); do \
+				$(SCONS) CC=$$cc OPTLEVEL=$$opt DEBUG=$$dbg BUILDDIR=_build/$$cc-O$$opt-dbg$$dbg -j $(CPUS) || exit 1; \
+			done; \
+		done; \
+	done
+
+.PHONY: all clean clean-all all-builds

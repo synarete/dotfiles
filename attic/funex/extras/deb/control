@@ -1,0 +1,19 @@
+Source: funex
+Section: otherosfs
+Priority: optional
+Maintainer: Shachar Sharon <shachars@xxxxxxxx>
+Build-Depends: debhelper (>= 8.0.0), autotools-dev
+Standards-Version: 3.9.3
+Homepage: https://github.com/synarete/funex
+
+Package: funex
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, fuse (>=2.8.7-2), libcap2 (>= 2.10), libfuse2 (>= 2.8.1), libuuid1 (>= 2.16)
+Description: Funex filesystem
+ The Funex filesystem.
+ .
+ This package provides an implementation of the Funex filesystem in userspace,
+ using FUSE.
+ .
+ Homepage: http://www.foo.bar
+

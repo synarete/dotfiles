@@ -1,0 +1,32 @@
+# https://github.com/github/gitignore
+
+# Global excludes across all subdirectories
+Makefile.in
+# Temp files & build outputs
+*~
+*.pyc
+\#*\#
+.\#*
+
+autom4te.cache
+aclocal.m4
+compile
+configure
+depcomp
+install-sh
+missing
+config.guess
+config.sub
+ltmain.sh
+
+# Local excludes in root directory
+# Dev-tools files
+/.cproject
+/.project
+/.pydevproject
+/.settings
+
+/.sconsign.dblite
+/build
+/_build
+/REVISION

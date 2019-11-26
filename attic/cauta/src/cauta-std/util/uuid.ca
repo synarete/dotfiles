@@ -1,0 +1,90 @@
+/*
+ *  Copyright (C) 2016 Shachar Sharon
+ *
+ *  This file is part of the Cauta Standard Library
+ *
+ *  The Cauta Standard Library is a free software: you can redistribute it
+ *  and/or modify it under the terms of the GNU Lesser General Public License
+ *  as published by the Free Software Foundation, either version 3 of the
+ *  License or (at your option) any later version.
+ *
+ *  Cauta Standard Library is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+ *  Public License for more
+ *  details.
+ *
+ *  You should have received a copy of the GNU Lesser General Public License
+ *  along with this software. If not, see <http://www.gnu.org/licenses/>
+ */
+
+package·(cauta-std/util);
+
+const· {
+	UUID_LEN =: 16;
+}
+
+// Internal representation
+struct·(uuidi) {
+	uint32:     time_low;
+	uint16:     time_mid;
+	uint16:     time_hi_and_version;
+	uint16:     clock_seq;
+	uint8:      node[6];
+}
+
+setattr·(uuidi:, local·);
+
+// UUID
+struct·uuid: {
+	byte:   data[UUID_LEN];
+}
+
+
+// @require:eqsizeof(uuid:, uuidi:);
+
+// Sets the value of the supplied uuid variable uu to the null value.
+fn·clear(*uuid: uu) --> bool:;
+
+
+
+setattr·(uuidi:, local·);
+
+struct·uuidi: {
+	uint32:     time_low;
+	uint16:     time_mid;
+	uint16:     time_hi_and_version;
+	uint16:     clock_seq;
+	uint8:      node[6];
+}
+
+
+setattr·(uuid:get_type, inline·);
+
+method·uuid:get_type(uuid^ uu) --> int:
+{
+	return·(uu->byte[0]);
+}
+
+doc·(uuid:compare) {
+	'''
+	Compares the two supplied uuid variables uu1 and uu2 to each other.
+	Returns an integer less-than, equal-to, or greater-than zero if uu1 is
+	found, respectively, to be lexicographically less than, equal, or
+	greater than uu2.
+	'''
+}
+
+method·uuid:compare(^uuid: uu1, ^uuid: uu2) --> int:
+{
+	return·(uuid:compare(uu1, uu2));
+}
+
+method·uuid:isequal(^uuid: uu1, ^uuid: uu2) --> bool:
+{
+	return·(uu1=>compare(uu2) == 0);
+}
+
+
+
+

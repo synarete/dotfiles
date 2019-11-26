@@ -1,0 +1,66 @@
+# Funex utilities bash-completion helpers
+
+# Require bash
+[ -z "$BASH_VERSION" ] && return
+
+
+__funex_complete() {
+	COMPREPLY=()
+	local IFS=$' \n'
+	local cur="${COMP_WORDS[COMP_CWORD]}"
+	local opts=${1:-}
+	local cmds=${2:-}
+
+	if [[ ${cur} == -* ]]; then
+		COMPREPLY=( ${COMPREPLY[@]:-} $(compgen -S ' ' -W "${opts}" -- "${cur}" ) )
+	fi
+	if [[ ${COMP_CWORD} == 1 ]]; then
+		COMPREPLY=( ${COMPREPLY[@]:-} $(compgen -S ' ' -W "${cmds}" -- "${cur}") )
+	fi
+}
+
+
+__funex_show() {
+    local opts="-v --version -h --help -L --license"
+    local cmds="stats attr"
+    __funex_complete "${opts}" "${cmds}"
+}
+
+
+__funex_mount() {
+    local opts="-v --version -h --help -u --umount -a --all -l --list"
+    __funex_complete "${opts}"
+}
+
+
+__funex_mkfs() {
+    local opts=""
+    opts+="-v --version -h --help -u --uuid -L --name -s --size "
+    opts+="-z --zfill -F --force"
+    __funex_complete "${opts}"
+}
+
+
+__funex_test() {
+	local opts=""
+	opts+="-v --version -h --help -a --all -p --posix -x --xio -S --stress "
+	opts+="-C --custom -V --verbose -R --random -N --loop -B --no-verify "
+	opts+="-k --keep-go"
+	__funex_complete "${opts}"
+}
+
+
+__funex_dump() {
+	local opts="-h --help -v --version -d --defs -s --sizes"
+	__funex_complete "${opts}"
+}
+
+
+# Completion hooks:
+complete -o bashdefault -o default -o nospace -F __funex_mkfs funex-mkfs
+complete -o bashdefault -o default -o nospace -F __funex_show funex-show
+complete -o bashdefault -o default -o nospace -F __funex_mount funex-mount
+complete -o bashdefault -o default -o nospace -F __funex_test funex-test
+complete -o bashdefault -o default -o nospace -F __funex_dump funex-dump
+
+#

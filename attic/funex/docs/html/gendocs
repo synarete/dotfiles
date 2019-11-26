@@ -1,0 +1,16 @@
+#!/usr/bin/make -f
+
+ROOT_DIR := $(shell dirname $(lastword $(MAKEFILE_LIST)))
+BUILD_DIR := $(ROOT_DIR)/build/
+
+all:
+	mkdir -p $(BUILD_DIR)
+	touch $(BUILD_DIR)/.nojekyll
+	sphinx-build -b html $(ROOT_DIR) $(BUILD_DIR)
+
+clean:
+	rm -rf $(BUILD_DIR)
+	find $(ROOT_DIR)/ -type f -name '*~' -o -name '*.pyc' -exec rm -r {} \;
+	find $(ROOT_DIR)/ -type f -name '#*#' -exec rm -r {} \;
+
+

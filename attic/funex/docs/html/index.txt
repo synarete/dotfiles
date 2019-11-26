@@ -1,0 +1,46 @@
+﻿====================
+The Funex Filesystem
+====================
+
+.. toctree::
+    :maxdepth: 2
+    :hidden:
+
+
+    build
+    howto
+    manual
+    design
+    faq
+    license
+
+..
+
+.. include:: common.txt
+
+
+..
+
+
+Funex is a `FUSE`_ based filesystem for GNU/Linux, primarly designed to store
+large files (images, videos, databases, vmdks etc.) on modern storage devices.
+It is a free software, released under the terms of the `GNU General Public
+License`_. Funex is named after `Ireneo Funes`_, Borges' fictional character
+who had the talent of remembering everything.
+
+..
+
+.. highlights::
+
+  **NOTE**: Funex is a young project and its code-base is under heavy
+  development. The filesystem on-disk format is unstable and likely to change.
+  Thus, at its current state it should be considered experimental and **should
+  not** be used to store critical data.
+
+..
+
+Funex source code is hosted by `github`_::
+
+  git clone https://github.com/synarete/funex.git
+
+

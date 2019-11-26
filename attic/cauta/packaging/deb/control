@@ -1,0 +1,19 @@
+Source: cauta
+Section: utils
+Priority: optional
+Maintainer: Shachar Sharon <synarete@xxxxxxxx>
+Build-Depends: debhelper (>= 8.0.0), autotools-dev
+Standards-Version: 3.9.3
+Homepage: https://github.com/synarete/cauta
+
+Package: cauta
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, fuse (>=2.8.7-2), libcap2 (>= 2.10), libfuse2 (>= 2.8.1), libuuid1 (>= 2.16)
+Description: The Cauta Programming Language
+ Cauta Programming Language.
+ .
+ This package provides an implementation and documentation of the Cauta
+ programming language.
+ .
+ Homepage: https://github.com/synarete/cauta
+

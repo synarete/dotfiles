@@ -1,0 +1,55 @@
+.. _build_and_install:
+
+===============
+Build & Install
+===============
+
+.. include:: common.txt
+
+
+Pre-build requirements (for RH/Fedora):
+
+  * gcc, make, coreutils, autoconf, automake
+
+  * fuse-devel (>= 2.9)
+
+  * libcap-devel (>= 2.22)
+
+  * libmount-devel (>= 2.22)
+
+  * libuuid-devel (>= 2.20)
+
+  * python-docutils (>= 0.8.1)
+
+..
+
+Download the source code from `Funex github page`_::
+
+  $ git clone https://github.com/synarete/funex
+
+
+Bootstap and build using standard GNU autotools::
+
+  $ cd funex
+  $ ./bootstrap
+  $ cd build
+  $ ../configure
+  $ # or: ../configure --prefix=/alternative/install/path/
+  ...
+  $ make
+  ...
+
+Manual installation::
+
+  $ make install
+
+
+On RH/Fedora machine you may build and install rpm package::
+
+  $ make rpm
+  $ find rpmbuild/RPMS/ -type f -name 'funex*.rpm'
+  $ sudo yum install rpmbuild/RPMS/x86_64/funex-XXX.rpm
+
+
+
+..

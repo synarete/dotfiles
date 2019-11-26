@@ -1,0 +1,78 @@
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#                                                                             #
+#                           The Funex File-System                             #
+#                                                                             #
+#  Copyright (C) 2014 Synarete                                                #
+#                                                                             #
+#  Funex is a free software: you can redistribute it and/or modify it under   #
+#  the terms of the GNU General Public License as published by the Free       #
+#  Software Foundation, either version 3 of the License, or (at your option)  #
+#  any later version.                                                         #
+#                                                                             #
+#  Funex is distributed in the hope that it will be useful, but WITHOUT ANY   #
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS  #
+#  FOR A PARTICULAR PURPOSE. See the GNU General Public License for more      #
+#  details.                                                                   #
+#                                                                             #
+#  You should have received a copy of the GNU General Public License along    #
+#  with this program. If not, see <http://www.gnu.org/licenses/>              #
+#                                                                             #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+Import('funex_env')
+
+# Version string (full)
+version = funex_env['VERSION']
+release = funex_env['RELEASE']
+revision = funex_env['REVISION']
+funex_version = '{0}-{1}.{2}'.format(version, release, revision)
+
+# Common settings
+apps_env = funex_env.Clone()
+apps_env.AppendIncludePath('.')
+apps_env.AppendLibPath('.')
+sys_libs = Split('cap uuid fuse mount pthread unwind')
+fnx_libs = Split('fnxapp fnx')
+libs = fnx_libs + sys_libs
+
+# Pass version via compiler-def
+apps_env.Append(CCFLAGS='-DFUNEX_VERSION="{0}"'.format(funex_version))
+
+# Common library
+apps_env.StaticLibrary(target='fnxapp', source=Glob('common/*.c'))
+
+# File-system server
+srcs = Split('funex-fsd.c')
+prog = apps_env.Program('funex-fsd', srcs, libs)
+test = apps_env.ProgramExec(prog, '--version')
+
+# Mounting daemon
+srcs = Split('funex-mntd.c')
+prog = apps_env.Program('funex-mntd', srcs, libs)
+test = apps_env.ProgramExec(prog, '--version')
+
+# Command-line utilities
+srcs = Split('funex-mkfs.c')
+prog = apps_env.Program('funex-mkfs', srcs, libs)
+test = apps_env.ProgramExec(prog, '--version')
+
+srcs = Split('funex-fsck.c')
+prog = apps_env.Program('funex-fsck', srcs, libs)
+test = apps_env.ProgramExec(prog, '--version')
+
+srcs = Split('funex-show.c')
+prog = apps_env.Program('funex-show', srcs, libs)
+test = apps_env.ProgramExec(prog, '--version')
+
+srcs = Split('funex-dump.c')
+prog = apps_env.Program('funex-dump', srcs, libs)
+test = apps_env.ProgramExec(prog, '--version')
+
+srcs = Split('funex-mount.c')
+prog = apps_env.Program('funex-mount', srcs, libs)
+test = apps_env.ProgramExec(prog, '--version')
+
+# Test-suite utility
+srcs = Split('funex-test.c') + Glob('testsuite/*.c')
+prog = apps_env.Program('funex-test', srcs, libs)
+test = apps_env.ProgramExec(prog, '--version')

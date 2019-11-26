@@ -1,0 +1,41 @@
+name = @pkg_name@
+version = @pkg_version@
+release = @pkg_release@
+revision = @pkg_revision@
+rst2man = @RST2MAN@
+rst2html = @RST2HTML@
+builddate := $(shell date --iso-8601=minutes)
+
+LIBS := @LIBS@
+
+.DELETE_ON_ERROR:
+
+SUFFIXES = .in
+
+PATHSUBST = @SED@ \
+  -e "s,[@]PACKAGE_NAME[@],$(name),g" \
+  -e "s,[@]PACKAGE_VERSION[@],$(version),g" \
+  -e "s,[@]RELEASE[@],$(release),g" \
+  -e "s,[@]REVISION[@],$(revision),g" \
+  -e "s,[@]PREFIX[@],$(DESTDIR)$(prefix),g" \
+  -e "s,[@]BINDIR[@],$(DESTDIR)$(bindir),g" \
+  -e "s,[@]LIBDIR[@],$(DESTDIR)$(libdir),g" \
+  -e "s,[@]SYSCONFDIR[@],$(DESTDIR)$(sysconfdir),g" \
+  -e "s,[@]DATAROOTDIR[@],$(DESTDIR)$(datarootdir),g" \
+  -e "s,[@]LOCALSTATEDIR[@],$(DESTDIR)$(localstatedir),g" \
+  -e "s,[@]SYSTEMDSYSTEMUNITDIR[@],$(DESTDIR)$(systemdsystemunitdir),g"
+
+
+%: %.in
+	@echo "  SED      $@"; $(PATHSUBST) $< > $@ ;
+
+%.1: %.1.txt
+	@echo "  RST2MAN  $@" && $(rst2man) < $< > $@ ;
+
+%.8: %.8.txt
+	@echo "  RST2MAN  $@" && $(rst2man) < $< > $@ ;
+
+-include generated
+.PHONY: generated
+generated: $(BUILT_SOURCES)
+

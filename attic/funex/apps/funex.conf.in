@@ -1,0 +1,25 @@
+##
+## Funex configuration file, using simple key=value format.
+## Lines which begins with number-sign are interpreted as comments.
+##
+
+
+# Run in debug mode (0=non-debug, 1=debug, 2=debug+verbose)
+debug = 0
+
+# Have verbose logging (0|1)
+verbose = 1
+
+# Do not run as daemon (0|1)
+nodaemon = 0
+
+# Core-dump file size limit upon panic/abort (0=no-dump)
+core = 0
+
+# Mount-daemon UNIX domain socket
+usock = @RUNDIR@/funex.sock
+
+
+
+
+

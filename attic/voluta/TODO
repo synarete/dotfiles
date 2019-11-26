@@ -1,0 +1,117 @@
+* NAME_MAX = 1023
+
+* Fix the case of rmdir with still-open dir-file-decscriptor
+
+* copy_file_range (UT)
+
+* Add verify code to all sub types (volume.c:voluta_verify_bk)
+
+* XATTR:
+  - Extra sanity tests
+  - Check with XATTR_REPLACE
+  - Impl replace in-place
+  - VFS-tests with all permutation, mixed with other ops
+
+* Per inode accounting: data-blocks, meta-blocks
+
+* Checksum on every meta-data block
+
+* Put some order in messy headers
+
+* Align with GNU project style (ChangeLog etc)
+
+* Proper cleanup of all resources upon fini
+
+* Inline data in inode for small files
+
+* Improve super_block ?
+
+* Extra ut-record tests with steps between offsets + truncates
+
+* Stage meta-bk: always check type (dir?)
+
+* Have version 'syscallx_getdents' with external user-provided buffer
+
+* Store timezone in inode
+
+* Store dir-depth in inode
+
+* Store root-inode with true ino number
+
+* tests: Design and impl fschaos
+
+* Flags on inode: version, hash-type etc
+
+* Inode: Store back-reference to dirent (parent-ino + doff).
+
+* docs: Known issues:
+  - export GVFS_DISABLE_FUSE=1
+  - edit /etc/fuse.conf with:
+      mount_max = 1000
+      user_allow_other
+
+* Junctions (read-only): mkjoint
+
+* Wrap and test with: utimensat, futimens
+
+* Account meta-blocks per inode
+
+* Tests: check pre-requisets: getrlimit, expect at least 2G memory
+
+* Tests: Sanity: check utimes, utimensat, futimens
+
+* FUSE: TMPFILE
+
+* FUSE: SEEK_DATA, SEEK HOLE
+
+* FUSE: copy_file_range
+
+* FUSE: FIEMAP
+
+* FUSE: fuse_sync_fs vfs hook
+
+* FILE: Special support for small files (size <= blksize)
+
+* FUSE: Support READDIRPLUS
+
+* Make server multi-threaded on mount + SIGNAL handling
+
+* Use IOMAP + multi-threading for rw IO path
+
+* Support 'man 2 ioctl_fideduperange'
+
+* UNION: maybe have content-id per inode?
+
+* UT: stress: fill entire file system
+
+* Pseudo fs: <mount-point>/.voluta/
+
+* Assertion macros only in DEBUG mode; have special die_if macros which are
+  always valid
+
+* FUSE3 + readddirplus
+
+* RFC4880
+
+* Possible repository layout:
+  .
+  ├── objects/
+  ├── volumes/
+  ├── config
+  ├── index
+  └── version
+
+* Support FIEMAP (provide FUSE patches!) see ZUFS
+
+* Proper handling for FALLOC_FL_KEEP_SIZE beyound file size
+
+* Support ASCII only names with bit-per-char option
+
+* doc: "DPS: Data Protection Service"
+
+* GNOME logout: https://github.com/backloop/gendsession
+
+* Seal-file: chage file to permanent read-only mode
+
+
+

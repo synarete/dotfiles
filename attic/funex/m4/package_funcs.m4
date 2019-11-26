@@ -1,0 +1,39 @@
+
+AC_DEFUN([AC_PACKAGE_NEED_FUNCS],
+[
+	AC_FUNC_ERROR_AT_LINE
+	AC_FUNC_MALLOC
+	AC_FUNC_MMAP
+	AC_FUNC_FORK
+	AC_FUNC_GETGROUPS
+	AC_FUNC_STRERROR_R
+	AC_FUNC_MEMCMP
+	AC_FUNC_STAT
+	AC_FUNC_VPRINTF
+
+	AC_CHECK_FUNCS([atexit])
+	AC_CHECK_FUNCS([umount2])
+	AC_CHECK_FUNCS([gettimeofday])
+	AC_CHECK_FUNCS([isascii])
+	AC_CHECK_FUNCS([iswprint])
+	AC_CHECK_FUNCS([localtime_r])
+	AC_CHECK_FUNCS([memchr])
+	AC_CHECK_FUNCS([memmove])
+	AC_CHECK_FUNCS([memset])
+	AC_CHECK_FUNCS([munmap])
+	AC_CHECK_FUNCS([strcasecmp])
+	AC_CHECK_FUNCS([strdup])
+	AC_CHECK_FUNCS([strrchr])
+	AC_CHECK_FUNCS([prctl])
+	AC_CHECK_FUNCS([select])
+	AC_CHECK_FUNCS([sigprocmask])
+	AC_CHECK_FUNCS([pathconf])
+	AC_CHECK_FUNCS([usleep])
+	AC_CHECK_FUNCS([getline])
+	AC_CHECK_FUNCS([ioctl])
+	AC_CHECK_FUNCS([htole64])
+	AC_CHECK_FUNCS([posix_fallocate])
+	AC_CHECK_FUNCS([modfl])
+	AC_CHECK_FUNCS([unw_backtrace])
+])
+

@@ -1,0 +1,39 @@
+
+.. |date| replace:: Jan 2019
+
+
+========
+ voluta
+========
+
+------
+Voluta
+------
+
+:Date:           |date|
+:Manual section: 5
+:Manual group:   Voluta Manual
+
+..
+
+
+
+DESCRIPTION
+===========
+*voluta* is a secure content archiver.
+
+Secure storage system.
+
+
+..
+
+
+
+SEE ALSO
+========
+
+**mount**\(8)
+
+..
+
+

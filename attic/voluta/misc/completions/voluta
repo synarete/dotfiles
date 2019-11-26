@@ -1,0 +1,27 @@
+## #!/bin/bash
+[ -z "$BASH_VERSION" ] && return
+
+
+__voluta_tool_complete() {
+  COMPREPLY=()
+  local IFS=$' \n'
+  local cur="${COMP_WORDS[COMP_CWORD]}"
+  local opts=${1:-}
+  local cmds=${2:-}
+
+  if [[ ${cur} == -* ]]; then
+    COMPREPLY=( ${COMPREPLY[@]:-} $(compgen -S ' ' -W "${opts}" -- "${cur}" ) )
+  fi
+  if [[ ${COMP_CWORD} == 1 ]]; then
+    COMPREPLY=( ${COMPREPLY[@]:-} $(compgen -S ' ' -W "${cmds}" -- "${cur}") )
+  fi
+}
+
+
+_voluta() {
+  local opts="-v --version -h --help "
+  __voluta_tool_complete "${opts}"
+}
+
+complete -o bashdefault -o default -o nospace -F _voluta voluta
+

@@ -1,0 +1,12 @@
+Overview
+========
+Balagan: a word for chaos or fiasco borrowed from modern Hebrew (which loaned
+it from Yiddish, which loaned from Polish, which loaned from Russian or
+Turkish, which loaned from... in short, Balagan).
+
+This library is a collection of common hash functions, both cryptographic
+and non-cryprographic, which have been placed in public domain.
+
+
+Refernces
+=========

@@ -1,0 +1,22 @@
+#!/bin/bash
+self=$(basename ${BASH_SOURCE[0]})
+yell() { echo "$self: $*" >&2; }
+die() { yell "$*"; exit 1; }
+try() { "$@" || die "Failed to execute: $*"; }
+run() { echo "$self: $@" >&2; try "$@"; }
+
+export LC_ALL=C
+unset CDPATH
+
+basedir=$(realpath $(dirname ${BASH_SOURCE[0]}))
+builddir=${basedir}/build
+
+run cd ${basedir}
+run mkdir -p ${builddir}
+run aclocal -I m4
+run autoheader
+run libtoolize --automake --copy --install
+run autoconf
+run automake --add-missing --copy -Woverride
+run autoreconf -i
+

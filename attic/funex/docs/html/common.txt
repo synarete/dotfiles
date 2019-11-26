@@ -1,0 +1,18 @@
+.. _`Home`: index.html
+
+.. _`FUSE`: http://fuse.sourceforge.net/
+
+.. _`GPLv3`: http://www.gnu.org/licenses/gpl.html
+
+.. _`GNU General Public License`: http://www.gnu.org/licenses/gpl.html
+
+.. _`GNU Lesser General Public License`: http://www.gnu.org/licenses/lgpl.html
+
+.. _`github`: https://github.com/synarete/funex
+
+.. _`Funex github page`: https://github.com/synarete/funex
+
+.. _`Ireneo Funes`: http://en.wikipedia.org/wiki/Funes_the_Memorious
+
+
+

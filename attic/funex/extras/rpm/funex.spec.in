@@ -1,0 +1,83 @@
+Summary:        Funex file-system
+Name:           @PACKAGE_NAME@
+Version:        @PACKAGE_VERSION@
+Release:        @RELEASE@.@REVISION@%{?dist}
+License:        GPL
+Group:          Applications/System
+URL:            https://github.com/synarete/funex
+Source:         %{name}-%{version}.tar.gz
+Prefix:         /
+BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}.%{_arch}
+
+Requires:       fuse >= 2.8.6
+Requires:       libcap >= 2.22
+Requires:       libuuid >= 2.20
+Requires:       libattr >= 2.4.46
+Requires:       coreutils >= 8.15
+Requires:       pkgconfig >= 0.25
+Requires:       libmount >= 2.24
+
+BuildRequires:  autoconf >= 2.50
+BuildRequires:  automake >= 1.4
+BuildRequires:  libtool >= 1.4.2
+BuildRequires:  gcc >= 4.7
+BuildRequires:  gcc-c++ >= 4.7
+BuildRequires:  binutils >= 2.21
+BuildRequires:  make >= 3.82
+BuildRequires:  bash >= 4.2
+BuildRequires:  libattr >= 2.4.46
+BuildRequires:  python-docutils >= 0.8.1
+BuildRequires:  coreutils >= 8.15
+BuildRequires:  libcap-devel >= 2.22
+BuildRequires:  libuuid-devel >= 2.21
+BuildRequires:  libmount-devel >= 2.24
+
+#%%global debug_package %{nil}
+%define docrootdir %{_docdir}/%{name}-%{version}
+
+%description
+The Funex file-system.
+
+%prep
+%setup -q
+
+%build
+%configure --docdir=%{docrootdir} --htmldir=%{docrootdir}/html
+%{__make}
+
+%check
+%{__make} check
+
+%install
+rm -rf %{buildroot}
+mkdir -p %{buildroot}%{_localstatedir}/run/%{name}
+%make_install
+
+%clean
+#[ ${RPM_BUILD_ROOT} != "/" ] && rm -rf $RPM_BUILD_ROOT
+%{__rm} -rf %{buildroot}
+
+%files
+#%doc AUTHORS COPYING README
+%defattr(-, root, root)
+%dir %attr(0755, root, root) %{_localstatedir}/run/%{name}
+#%{docrootdir}/*
+
+%{_bindir}/f*
+%{_sbindir}/*.%{name}
+#%{_sysconfdir}/%{name}/*
+#%{_libdir}/libfunex-*.*
+#%{_libdir}/pkgconfig/%{name}*.pc
+#%exclude %{_libdir}/libfunex-*.la
+%{_mandir}/man*/*
+%config %{_sysconfdir}/bash_completion.d/*
+%config(noreplace) %{_sysconfdir}/%{name}.conf
+
+%post -p /sbin/ldconfig
+
+%postun -p /sbin/ldconfig
+
+
+%changelog
+* @RPMDATE@ Synarete <synarete@xxxxxx> @PACKAGE_VERSION@-@RELEASE@
+- Release @REVISION@

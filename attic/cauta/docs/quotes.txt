@@ -1,0 +1,59 @@
+
+"I think what happens is that every time a new language comes out it cleans up
+what’s understood about the old languages and then adds something new,
+experimental and so on, and nobody has ever come to the point where they have
+a new language and then they want to stop at what’s understood. They’re always
+wanting to push further.
+
+Maybe someday somebody will say, "No, I'm not going to be innovative; I'm
+just going to be clean and simple, and I'm going to stick to it." Pascal was
+started with that philosophy but then didn't continue. Maybe we'll get to a
+time when somebody will say, "Let's set our sights lower and really try to
+make something that's going to be stable." It might be a good idea.
+
+- Donald E. Knuth, "Coders at Work: Reflections on the Craft of Programming".
+
+
+
+"I came across this rerelease of Coming From Reality. The liner notes said,
+'There are no concrete hard facts about the artist known as Rodriguez. Any
+musicologist-detectives out there?' was the question, and I think that, to me,
+was like an invitation."
+
+- Bartholomew-Strydom, "Searching For Sugar Man"
+
+
+
+"Representation *is* the essence of programing"
+
+- Frederick P. Brooks, "The Mythical Man-Month", p103.
+
+
+
+"Heaven knows whether this agrees with Nature: Cuidado!"
+
+- Charles Darwin notebook's, "Transmutation of Species"
+
+
+
+"[The universe] cannot be read until we have learnt the language and become
+familiar with the characters in which it is written."
+
+- Galileo Galilei, Opere Il Saggiatore
+(http://www-history.mcs.st-andrews.ac.uk/Quotations/Galileo.html)
+
+
+
+
+"Simplicity is the ultimate sophistication"
+
+- Leonardo da Vinci
+
+
+
+"Empty square brackets in the function declaration are a living fossil"
+
+- Dennis M. Ritchie
+(https://www.bell-labs.com/usr/dmr/www/chist.html)
+
+

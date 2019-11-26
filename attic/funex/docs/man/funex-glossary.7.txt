@@ -1,0 +1,68 @@
+.. include:: common.txt
+
+================
+ funex-glossary
+================
+
+------------------------
+Funex technical glossary
+------------------------
+
+:Date:           |date|
+:Manual section: 7
+:Manual group:   Funex Manual
+
+..
+
+
+
+DESCRIPTION
+===========
+A glossary of terms (technical and otherwise) used in the Funex documentation.
+
+..
+
+Record
+  Internal metadata sub-unit; 64 bytes.
+
+..
+
+Fragment
+  The smallest allocation unit; 512 bytes ("sector"). This unit is used for
+  *st_blocks* field in *struct stat*. See **stat**\(2).
+
+..
+
+Block
+  Space allocation unit; 8K bytes.
+
+..
+
+Section
+  Space bucket; 1M bytes (128 blocks).
+
+..
+
+
+LIMITS
+======
+
+
+
+...
+
+
+
+SEE ALSO
+========
+**funex**\(1)
+..
+
+
+COPYING
+=======
+|copyright|
+..
+
+|copying_gpl|
+..

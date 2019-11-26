@@ -1,0 +1,24 @@
+
+
+.. |author| replace:: Synarete
+
+.. |date| replace:: Fri Apr 17 2015
+
+.. |license| replace:: GPLv3+
+
+.. |copyright| replace::
+  Copyright (C) 2014,2015 Synarete.
+
+.. |copying_gpl| replace::
+  Funex is a free software; you can redistribute it and/or modify it under the
+  terms of the GNU General Public License as published by the Free Software
+  Foundation, either version 3 of the License, or (at your option) any later
+  version.
+
+
+
+.. |rundir| replace:: @RUNDIR@
+
+.. |mountd_sock| replace:: @RUNDIR@/funexmnt.sock
+
+.. |funex_conf| replace:: @SYSCONFDIR@/funex/funex.conf

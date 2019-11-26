@@ -1,0 +1,20 @@
+======
+Design
+======
+
+.. include:: common.txt
+
+
+:abstract:
+
+	The following section is intendent mostly for developers who wants to
+	understand the rationality and internal design of Funex.
+
+
+
+Modern SSD devices intruduce paradigm shift in the storage industry. The Funex
+filesystem tries to take advantage of those new storage-device properties, and
+redesign on-disk data (and metadata) more effeciently.
+
+
+..

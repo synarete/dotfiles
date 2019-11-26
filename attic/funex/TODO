@@ -1,0 +1,71 @@
+===========
+Funex TODOs
+===========
+
+* Bugfix: Rename cause empty dirsegs to be leftover
+
+* Coverity scan
+
+* Trim sliced-range backwords
+
+* gbx: Test with xxxat syscalls (symlinkat, openat, fchownat...)
+
+* Use dedicated buffer within task for short reads/writes
+
+* Tests scripts for dbs (sqlite, leveldb)
+
+* Copy-on-write for vrefs
+
+* I/O stats (lataency, accum etc)
+
+* Complete 'funex bcopy' (a-la 'dd'?)
+
+* Update inodes-times using inodes' timer on super-block
+
+* I/O queues!
+
+* fallocate: bkdsc.flags: Mark as uninitialize upon fallocate
+
+* fallocate: Avoid COW for uninitialize but fallocate blocks
+
+* mountd-status (rpc) using  fx_mntclnt_t
+
+* Mountd start/stop/status
+
+* Bootstrap sequence: handle error cases properly
+
+* fsck
+
+* quota (see: xfs? btrfs?)
+
+* auxd: store&check pids?
+
+* OP_XCOPY
+
+* OP_POLL
+
+* OP_INTERRUPT
+
+* OP_RLOOKUP + subcmd
+
+* funex-proxy (over network)
+
+* Improve usage of fileref-flags (O_DIRECT etc.)
+
+* Custom zalloc using packed blobs for vobjs
+
+* RPM PGP sign
+
+* Dist dynamic-library?
+
+* Re-think about on-disk checksums (currently disabled)
+
+* gbx: Performance test-suite
+
+* debug: Alloc controlling core-file size via command-line arg
+
+* Test over NFS
+
+* Limit DIRDEPTH_MAX to ??? -- Store depth for each dir-inode
+
+* Fix buggy cstylecheck.py script

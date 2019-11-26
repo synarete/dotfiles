@@ -1,0 +1,16 @@
+
+
+SUFFIXES: .in
+
+PATHSUBST = @SED@ \
+	-e "s,[@]PACKAGE_NAME[@],@PACKAGE_NAME@,g" \
+	-e "s,[@]PACKAGE_VERSION[@],@PACKAGE_VERSION@,g" \
+	-e "s,[@]RELEASE[@],@RELEASE@,g" \
+	-e "s,[@]REVISION[@],@REVISION@,g" \
+	-e "s,[@]BINDIR[@],@bindir@,g" \
+	-e "s,[@]SYSCONFDIR[@],@sysconfdir@,g" \
+	-e "s,[@]DATAROOTDIR[@],@datarootdir@,g"
+
+%: %.in
+	@echo "  SED $@"; $(PATHSUBST) $< > $@
+

@@ -1,0 +1,15 @@
+#ifndef CAC_CONFIG_SITE_H_
+#define CAC_CONFIG_SITE_H_
+
+#define CAC_CONFIG_SITE 1
+
+#define CAC_PREFIX          "@PREFIX@"
+#define CAC_BINDIR          "@BINDIR@"
+#define CAC_LIBDIR          "@LIBDIR@"
+#define CAC_SYSCONFDIR      "@SYSCONFDIR@"
+#define CAC_DATAROOTDIR     "@DATAROOTDIR@"
+#define CAC_LOCALSTATEDIR   "@LOCALSTATEDIR@"
+
+#endif /* CAC_CONFIG_SITE_H_ */
+
+

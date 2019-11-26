@@ -1,0 +1,12 @@
+# https://github.com/github/gitignore
+
+# Global excludes
+Makefile.in
+
+# Top-level excludes
+/autom4te.cache
+/aclocal.m4
+/configure
+
+/build
+/REVISION

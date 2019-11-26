@@ -1,0 +1,67 @@
+Summary: The Cauta Programming Language
+Name: @NAME@
+Version: @VERSION@
+Release: @RELEASE@.@REVISION@%{?dist}
+License: GPL3
+Group: Development/Tools
+URL: https://github.com/synarete/cauta
+Source: %{name}-%{version}.tar.gz
+Prefix: /
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}.%{_arch}
+
+Requires:       gc
+Requires:       libuuid
+Requires:       libunwind
+
+BuildRequires:  autoconf
+BuildRequires:  automake
+BuildRequires:  libtool
+BuildRequires:  gcc
+BuildRequires:  binutils
+BuildRequires:  make
+BuildRequires:  bash
+BuildRequires:  coreutils
+BuildRequires:  gc-devel
+BuildRequires:  libuuid-devel
+BuildRequires:  libunwind-devel
+
+%define docrootdir %{_docdir}/%{name}-%{version}
+
+%description
+The Cauta programming language base tools, standard library and documentations:
+
+- Provides cautac: Cauta-to-C source-to-source compiler: a front-end tool which
+transforms input cauta source files into valid output C source/header files.
+Those output C files may then be feed into standard C compiler.
+
+- Provides cauta standard library (libcauta_std)
+
+%prep
+%setup -q
+
+%build
+%configure --docdir=%{docrootdir}
+%{__make}
+
+%check
+%{__make} check
+
+%install
+%{__rm} -r %{buildroot}
+%make_install
+
+%files
+%defattr(-, root, root)
+%{_bindir}/*
+%{_libdir}/*
+%config %{_sysconfdir}/bash_completion.d/*
+%{_mandir}/man*/*
+
+%clean
+%{__rm} -rf %{buildroot}
+
+%changelog
+* @RPMDATE@ Shachar Sharon <synarete@xxxxxx> @VERSION@-@RELEASE@
+- Release @REVISION@
+
+

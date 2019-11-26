@@ -1,0 +1,13 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name:         @PACKAGE@
+URL:          https://github.com/synarete/funex
+Description:  Funex file-system
+Version:      @PACKAGE_VERSION@
+Requires:     pthread uuid cap
+Cflags:       -I${includedir}
+Libs:         -L${libdir} -lcap -luuid -lpthread
+Libs.private: @LIBS@

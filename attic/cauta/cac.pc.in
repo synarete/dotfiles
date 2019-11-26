@@ -1,0 +1,14 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name:         @PACKAGE@
+URL:          https://github.com/synarete/cauta
+Description:  Cauta-to-C Compiler
+Version:      @PACKAGE_VERSION@
+Requires:     uuid
+Cflags:       -I${includedir}
+Libs:         -L${libdir} -lgc -lunwind
+Libs.private: @LIBS@
+
