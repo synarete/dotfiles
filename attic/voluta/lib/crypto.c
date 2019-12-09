@@ -342,6 +342,24 @@ void voluta_fill_random(void *buf, size_t len, bool very_strong)
 	gcry_randomize(buf, len, random_level);
 }
 
+void voluta_fill_random_ascii(char *str, size_t len)
+{
+	size_t pos, nchars, nrands = 0;
+	uint32_t rands[64];
+	const char *chset = "abcdefghijklmnopqrstuvwxyz"
+			    "ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789";
+
+	nchars = strlen(chset);
+	for (size_t i = 0; i < len; ++i) {
+		if (nrands == 0) {
+			nrands = ARRAY_SIZE(rands);
+			voluta_fill_random(rands, sizeof(rands), 0);
+		}
+		pos = rands[--nrands] % nchars;
+		str[i] = chset[pos];
+	}
+}
+
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 int voluta_crypto_init(struct voluta_crypto *crypto)

@@ -26,7 +26,6 @@ libvoluta_la_SOURCES += opers.c
 libvoluta_la_SOURCES += panic.c
 libvoluta_la_SOURCES += persist.c
 libvoluta_la_SOURCES += qmalloc.c
-libvoluta_la_SOURCES += space.c
 libvoluta_la_SOURCES += super.c
 libvoluta_la_SOURCES += symlink.c
 libvoluta_la_SOURCES += thread.c

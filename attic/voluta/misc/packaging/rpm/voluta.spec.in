@@ -56,7 +56,7 @@ Voluta secure archiver
 %files
 %defattr(-, root, root)
 %{_bindir}/%{name}
-%{_bindir}/%{name}-fstests
+%{_bindir}/%{name}-sanity
 %{_sbindir}/mkfs.%{name}
 %{_sbindir}/mount.%{name}
 %{_sbindir}/fsck.%{name}

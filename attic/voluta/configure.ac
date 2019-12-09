@@ -46,9 +46,8 @@ AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([include/Makefile])
 AC_CONFIG_FILES([lib/Makefile])
 AC_CONFIG_FILES([prog/Makefile])
+AC_CONFIG_FILES([sanity/Makefile])
 AC_CONFIG_FILES([test/Makefile])
-AC_CONFIG_FILES([test/unitest/Makefile])
-AC_CONFIG_FILES([test/fstests/Makefile])
 AC_CONFIG_FILES([misc/Makefile])
 AC_OUTPUT
 

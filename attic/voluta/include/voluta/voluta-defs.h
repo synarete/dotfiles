@@ -34,11 +34,17 @@
 #define VOLUTA_SEXA             (1LL << 60)
 
 
+/* Volume master-record marker (ASCII: "@voluta@") */
+#define VOLUTA_MASTER_MARK      (0x406174756C6F7640L)
+
+/* Master-record on-disk size */
+#define VOLUTA_MASTER_SIZE      (1024)
+
 /* Current on-disk format version number */
 #define VOLUTA_VERSION          (1)
 
-/* Magic numbers at meta-objects start (ASCII: '@VLT') */
-#define VOLUTA_MAGIC            (0x40564C54UL)
+/* Magic numbers at meta-objects start (ASCII: '#VLT') */
+#define VOLUTA_MAGIC            (0x23564C54UL)
 
 /* Max length of encryption pass-phrase */
 #define VOLUTA_PASSPHRASE_MAX   (255)
@@ -77,7 +83,7 @@
 
 
 /* Bits-shift of allocation-group */
-#define VOLUTA_AG_SHIFT         (23)
+#define VOLUTA_AG_SHIFT         (22)
 
 /* Allocation-group size (8M) */
 #define VOLUTA_AG_SIZE          (1ULL << VOLUTA_AG_SHIFT)
@@ -93,7 +99,7 @@
 
 
 /* Volume's minimal number of allocation-group unites */
-#define VOLUTA_VOLUME_NAG_MIN   (64L)
+#define VOLUTA_VOLUME_NAG_MIN   (256L)
 
 /* Volume's maximal number of allocation-group unites */
 #define VOLUTA_VOLUME_NAG_MAX   (1L << 16)
@@ -153,8 +159,14 @@
 #define VOLUTA_ITNODE_NENTS     (764)
 
 
+/* Bits-shift of data-fragment */
+#define VOLUTA_DF_SHIFT         (14)
+
 /* File's data-fragment size */
-#define VOLUTA_DF_SIZE          (VOLUTA_BK_SIZE)
+#define VOLUTA_DF_SIZE          (1 << VOLUTA_DF_SHIFT)
+
+/* File's data-fragment size */
+#define VOLUTA_NDFS_IN_BK       (VOLUTA_BK_SIZE / VOLUTA_DF_SIZE)
 
 /* On-disk size of regular-file inode */
 #define VOLUTA_REGINODE_SIZE    VOLUTA_INODE_SIZE
@@ -242,8 +254,8 @@
 /* Max size of single I/O operation */
 #define VOLUTA_IO_SIZE_MAX      (4UL * VOLUTA_MEGA)
 
-/* Max number of blocks in single I/O operations */
-#define VOLUTA_IO_NBK_MAX       ((VOLUTA_IO_SIZE_MAX / VOLUTA_BK_SIZE) + 1)
+/* Max number of data-fragments in single I/O operations */
+#define VOLUTA_IO_NDF_MAX       ((VOLUTA_IO_SIZE_MAX / VOLUTA_DF_SIZE) + 1)
 
 
 /* Extended attributes known classes */
@@ -270,12 +282,6 @@ enum voluta_vtype {
 	VOLUTA_VTYPE_DATA       = 16,
 };
 
-
-/* Block's meta flags */
-enum voluta_bk_flags {
-	VOLUTA_BKF_NONE         = 0,
-	VOLUTA_BKF_UNWRITTEN    = (1 << 0),
-};
 
 /* Inode's attributes masks */
 enum voluta_attr_flags {
@@ -320,8 +326,8 @@ enum voluta_attr_flags {
 
 
 /* Minimal required size for system PAGE_SIZE */
-#define VOLUTA_PAGE_SHIFT_MIN           (12)
-#define VOLUTA_PAGE_SIZE_MIN            (1U << VOLUTA_PAGE_SHIFT_MIN)
+#define VOLUTA_PAGE_SHIFT_MIN   (12)
+#define VOLUTA_PAGE_SIZE_MIN    (1U << VOLUTA_PAGE_SHIFT_MIN)
 
 /* Minimal required size for system LEVELx_CACHE_LINESIZE */
 #define VOLUTA_CACHELINE_SHIFT_MIN      (6)
@@ -334,6 +340,14 @@ enum voluta_attr_flags {
 #define voluta_packed           __attribute__ ((__packed__))
 #define voluta_packed_aligned   __attribute__ ((__packed__, __aligned__))
 #define voluta_packed_aligned64 __attribute__ ((__packed__, __aligned__(64)))
+
+
+struct voluta_master_record {
+	uint64_t marker;
+	uint64_t version;
+	uint8_t  reserved[1008];
+
+} voluta_packed_aligned64;
 
 
 /* Meta-data elements common header */
@@ -384,21 +398,29 @@ struct voluta_super_block {
 	struct voluta_uuid      s_uuid;
 	uint8_t                 s_reserved1[16];
 	struct voluta_name      s_fs_name;
-	uint8_t                 s_reserved2[3776];
+	uint8_t                 s_reserved2[1728];
+	int64_t                 s_itable_root;
+	uint8_t                 s_reserved3[2040];
 	struct voluta_key       s_keys[127];
-	uint8_t                 s_reserved3[32];
+	uint8_t                 s_reserved4[32];
 	struct voluta_iv        s_ivs[509];
-	uint8_t                 s_reserved4[48];
+	uint8_t                 s_reserved5[48];
 } voluta_packed_aligned64;
 
 
+struct voluta_krefs {
+	uint8_t vtype[VOLUTA_NKBS_IN_BK];
+} voluta_packed;
+
+
 struct voluta_bkref {
-	uint8_t  b_vtype;
-	uint8_t  b_flags;
-	uint16_t b_smask;
-	uint32_t b_reserved;
-	uint32_t b_cnt;
 	struct voluta_iv b_iv;
+	struct voluta_krefs b_k;
+	uint8_t  b_reserved[VOLUTA_NKBS_IN_BK];
+	uint32_t b_refcnt;
+	uint8_t  b_usecnt;
+	uint8_t  b_unwritten;
+	uint16_t b_mask;
 } voluta_packed;
 
 
@@ -607,7 +629,7 @@ union voluta_kbs {
 
 /* User's data chunk */
 struct voluta_data_frg {
-	uint8_t dat[VOLUTA_BK_SIZE];
+	uint8_t dat[VOLUTA_DF_SIZE];
 };
 
 
@@ -621,24 +643,24 @@ union voluta_vnode_block {
 	struct voluta_dir_tnode         dir_tnode[VOLUTA_NDIRTNODES_IN_BK];
 	struct voluta_itable_tnode      itable_tnode;
 	struct voluta_radix_tnode       radix_tnode;
-	struct voluta_data_frg          data[1];
 } voluta_packed_aligned64;
 
 
 /* Raw block */
 union voluta_bk {
+	struct voluta_master_record     mr;
 	struct voluta_header            hdr;
 	struct voluta_super_block       sb;
 	struct voluta_uber_block        ub;
 	union voluta_vnode_block        vb;
-	struct voluta_data_frg          df[1];
+	struct voluta_data_frg          df[VOLUTA_NDFS_IN_BK];
 	union voluta_kbs                kbs[VOLUTA_NKBS_IN_BK];
 	uint8_t bk[VOLUTA_BK_SIZE];
 } voluta_packed_aligned64;
 
 
 /* Semantic "view" into sub-element of logical meta-block */
-union voluta_lview {
+union voluta_view {
 	struct voluta_header            hdr;
 	union voluta_bk                 bk;
 	union voluta_kbs                kbs;

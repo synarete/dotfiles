@@ -191,8 +191,8 @@ static void check_tmpfs_backend(void)
 	loff_t size = voluta_globals.mount_tmpfs;
 	const char *volume_path = voluta_globals.mount_volume;
 
-	err = voluta_vol_resolve_size(volume_path, size,
-				      &voluta_globals.mount_tmpfs);
+	err = voluta_resolve_volume_size(volume_path, size,
+					 &voluta_globals.mount_tmpfs);
 	if (err) {
 		voluta_die(0, "illegal tmpfs size: %ld", size);
 	}
@@ -203,7 +203,7 @@ static void check_volume_backend(void)
 	int err;
 	const char *path = voluta_globals.mount_volume;
 
-	err = voluta_vol_check_path(path);
+	err = voluta_require_volume_path(path);
 	if (err) {
 		voluta_die(err, "illegal volume: %s", path);
 	}

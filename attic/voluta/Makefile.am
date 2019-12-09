@@ -1,9 +1,9 @@
 ACLOCAL_AMFLAGS = -I m4 ${ACLOCAL_FLAGS}
-SUBDIRS = . include lib prog test misc
+SUBDIRS = . include lib prog sanity test misc
 
 EXTRA_DIST = $(NULL)
 EXTRA_DIST += version.sh
-EXTRA_DIST += README
+EXTRA_DIST += README.md
 EXTRA_DIST += TODO
 EXTRA_DIST += VERSION
 EXTRA_DIST += RELEASE

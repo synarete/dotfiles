@@ -39,15 +39,23 @@
 /*
  * ISSUE-0002 (TODO): Track meta-blocks per inode
  *
- * For each inode (+ entire file-system) track number on meta-blocks. This is
- * esspecially important for deep/sparse dir/file inodes.
+ * For each inode (+ entire file-system) track number on meta-blocks.
+ * Especially important for deep/sparse dir/file inodes.
  */
+
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-const struct voluta_vaddr *voluta_vaddr_of(const struct voluta_vnode_info *vi)
+const struct voluta_vaddr *
+voluta_vaddr_of_vi(const struct voluta_vnode_info *vi)
 {
 	return &vi->vaddr;
+}
+
+const struct voluta_vaddr *
+voluta_vaddr_of_ii(const struct voluta_inode_info *ii)
+{
+	return voluta_vaddr_of_vi(&ii->vi);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -182,14 +190,6 @@ static void extern_timespec_x(const struct voluta_timespec *vts,
 {
 	stx_ts->tv_sec = (int64_t)vts->sec;
 	stx_ts->tv_nsec = (uint32_t)vts->nsec;
-}
-
-struct voluta_kbs_inode *voluta_inode_to_kbs(const struct voluta_inode *inode)
-{
-	const struct voluta_kbs_inode *kbs_inode;
-
-	kbs_inode = voluta_container_of(inode, struct voluta_kbs_inode, i);
-	return (struct voluta_kbs_inode *)kbs_inode;
 }
 
 static void setup_new_special(struct voluta_inode_info *ii)
@@ -339,7 +339,7 @@ static int require_xaccess_parent_dir(struct voluta_env *env,
 		return 0;
 	}
 	parent_ino = i_parent_ino_of(ii);
-	err = voluta_stage_inode(env, parent_ino, &parent_ii);
+	err = voluta_stage_inode(sbi_of(env), parent_ino, &parent_ii);
 	if (err) {
 		return err;
 	}
@@ -582,7 +582,7 @@ static int require_parent_dir(struct voluta_env *env,
 	if (!parent_ino) {
 		return -EFSCORRUPTED; /* XXX */
 	}
-	err = voluta_stage_inode(env, parent_ino, &parent_ii);
+	err = voluta_stage_inode(sbi_of(env), parent_ino, &parent_ii);
 	if (err) {
 		return err;
 	}
@@ -665,24 +665,23 @@ int voluta_do_statx(struct voluta_env *env, const struct voluta_inode_info *ii,
 }
 
 
-int voluta_do_evict_inode(struct voluta_env *env, ino_t ino)
+int voluta_do_evict_inode(struct voluta_sb_info *sbi, ino_t ino)
 {
 	int err;
 	struct voluta_inode_info *ii;
-	struct voluta_cache *cache = cache_of(env);
 
-	err = voluta_real_ino(env, ino, &ino);
+	err = voluta_real_ino(sbi, ino, &ino);
 	if (err) {
 		return err;
 	}
-	err = voluta_cache_lookup_ii(cache, ino, &ii);
+	err = voluta_cache_lookup_ii(sbi->s_cache, ino, &ii);
 	if (err) {
 		return 0; /* not cached, ok */
 	}
 	if (!voluta_isevictable_ii(ii)) {
 		return -EPERM; /* XXX may happen when (nlookup > 0) */
 	}
-	voulta_cache_forget_ii(cache, ii);
+	voulta_cache_forget_ii(sbi->s_cache, ii);
 	return 0;
 }
 

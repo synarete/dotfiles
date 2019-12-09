@@ -65,8 +65,8 @@ static void mkfs_setup_params(void)
 	if (err && (err != -ENOENT)) {
 		voluta_die(err, "stat failure: %s", volume_path);
 	}
-	err = voluta_vol_resolve_size(volume_path, size,
-				      &voluta_globals.mkfs_size);
+	err = voluta_resolve_volume_size(volume_path, size,
+					 &voluta_globals.mkfs_size);
 	if (err) {
 		voluta_die(err, "unsupported size: %ld", size);
 	}

@@ -27,7 +27,7 @@
 
 /* Mapping from file-system magic type to name & flags */
 struct voluta_fsinfo {
-	long int vfstype;
+	long vfstype;
 	const char *name;
 	int permitted_mount;
 };
@@ -133,7 +133,7 @@ void voluta_show_help_and_exit(int exit_code, const char *help_string);
 void voluta_show_version_and_exit(int exit_code);
 
 /* Resolve file-system info by statfs.f_type */
-const struct voluta_fsinfo *voluta_fsinfo_by_vfstype(long int vfstype);
+const struct voluta_fsinfo *voluta_fsinfo_by_vfstype(long vfstype);
 
 /* Singleton instance */
 struct voluta_env *voluta_get_instance(void);

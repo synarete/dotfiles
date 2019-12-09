@@ -648,7 +648,7 @@ static int new_xattr_node(const struct voluta_xattr_ctx *xattr_ctx,
 static int del_xattr_node(const struct voluta_xattr_ctx *xattr_ctx,
 			  struct voluta_vnode_info *vi)
 {
-	return voluta_del_vnode(xattr_ctx->env, vi);
+	return voluta_del_vnode(xattr_ctx->sbi, vi);
 }
 
 static int

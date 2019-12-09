@@ -239,7 +239,7 @@ int voluta_do_lookup(struct voluta_env *env,
 	if (err) {
 		return err;
 	}
-	err = voluta_stage_inode(env, ino_dt.ino, &ii);
+	err = voluta_stage_inode(sbi_of(env), ino_dt.ino, &ii);
 	if (err) {
 		return err;
 	}
@@ -247,23 +247,30 @@ int voluta_do_lookup(struct voluta_env *env,
 	return 0;
 }
 
-static int check_create(struct voluta_env *env,
-			const struct voluta_inode_info *dir_ii, mode_t mode)
+static int check_create_mode(mode_t mode)
 {
-	int err;
-	size_t nkbs;
-
-	err = require_dir(dir_ii);
-	if (err) {
-		return err;
-	}
 	if (S_ISDIR(mode)) {
 		return -EISDIR;
 	}
 	if (S_ISLNK(mode)) {
 		return -EINVAL;
 	}
-	err = voluta_nkbs_of(VOLUTA_VTYPE_INODE, mode, &nkbs);
+	if (!S_ISREG(mode) && !S_ISFIFO(mode) && !S_ISSOCK(mode)) {
+		return -ENOTSUP;
+	}
+	return 0;
+}
+
+static int check_create(struct voluta_env *env,
+			const struct voluta_inode_info *dir_ii, mode_t mode)
+{
+	int err;
+
+	err = require_dir(dir_ii);
+	if (err) {
+		return err;
+	}
+	err = check_create_mode(mode);
 	if (err) {
 		return err;
 	}
@@ -523,7 +530,7 @@ static int update_or_drop_unlinked(struct voluta_env *env,
 	if (err) {
 		return err;
 	}
-	err = voluta_del_inode(env, ii);
+	err = voluta_del_inode(sbi_of(env), ii);
 	if (err) {
 		return err;
 	}
@@ -549,7 +556,7 @@ int voluta_do_unlink(struct voluta_env *env, struct voluta_inode_info *dir_ii,
 	if (err) {
 		return err;
 	}
-	err = voluta_stage_inode(env, ino, &ii);
+	err = voluta_stage_inode(sbi_of(env), ino, &ii);
 	if (err) {
 		return err;
 	}
@@ -775,7 +782,7 @@ int voluta_do_rmdir(struct voluta_env *env, struct voluta_inode_info *dir_ii,
 	if (err) {
 		return err;
 	}
-	err = voluta_stage_inode(env, ino, &ii);
+	err = voluta_stage_inode(sbi_of(env), ino, &ii);
 	if (err) {
 		return err;
 	}
@@ -1187,29 +1194,13 @@ int voluta_name_to_qstr(struct voluta_env *env,
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static fsblkcnt_t bytes_to_fsblkcnt(size_t nbytes)
-{
-	return nbytes / VOLUTA_BK_SIZE;
-}
-
 int voluta_do_statvfs(struct voluta_env *env, struct statvfs *stvfs)
 {
 	const struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_sp_stat *sps = &sbi->s_sp_stat;
 
 	memset(stvfs, 0, sizeof(*stvfs));
-	stvfs->f_bsize = VOLUTA_BK_SIZE;
-	stvfs->f_frsize = VOLUTA_BK_SIZE;
 	stvfs->f_namemax = VOLUTA_NAME_MAX;
-
-	stvfs->f_blocks = bytes_to_fsblkcnt(sps->sp_nbytes);
-	stvfs->f_bfree = bytes_to_fsblkcnt(sps->sp_nbytes -
-					   (sps->sp_nmeta + sps->sp_ndata));
-	stvfs->f_bavail = stvfs->f_bfree;
-	stvfs->f_files = (sps->sp_nbytes / 2);
-	stvfs->f_ffree = stvfs->f_files - sps->sp_nfiles;
-	stvfs->f_favail = stvfs->f_ffree;
-
+	voluta_space_to_statvfs(sbi, stvfs);
 	return 0;
 }
 

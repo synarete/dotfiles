@@ -23,9 +23,7 @@
 
 static struct voluta_lnk_symval *symval_of(const struct voluta_vnode_info *vi)
 {
-	voluta_assert_eq(vi->bki->b_vaddr.vtype, VOLUTA_VTYPE_SYMVAL);
-
-	return &vi->lview->lnk_symval;
+	return &vi->view->lnk_symval;
 }
 
 static void *symval_databuf(struct voluta_lnk_symval *symval)
@@ -202,10 +200,10 @@ static int new_symval_node(struct voluta_env *env, ino_t parent_ino,
 	return 0;
 }
 
-static int del_symval_node(struct voluta_env *env,
+static int del_symval_node(struct voluta_sb_info *sbi,
 			   struct voluta_vnode_info *symval_vi)
 {
-	return voluta_del_vnode(env, symval_vi);
+	return voluta_del_vnode(sbi, symval_vi);
 }
 
 static loff_t symval_addr_of(const struct voluta_vnode_info *symval_vi)
@@ -271,7 +269,8 @@ int voluta_setup_symlink(struct voluta_env *env,
 	return 0;
 }
 
-static int drop_symval(struct voluta_env *env, struct voluta_inode_info *lnk_ii)
+static int drop_symval(struct voluta_sb_info *sbi,
+		       struct voluta_inode_info *lnk_ii)
 {
 	int err;
 	struct voluta_vaddr tail_vaddr;
@@ -282,11 +281,11 @@ static int drop_symval(struct voluta_env *env, struct voluta_inode_info *lnk_ii)
 		return 0;
 	}
 	/* TODO: Free by vaddr only */
-	err = stage_symval(sbi_of(env), &tail_vaddr, &symval_vi);
+	err = stage_symval(sbi, &tail_vaddr, &symval_vi);
 	if (err) {
 		return err;
 	}
-	err = del_symval_node(env, symval_vi);
+	err = del_symval_node(sbi, symval_vi);
 	if (err) {
 		return err;
 	}
@@ -302,7 +301,7 @@ int voluta_drop_symlink(struct voluta_env *env,
 	if (err) {
 		return err;
 	}
-	err = drop_symval(env, lnk_ii);
+	err = drop_symval(sbi_of(env), lnk_ii);
 	if (err) {
 		return err;
 	}

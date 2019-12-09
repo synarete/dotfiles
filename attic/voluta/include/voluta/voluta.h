@@ -222,10 +222,10 @@ int voluta_fs_statx(struct voluta_env *env, ino_t ino, struct statx *out_statx);
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-int voluta_vol_resolve_size(const char *path,
-			    loff_t size_want, loff_t *out_size);
+int voluta_resolve_volume_size(const char *path,
+			       loff_t size_want, loff_t *out_size);
 
-int voluta_vol_check_path(const char *path);
+int voluta_require_volume_path(const char *path);
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 

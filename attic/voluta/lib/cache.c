@@ -20,7 +20,8 @@
 #include <errno.h>
 #include "voluta-lib.h"
 
-#define CACHE_RETRY_MAX 128
+#define CACHE_RETRY_MAX         128
+#define CACHE_ELEM_MAGIC        VOLUTA_MASTER_MARK
 
 /* Local functions forward declarations */
 static void bk_info_init(struct voluta_bk_info *bki, union voluta_bk *bk);
@@ -202,13 +203,23 @@ static void del_vi(struct voluta_qmalloc *qmal, struct voluta_vnode_info *vi)
 static struct voluta_cache_elem *
 cache_elem_from_htbl_link(const struct voluta_list_head *lnk)
 {
-	return container_of(lnk, struct voluta_cache_elem, ce_htbl_link);
+	struct voluta_cache_elem *ce;
+
+	ce = container_of(lnk, struct voluta_cache_elem, ce_htbl_link);
+	voluta_assert_eq(ce->ce_magic, CACHE_ELEM_MAGIC);
+
+	return ce;
 }
 
 static struct voluta_cache_elem *
 cache_elem_from_lru_link(const struct voluta_list_head *lnk)
 {
-	return container_of(lnk, struct voluta_cache_elem, ce_lru_link);
+	struct voluta_cache_elem *ce;
+
+	ce = container_of(lnk, struct voluta_cache_elem, ce_lru_link);
+	voluta_assert_eq(ce->ce_magic, CACHE_ELEM_MAGIC);
+
+	return ce;
 }
 
 static void cache_elem_init(struct voluta_cache_elem *ce)
@@ -217,6 +228,7 @@ static void cache_elem_init(struct voluta_cache_elem *ce)
 	list_head_init(&ce->ce_htbl_link);
 	ce->ce_cycle = 0;
 	ce->ce_refcnt = 0;
+	ce->ce_magic = CACHE_ELEM_MAGIC;
 }
 
 static void cache_elem_destroy(struct voluta_cache_elem *ce)
@@ -225,6 +237,8 @@ static void cache_elem_destroy(struct voluta_cache_elem *ce)
 	list_head_destroy(&ce->ce_htbl_link);
 	ce->ce_cycle = 0;
 	ce->ce_refcnt = 0;
+	ce->ce_key = ~0ULL;
+	ce->ce_magic = -1;
 }
 
 static void cache_elem_hmap(struct voluta_cache_elem *ce,
@@ -319,6 +333,8 @@ static void cachemap_store(struct voluta_cachemap *cachemap,
 {
 	size_t bin;
 
+	voluta_assert_eq(ce->ce_magic, CACHE_ELEM_MAGIC);
+
 	ce->ce_key = ckey;
 	bin = cachemap_ckey_to_bin(cachemap, ckey);
 	cache_elem_hmap(ce, &cachemap->htbl[bin]);
@@ -339,6 +355,7 @@ cachemap_find(const struct voluta_cachemap *cachemap, uint64_t ckey)
 	while (itr != lst) {
 		ce = cache_elem_from_htbl_link(itr);
 		if (ce->ce_key == ckey) {
+			voluta_assert_eq(ce->ce_magic, CACHE_ELEM_MAGIC);
 			return ce;
 		}
 		itr = itr->next;
@@ -350,6 +367,7 @@ static void cachemap_remove(struct voluta_cachemap *cachemap,
 			    struct voluta_cache_elem *ce)
 {
 	voluta_assert_gt(cachemap->count, 0);
+	voluta_assert_eq(ce->ce_magic, CACHE_ELEM_MAGIC);
 
 	cache_elem_hunmap(ce);
 	cache_elem_unlru(ce);
@@ -359,16 +377,18 @@ static void cachemap_remove(struct voluta_cachemap *cachemap,
 static void cachemap_promote_lru(struct voluta_cachemap *cachemap,
 				 struct voluta_cache_elem *ce)
 {
+	voluta_assert_eq(ce->ce_magic, CACHE_ELEM_MAGIC);
 	cache_elem_relru(ce, &cachemap->lru);
 }
 
-static struct voluta_cache_elem *cachemap_get_lru(const struct voluta_cachemap
-		*cachemap)
+static struct voluta_cache_elem *
+cachemap_get_lru(const struct voluta_cachemap *cachemap)
 {
 	struct voluta_cache_elem *ce = NULL;
 
 	if (cachemap->count > 0) {
 		ce = cache_elem_from_lru_link(cachemap->lru.prev);
+		voluta_assert_eq(ce->ce_magic, CACHE_ELEM_MAGIC);
 	}
 	return ce;
 }
@@ -385,6 +405,8 @@ static void cachemap_for_each(struct voluta_cachemap *cachemap,
 	while (itr != lru) {
 		ce = cache_elem_from_lru_link(itr);
 		itr = itr->prev;
+
+		voluta_assert_eq(ce->ce_magic, CACHE_ELEM_MAGIC);
 		callback(ce);
 	}
 }
@@ -397,6 +419,7 @@ bk_info_from_cache_elem(const struct voluta_cache_elem *ce)
 	const struct voluta_bk_info *bki = NULL;
 
 	if (ce != NULL) {
+		voluta_assert_eq(ce->ce_magic, CACHE_ELEM_MAGIC);
 		bki = container_of(ce, struct voluta_bk_info, b_ce);
 	}
 	return (struct voluta_bk_info *)bki;
@@ -660,7 +683,7 @@ static bool cache_is_evictable_bk(const struct voluta_cache *cache,
 {
 	const size_t ncycles = cache_ncycles(cache);
 
-	voluta_assert(!lba_isnull(bki->b_vaddr.lba));
+	voluta_assert_eq(bki->b_ce.ce_magic, CACHE_ELEM_MAGIC);
 
 	if (bki->b_ce.ce_cycle == ncycles) {
 		return false;
@@ -761,7 +784,6 @@ cache_find_or_spawn_bk(struct voluta_cache *cache,
 
 	bki = cache_find_stamp_bk(cache, vaddr);
 	if (bki != NULL) {
-		voluta_assert_eq(bki->b_vaddr.vtype, vaddr->vtype);
 		return bki;
 	}
 	bki = cache_spawn_bk(cache, vaddr);
@@ -895,7 +917,7 @@ static void vnode_info_init(struct voluta_vnode_info *vi)
 {
 	voluta_vaddr_reset(&vi->vaddr);
 	cache_elem_init(&vi->ce);
-	vi->lview = NULL;
+	vi->view = NULL;
 	vi->bki = NULL;
 }
 
@@ -903,7 +925,8 @@ static void vnode_info_destroy(struct voluta_vnode_info *vi)
 {
 	voluta_vaddr_reset(&vi->vaddr);
 	cache_elem_destroy(&vi->ce);
-	vi->lview = NULL;
+	vi->view = NULL;
+	vi->u.p = NULL;
 	vi->bki = NULL;
 }
 
@@ -918,6 +941,8 @@ static void vnode_info_detach_bk(struct voluta_vnode_info *vi)
 	if (vi->bki != NULL) {
 		bk_info_decref(vi->bki);
 		vi->bki = NULL;
+		vi->view = NULL;
+		vi->u.p = NULL;
 	}
 }
 
@@ -937,6 +962,8 @@ static void vnode_info_promote_bk(struct voluta_vnode_info *vi)
 
 static bool vnode_info_is_evictable(const struct voluta_vnode_info *vi)
 {
+	voluta_assert_eq(vi->ce.ce_magic, CACHE_ELEM_MAGIC);
+
 	return (vi->ce.ce_refcnt == 0);
 }
 
@@ -985,9 +1012,14 @@ static void inode_info_detach_bk(struct voluta_inode_info *ii)
 	vnode_info_detach_bk(&ii->vi);
 }
 
+static bool ino_isnull(ino_t ino)
+{
+	return (ino == VOLUTA_INO_NULL);
+}
+
 static bool has_null_ino(const struct voluta_inode_info *ii)
 {
-	return voluta_ino_isnull(i_ino_of(ii));
+	return ino_isnull(i_ino_of(ii));
 }
 
 static void inode_info_promote_bk(struct voluta_inode_info *ii)
@@ -1159,6 +1191,8 @@ static struct voluta_vnode_info *cache_get_lru_vi(struct voluta_cache *cache)
 	struct voluta_cache_elem *ce;
 
 	ce = cachemap_get_lru(&cache->vcmap);
+	voluta_assert_eq(ce->ce_magic, CACHE_ELEM_MAGIC);
+
 	return vnode_info_from_cache_elem(ce);
 }
 
@@ -1401,6 +1435,24 @@ static void cache_shrink_or_relru_iis(struct voluta_cache *cache, size_t count)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
+static int cache_init_null_bk(struct voluta_cache *cache)
+{
+	int err;
+	void *mem;
+
+	err = voluta_zalloc(cache->qmal, sizeof(*cache->null_bk), &mem);
+	if (!err) {
+		cache->null_bk = mem;
+	}
+	return err;
+}
+
+static void cache_fini_null_bk(struct voluta_cache *cache)
+{
+	voluta_free(cache->qmal, cache->null_bk, sizeof(*cache->null_bk));
+	cache->null_bk = NULL;
+}
+
 int voluta_cache_init(struct voluta_cache *cache, struct voluta_qmalloc *qmal)
 {
 	int err;
@@ -1410,11 +1462,15 @@ int voluta_cache_init(struct voluta_cache *cache, struct voluta_qmalloc *qmal)
 	memset(cache, 0, sizeof(*cache));
 	cache->qmal = qmal;
 	dirtyq_init(&cache->dirtyq);
-
+	err = cache_init_null_bk(cache);
+	if (err) {
+		return err;
+	}
 	want_size = (qmal->st.memsz_data / bk_size) / 7;
 	htbl_size = voluta_clamp(want_size, 1U << 13, 1U << 23);
 	err = cache_init_bmap(cache, htbl_size);
 	if (err) {
+		/* TODO: cleanup */
 		return err;
 	}
 	err = cache_init_imap(cache, htbl_size);
@@ -1432,10 +1488,11 @@ int voluta_cache_init(struct voluta_cache *cache, struct voluta_qmalloc *qmal)
 
 void voluta_cache_fini(struct voluta_cache *cache)
 {
-	dirtyq_fini(&cache->dirtyq);
-	cache_destroy_bmap(cache);
-	cache_destroy_imap(cache);
 	cache_destroy_vmap(cache);
+	cache_destroy_imap(cache);
+	cache_destroy_bmap(cache);
+	cache_fini_null_bk(cache);
+	dirtyq_fini(&cache->dirtyq);
 	memset(cache, 0xFC, sizeof(*cache));
 }
 
@@ -1507,11 +1564,8 @@ static void do_dirtify_bk(struct voluta_bk_info *bki)
 
 static void do_no_unwritten(const struct voluta_bk_info *bki)
 {
-	enum voluta_bk_flags bk_flags, unwritten = VOLUTA_BKF_UNWRITTEN;
-
-	bk_flags = voluta_get_bkflags_of(bki);
-	if ((bk_flags & unwritten) == unwritten) {
-		voluta_clear_bkflags_of(bki, unwritten);
+	if (voluta_is_unwritten(bki)) {
+		voluta_clear_unwritten(bki);
 	}
 }
 

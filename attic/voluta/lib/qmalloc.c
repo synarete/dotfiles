@@ -557,18 +557,13 @@ static size_t qmalloc_ptr_to_pgn(const struct voluta_qmalloc *qmal,
 	return (size_t)off / MPAGE_SIZE;
 }
 
-static bool qmalloc_isvalid_range(const struct voluta_qmalloc *qmal,
-				  loff_t off_beg, loff_t off_end)
-{
-	return (off_beg >= 0) && (off_end < (loff_t)qmal->st.memsz_data);
-}
-
 static bool qmalloc_isinrange(const struct voluta_qmalloc *qmal,
 			      const void *ptr, size_t nb)
 {
 	const loff_t off = qmalloc_ptr_to_off(qmal, ptr);
+	const loff_t end = off + (loff_t)nb;
 
-	return qmalloc_isvalid_range(qmal, off, off + (loff_t)nb);
+	return (off >= 0) && (end <= (loff_t)qmal->st.memsz_data);
 }
 
 static struct voluta_page_info *

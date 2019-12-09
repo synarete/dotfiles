@@ -39,6 +39,11 @@
 #include <voluta/voluta.h>
 
 
+/* Number of slab-allocator sub-elements sizes; powers-of-2 */
+#define VOLUTA_ALLOC_NSLABS \
+	(VOLUTA_PAGE_SHIFT_MIN - VOLUTA_CACHELINE_SHIFT_MIN)
+
+
 /* Threading */
 struct voluta_thread;
 
@@ -104,6 +109,11 @@ struct voluta_ino_dt {
 	mode_t dt;
 };
 
+struct voluta_passphrase {
+	char pass[VOLUTA_PASSPHRASE_MAX + 1];
+	char salt[VOLUTA_PASSPHRASE_MAX + 1];
+};
+
 struct voluta_iattr {
 	enum voluta_attr_flags ia_flags;
 	ino_t   ia_ino;
@@ -147,10 +157,6 @@ struct voluta_slab {
 	size_t pad_[2];
 } voluta_aligned;
 
-/* Number of slab-allocator sub-elements sizes; powers-of-2: [64..bk_size) */
-#define VOLUTA_ALLOC_NSLABS \
-	(VOLUTA_PAGE_SHIFT_MIN - VOLUTA_CACHELINE_SHIFT_MIN)
-
 struct voluta_qmalloc {
 	int memfd_data;         /* Data-memory file-descriptor */
 	int memfd_meta;         /* Meta-memory file-descriptor */
@@ -170,6 +176,7 @@ struct voluta_cache_elem {
 	uint64_t ce_key;                        /* 64-bits caching key */
 	size_t  ce_cycle;                       /* Id of last in-use cycle */
 	size_t  ce_refcnt;                      /* References by other */
+	long    ce_magic;
 };
 
 struct voluta_bk_info {
@@ -189,13 +196,14 @@ union voluta_vnode_u {
 	struct voluta_dir_tnode    *dtn;
 	struct voluta_xattr_node   *xan;
 	struct voluta_data_frg     *df;
+	void *p;
 };
 
 struct voluta_vnode_info {
 	struct voluta_vaddr vaddr;      /* Persistent logical address */
 	struct voluta_cache_elem ce;    /* Caching base-element */
 	struct voluta_bk_info *bki;     /* Containing block */
-	union voluta_lview *lview;      /* "View" into "on-disk" element */
+	union voluta_view *view;      /* "View" into "on-disk" element */
 	union voluta_vnode_u u;
 
 } voluta_aligned;
@@ -206,8 +214,8 @@ struct voluta_inode_info {
 	ino_t ino;                      /* Unique ino number */
 } voluta_aligned;
 
-/* Block-device file-interface */
-struct voluta_bdev {
+/* Virtual-device interface */
+struct voluta_vd_info {
 	const struct voluta_crypto *crypto;
 	struct voluta_qmalloc *qmal;
 	union voluta_bk *enc_bk;        /* On-the-fly encryption block */
@@ -240,13 +248,14 @@ struct voluta_cache {
 	struct voluta_cachemap icmap;   /* Inodes cache-map */
 	struct voluta_cachemap vcmap;   /* Vnodes cache-map */
 	struct voluta_dirtyq dirtyq;    /* Dirty blocks queue */
+	union voluta_bk *null_bk;       /* Block-of-zeros */
 };
 
 struct voluta_sp_stat {
-	size_t  sp_nbytes;
-	size_t  sp_nmeta;
-	size_t  sp_ndata;
-	size_t  sp_nfiles;
+	ssize_t sp_nbytes;
+	ssize_t sp_nmeta;
+	ssize_t sp_ndata;
+	ssize_t sp_nfiles;
 };
 
 struct voluta_ag_info {
@@ -278,11 +287,11 @@ struct voluta_sb_info {
 	const char *s_name;             /* File system's name */
 	struct voluta_uuid    s_fs_uuid;/* File system's UUID */
 	struct voluta_qmalloc *s_qmal;
-	struct voluta_cache  *s_cache;
-	struct voluta_bdev   *s_bdev;
+	struct voluta_cache   *s_cache;
+	struct voluta_vd_info *s_vdi;
 	struct voluta_super_block *sb;  /* Super-block */
-	struct voluta_itable  s_itable; /* Inodes table */
-	struct voluta_iv_key s_iv_key;  /* Master encryption IV/key */
+	struct voluta_itable s_itable; /* Inodes table */
+	struct voluta_iv_key s_iv_key;     /* Master encryption IV/key */
 	struct voluta_sp_stat s_sp_stat;   /* Space accounting */
 	struct voluta_ag_space s_ag_space; /* Allocation-groups space-map */
 };
@@ -310,12 +319,11 @@ struct voluta_env {
 	struct voluta_qmalloc qmal;     /* Memory allocator */
 	struct voluta_cache cache;      /* Volatile elements cache */
 	struct voluta_crypto crypto;    /* Cryptographic context */
-	struct voluta_bdev bdev;        /* Block volume file interface */
+	struct voluta_vd_info vdi;      /* Virtual-device file interface */
 	struct voluta_sb_info sbi;      /* In-memory (volatile) super-block */
 	struct voluta_fusei fusei;      /* Bridge via FUSE */
 	struct voluta_ucred ucred;      /* Current operation user-credentials */
 	struct voluta_xtime xtime;      /* Current execution time-stamps */
-	union voluta_bk *zeros_bk;      /* Block-of-zeros */
 	iconv_t iconv_handle;           /* Char-encoding converter */
 	const char *mount_point;        /* Local mount-point path */
 	const char *volume_path;        /* Data-store device path */
@@ -335,83 +343,56 @@ enum voluta_flags {
 	VOLUTA_F_BLKDEV = 0x0010,
 };
 
-
-/* space */
-bool voluta_ino_isnull(ino_t);
-bool voluta_lba_isnull(loff_t);
+/* super */
+struct voluta_sb_info *voluta_sbi_of(const struct voluta_env *);
+int voluta_sbi_init(struct voluta_sb_info *,
+		    struct voluta_cache *, struct voluta_vd_info *);
+void voluta_sbi_fini(struct voluta_sb_info *);
 bool voluta_off_isnull(loff_t);
-size_t voluta_size_to_nkbs(size_t);
 bool voluta_vaddr_isnull(const struct voluta_vaddr *);
 void voluta_vaddr_reset(struct voluta_vaddr *);
 void voluta_vaddr_clone(const struct voluta_vaddr *, struct voluta_vaddr *);
-void voluta_vaddr_by_lba(struct voluta_vaddr *, enum voluta_vtype, loff_t);
 void voluta_vaddr_by_off(struct voluta_vaddr *, enum voluta_vtype, loff_t);
 void voluta_iaddr_reset(struct voluta_iaddr *);
-void voluta_iaddr_setup(struct voluta_iaddr *, ino_t,
-			const struct voluta_vaddr *);
-void voluta_iaddr_setup2(struct voluta_iaddr *, ino_t, loff_t, size_t);
-enum voluta_vtype voluta_vtype_at(const struct voluta_bk_info *,
-				  const struct voluta_vaddr *);
-enum voluta_bk_flags voluta_get_bkflags_of(const struct voluta_bk_info *);
-void voluta_clear_bkflags_of(const struct voluta_bk_info *,
-			     enum voluta_bk_flags);
-void voluta_iv_key_of(const struct voluta_bk_info *, struct voluta_iv_key *);
-int voluta_prepare_space(struct voluta_env *, loff_t);
+void voluta_iaddr_setup(struct voluta_iaddr *, ino_t, loff_t, size_t);
+bool voluta_is_unwritten(const struct voluta_bk_info *);
+void voluta_clear_unwritten(const struct voluta_bk_info *);
+int voluta_prepare_space(struct voluta_sb_info *, const char *, loff_t);
 int voluta_format_super_block(struct voluta_sb_info *);
 int voluta_format_uber_blocks(struct voluta_sb_info *);
 int voluta_load_super_block(struct voluta_sb_info *);
 int voluta_load_ag_space(struct voluta_sb_info *);
-int voluta_load_itable(struct voluta_env *);
-
-void voluta_ag_space_init(struct voluta_ag_space *);
-void voluta_ag_space_fini(struct voluta_ag_space *);
-
+int voluta_load_inode_table(struct voluta_sb_info *);
 int voluta_verify_uber_block(const struct voluta_uber_block *);
 int voluta_verify_super_block(const struct voluta_super_block *);
-
-int voluta_stage_bk_of(struct voluta_sb_info *, const struct voluta_vaddr *,
-		       struct voluta_bk_info *, struct voluta_bk_info **);
-int voluta_stage_uber_bk(struct voluta_sb_info *, const struct voluta_vaddr *,
-			 struct voluta_bk_info **);
-int voluta_stage_uber_of(struct voluta_sb_info *, const struct voluta_vaddr *,
-			 struct voluta_bk_info **);
-int voluta_allocate_space(struct voluta_sb_info *, enum voluta_vtype,
-			  size_t, struct voluta_vaddr *);
-int voluta_deallocate_space(struct voluta_sb_info *,
-			    const struct voluta_vaddr *);
-
-void voluta_resolve_lview(const struct voluta_bk_info *,
-			  const struct voluta_vaddr *, union voluta_lview **);
-
-/* super */
-struct voluta_sb_info *voluta_sbi_of(const struct voluta_env *);
-struct voluta_super_block *voluta_sb_of(const struct voluta_env *);
-struct voluta_cache *voluta_cache_of(const struct voluta_env *);
-int voluta_sbi_init(struct voluta_sb_info *,
-		    struct voluta_cache *, struct voluta_bdev *);
-void voluta_sbi_fini(struct voluta_sb_info *);
+void voluta_space_to_statvfs(const struct voluta_sb_info *, struct statvfs *);
 int voluta_commit_dirtyq(struct voluta_sb_info *, int);
-int voluta_stage_vbk(struct voluta_sb_info *, const struct voluta_vaddr *,
-		     bool, struct voluta_bk_info **);
-int voluta_stage_inode(struct voluta_env *, ino_t, struct voluta_inode_info **);
-int voluta_stage_vnode(struct voluta_sb_info *sbi,
-		       const struct voluta_vaddr *,
+int voluta_stage_inode(struct voluta_sb_info *, ino_t,
+		       struct voluta_inode_info **);
+int voluta_stage_vnode(struct voluta_sb_info *, const struct voluta_vaddr *,
 		       struct voluta_vnode_info **);
-int voluta_nkbs_of(enum voluta_vtype, mode_t, size_t *);
 int voluta_new_inode(struct voluta_env *, mode_t, ino_t,
 		     struct voluta_inode_info **);
-int voluta_del_inode(struct voluta_env *, struct voluta_inode_info *);
+int voluta_del_inode(struct voluta_sb_info *, struct voluta_inode_info *);
 int voluta_new_vnode(struct voluta_sb_info *, enum voluta_vtype,
 		     struct voluta_vnode_info **);
-int voluta_del_vnode(struct voluta_env *, struct voluta_vnode_info *);
-int voluta_new_bspace(struct voluta_sb_info *, enum voluta_vtype,
-		      struct voluta_vaddr *);
-int voluta_new_block(struct voluta_sb_info *, enum voluta_vtype,
-		     struct voluta_bk_info **);
-int voluta_del_block(struct voluta_env *, struct voluta_bk_info *,
-		     const struct voluta_vaddr *);
-int voluta_spawn_bk(struct voluta_sb_info *, const struct voluta_vaddr *,
-		    struct voluta_bk_info *, struct voluta_bk_info **);
+int voluta_del_vnode(struct voluta_sb_info *, struct voluta_vnode_info *);
+int voluta_del_vnode_at(struct voluta_sb_info *, const struct voluta_vaddr *);
+int voluta_new_vspace(struct voluta_sb_info *, enum voluta_vtype,
+		      size_t, struct voluta_vaddr *);
+
+/* itable */
+void voluta_itable_init(struct voluta_itable *);
+void voluta_itable_fini(struct voluta_itable *);
+int voluta_acquire_ino(struct voluta_sb_info *, struct voluta_iaddr *);
+int voluta_discard_ino(struct voluta_sb_info *, ino_t);
+int voluta_resolve_ino(struct voluta_sb_info *, ino_t, struct voluta_iaddr *);
+int voluta_find_root_ino(struct voluta_sb_info *, struct voluta_iaddr *);
+void voluta_bind_root_ino(struct voluta_sb_info *, ino_t);
+int voluta_reload_itable(struct voluta_sb_info *, const struct voluta_vaddr *);
+int voluta_format_itable(struct voluta_sb_info *);
+int voluta_real_ino(const struct voluta_sb_info *, ino_t, ino_t *);
+int voluta_verify_itnode(const struct voluta_itable_tnode *);
 
 /* namei */
 int voluta_authorize(const struct voluta_env *);
@@ -499,20 +480,10 @@ int voluta_do_fsync(struct voluta_env *, struct voluta_inode_info *, bool);
 int voluta_do_flush(struct voluta_env *, struct voluta_inode_info *);
 int voluta_verify_radix_tnode(const struct voluta_radix_tnode *);
 
-/* symlink */
-void voluta_setup_new_symlnk(struct voluta_inode_info *);
-int voluta_drop_symlink(struct voluta_env *, struct voluta_inode_info *);
-int voluta_do_readlink(struct voluta_env *,
-		       const struct voluta_inode_info *, struct voluta_buf *);
-int voluta_setup_symlink(struct voluta_env *, struct voluta_inode_info *,
-			 const struct voluta_str *);
-int voluta_verify_symval(const struct voluta_lnk_symval *);
-
 /* inode */
 bool voluta_uid_eq(uid_t, uid_t);
 bool voluta_gid_eq(gid_t, gid_t);
 bool voluta_uid_isroot(uid_t uid);
-const struct voluta_vaddr *voluta_vaddr_of(const struct voluta_vnode_info *);
 size_t voluta_inode_refcnt(const struct voluta_inode_info *ii);
 ino_t voluta_ino_of(const struct voluta_inode_info *ii);
 ino_t voluta_parent_ino_of(const struct voluta_inode_info *ii);
@@ -531,7 +502,6 @@ bool voluta_isfifo(const struct voluta_inode_info *ii);
 bool voluta_issock(const struct voluta_inode_info *ii);
 bool voluta_islnk(const struct voluta_inode_info *ii);
 bool voluta_isrootd(const struct voluta_inode_info *ii);
-struct voluta_kbs_inode *voluta_inode_to_kbs(const struct voluta_inode *);
 int voluta_setup_new_inode(struct voluta_env *, struct voluta_inode_info *,
 			   mode_t mode, ino_t parent_ino);
 int voluta_do_getattr(struct voluta_env *,
@@ -544,13 +514,25 @@ int voluta_do_chown(struct voluta_env *, struct voluta_inode_info *,
 		    uid_t, gid_t, const struct voluta_iattr *);
 int voluta_do_utimens(struct voluta_env *, struct voluta_inode_info *,
 		      const struct voluta_iattr *);
-int voluta_do_evict_inode(struct voluta_env *, ino_t);
+int voluta_do_evict_inode(struct voluta_sb_info *, ino_t);
 void voluta_update_iattr(struct voluta_env *, struct voluta_inode_info *,
 			 const struct voluta_iattr *);
 void voluta_update_itimes(struct voluta_env *,
 			  struct voluta_inode_info *, enum voluta_attr_flags);
 int voluta_verify_inode(const struct voluta_inode *);
 void voluta_iattr_reset(struct voluta_iattr *);
+
+const struct voluta_vaddr *voluta_vaddr_of_vi(const struct voluta_vnode_info *);
+const struct voluta_vaddr *voluta_vaddr_of_ii(const struct voluta_inode_info *);
+
+/* symlink */
+void voluta_setup_new_symlnk(struct voluta_inode_info *);
+int voluta_drop_symlink(struct voluta_env *, struct voluta_inode_info *);
+int voluta_do_readlink(struct voluta_env *,
+		       const struct voluta_inode_info *, struct voluta_buf *);
+int voluta_setup_symlink(struct voluta_env *, struct voluta_inode_info *,
+			 const struct voluta_str *);
+int voluta_verify_symval(const struct voluta_lnk_symval *);
 
 /* xattr */
 int voluta_do_getxattr(struct voluta_env *, struct voluta_inode_info *ii,
@@ -567,35 +549,20 @@ int voluta_do_listxattr(struct voluta_env *, struct voluta_inode_info *ii,
 int voluta_drop_xattr(struct voluta_env *, struct voluta_inode_info *ii);
 int voluta_verify_xattr_node(const struct voluta_xattr_node *);
 
-/* itable */
-void voluta_itable_init(struct voluta_itable *);
-void voluta_itable_fini(struct voluta_itable *);
-int voluta_acquire_ino(struct voluta_env *, struct voluta_iaddr *);
-int voluta_discard_ino(struct voluta_env *, ino_t);
-int voluta_resolve_ino(struct voluta_env *, ino_t, struct voluta_iaddr *);
-int voluta_find_root_ino(struct voluta_env *, struct voluta_iaddr *);
-void voluta_bind_root_ino(struct voluta_env *,
-			  const struct voluta_inode_info *);
-int voluta_reload_itable(struct voluta_env *, const struct voluta_vaddr *);
-int voluta_format_itable(struct voluta_env *);
-int voluta_real_ino(const struct voluta_env *, ino_t, ino_t *);
-int voluta_verify_itnode(const struct voluta_itable_tnode *);
-
 /* volume */
-int voluta_sync_volume(struct voluta_bdev *env, bool datasync);
-int voluta_bdev_init(struct voluta_bdev *,
-		     struct voluta_qmalloc *, const struct voluta_crypto *);
-void voluta_bdev_fini(struct voluta_bdev *);
-int voluta_bdev_create(struct voluta_bdev *, const char *, loff_t);
-int voluta_bdev_open(struct voluta_bdev *, const char *);
-void voluta_bdev_close(struct voluta_bdev *);
-int voluta_bdev_load(struct voluta_bdev *, struct voluta_bk_info *);
-int voluta_bdev_save(struct voluta_bdev *, const struct voluta_bk_info *);
-int voluta_bdev_fsync(struct voluta_bdev *);
-int voluta_bdev_fdatasync(struct voluta_bdev *);
-int voluta_bdev_load_bk(struct voluta_bdev *, loff_t,
+int voluta_vdi_init(struct voluta_vd_info *, struct voluta_qmalloc *,
+		    const struct voluta_crypto *);
+void voluta_vdi_fini(struct voluta_vd_info *);
+int voluta_vdi_create(struct voluta_vd_info *, const char *, loff_t);
+int voluta_vdi_open(struct voluta_vd_info *, const char *);
+void voluta_vdi_close(struct voluta_vd_info *);
+int voluta_vdi_sync(struct voluta_vd_info *, bool datasync);
+int voluta_vdi_read(const struct voluta_vd_info *, loff_t, size_t, void *);
+int voluta_vdi_write(const struct voluta_vd_info *,
+		     loff_t, size_t, const void *);
+int voluta_vdi_load_dec(struct voluta_vd_info *, loff_t,
 			const struct voluta_iv_key *, union voluta_bk *);
-int voluta_bdev_save_bk(struct voluta_bdev *, loff_t,
+int voluta_vdi_enc_save(struct voluta_vd_info *, loff_t,
 			const struct voluta_iv_key *, const union voluta_bk *);
 
 /* crypto */
@@ -603,6 +570,7 @@ int voluta_init_gcrypt(void);
 void voluta_fill_random_key(struct voluta_key *);
 void voluta_fill_random_iv(struct voluta_iv *);
 void voluta_fill_random(void *, size_t, bool);
+void voluta_fill_random_ascii(char *, size_t);
 int voluta_derive_iv_key(const struct voluta_crypto *, const void *, size_t,
 			 const void *, size_t, struct voluta_iv_key *);
 int voluta_crypto_init(struct voluta_crypto *);
@@ -669,8 +637,7 @@ const struct voluta_vaddr *voluta_vaddr_of_bk(const struct voluta_bk_info *);
 /* persist */
 void voluta_verify_persistent_format(void);
 int voluta_psize_of(enum voluta_vtype, mode_t, size_t *);
-int voluta_verify_vbk(const struct voluta_bk_info *,
-		      const struct voluta_vaddr *);
+int voluta_verify_view(const union voluta_view *, enum voluta_vtype);
 int voluta_verify_ino(ino_t);
 int voluta_verify_off(loff_t);
 int voluta_verify_count(size_t, size_t);
@@ -702,17 +669,16 @@ void voluta_uuid_clone(const struct voluta_uuid *, struct voluta_uuid *);
 /* aliases */
 #define ARRAY_SIZE(x)                   VOLUTA_ARRAY_SIZE(x)
 #define container_of(p, t, m)           voluta_container_of(p, t, m)
-#define lba_isnull(lba)                 voluta_lba_isnull(lba)
 #define off_isnull(off)                 voluta_off_isnull(off)
 #define vaddr_isnull(va)                voluta_vaddr_isnull(va)
 #define vaddr_reset(va)                 voluta_vaddr_reset(va)
 #define vaddr_clone(va1, va2)           voluta_vaddr_clone(va1, va2)
 #define bk_dirtify(bki)                 voluta_dirtify_bk(bki)
 #define bk_undirtify(bki)               voluta_undirtify_bk(bki)
-#define bk_vaddr_of(bki)                voluta_vaddr_of_bk(bki)
-#define v_vaddr_of(vi)                  voluta_vaddr_of(vi)
+#define v_vaddr_of(vi)                  voluta_vaddr_of_vi(vi)
 #define v_dirtify(vi)                   voluta_dirtify_vi(vi)
 #define v_undirtify(vi)                 voluta_undirtify_vi(vi)
+#define i_vaddr_of(ii)                  voluta_vaddr_of_ii(ii);
 #define i_refcnt_of(ii)                 voluta_inode_refcnt(ii)
 #define i_ino_of(ii)                    voluta_ino_of(ii)
 #define i_xino_of(ii)                   voluta_xino_of(ii)
@@ -732,17 +698,15 @@ void voluta_uuid_clone(const struct voluta_uuid *, struct voluta_uuid *);
 #define i_isfifo(ii)                    voluta_isfifo(ii)
 #define i_issock(ii)                    voluta_issock(ii)
 #define i_dirtify(ii)                   voluta_dirtify_ii(ii)
-#define i_update_times(c, ii, f)        voluta_update_itimes(c, ii, f)
-#define i_update_attr(c, ii, a)         voluta_update_iattr(c, ii, a)
-#define i_revise_privs(c, ii)           voluta_revise_privs(c, ii)
+#define i_update_times(e, ii, f)        voluta_update_itimes(e, ii, f)
+#define i_update_attr(e, ii, a)         voluta_update_iattr(e, ii, a)
+#define i_revise_privs(e, ii)           voluta_revise_privs(e, ii)
 #define attr_reset(a)                   voluta_iattr_reset(a)
 #define ts_copy(dst, src)               voluta_copy_timespec(dst, src)
 #define uid_isroot(u)                   voluta_uid_isroot(u)
 #define uid_eq(u1, u2)                  voluta_uid_eq(u1, u2)
 #define gid_eq(g1, g2)                  voluta_gid_eq(g1, g2)
 #define sbi_of(env)                     voluta_sbi_of(env)
-#define sb_of(env)                      voluta_sb_of(env)
-#define cache_of(env)                   voluta_cache_of(env)
 
 #define list_head_init(lh)              voluta_list_head_init(lh)
 #define list_head_initn(lh, n)          voluta_list_head_initn(lh, n)

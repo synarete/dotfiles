@@ -59,7 +59,7 @@
 /* Local types */
 struct voluta_fusei_bufvec {
 	struct fuse_bufvec bv;
-	struct fuse_buf buf[VOLUTA_IO_NBK_MAX];
+	struct fuse_buf buf[VOLUTA_IO_NDF_MAX];
 };
 
 
@@ -127,7 +127,7 @@ union voluta_fusei_u {
 
 /* Local convenience macros */
 #define req_to_fusei(req_, pfusei_)                      \
-	do { if (!req_to_fusei_or_inval(req, pfusei_)) return; } while(0)
+	do { if (!req_to_fusei_or_inval(req, pfusei_)) return; } while (0)
 
 #define require_arg(fusei, fn, arg, st) \
 	do { if (reply_if_not(fusei, fn(arg), st)) return; } while (0)
@@ -139,7 +139,7 @@ union voluta_fusei_u {
 	require_arg(fusei, isvalid_file_info, fi, EINVAL)
 
 #define require_fi(fusei, fi) \
-	do { require_fi_(fusei, fi); update_fusei(fusei, fi); } while(0)
+	do { require_fi_(fusei, fi); update_fusei(fusei, fi); } while (0)
 
 #define require_ok(fusei, err) \
 	do { if (reply_if_not(fusei, (err == 0), err)) return; } while (0)
@@ -1575,7 +1575,7 @@ int voluta_fusei_init(struct voluta_fusei *fusei, struct voluta_env *env)
 	fusei->err = 0;
 	fusei->session_loop_active = false;
 	/* TODO: is it? re-check yourself */
-	fusei->blkdev_mode = (env->bdev.flags & VOLUTA_F_BLKDEV);
+	fusei->blkdev_mode = (env->vdi.flags & VOLUTA_F_BLKDEV);
 
 	return fusei_alloc_u(fusei);
 }

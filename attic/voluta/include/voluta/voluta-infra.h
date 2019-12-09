@@ -170,46 +170,44 @@ void voluta_copy_timespec(struct timespec *, const struct timespec *);
 
 
 /* Run-time assertions*/
-#define VOLUTA_FL               __FILE__, __LINE__
-
 #define voluta_assert(cond) \
-	voluta_assert_if_((cond), VOLUTA_STR(cond), VOLUTA_FL)
+	voluta_assert_if_((cond), VOLUTA_STR(cond), __FILE__, __LINE__)
 
 #define voluta_assert_eq(a, b) \
-	voluta_assert_eq_((long)(a), (long)(b), VOLUTA_FL)
+	voluta_assert_eq_((long)(a), (long)(b), __FILE__, __LINE__)
 
 #define voluta_assert_ne(a, b) \
-	voluta_assert_ne_((long)(a), (long)(b), VOLUTA_FL)
+	voluta_assert_ne_((long)(a), (long)(b), __FILE__, __LINE__)
 
 #define voluta_assert_lt(a, b) \
-	voluta_assert_lt_((long)(a), (long)(b), VOLUTA_FL)
+	voluta_assert_lt_((long)(a), (long)(b), __FILE__, __LINE__)
 
 #define voluta_assert_le(a, b) \
-	voluta_assert_le_((long)(a), (long)(b), VOLUTA_FL)
+	voluta_assert_le_((long)(a), (long)(b), __FILE__, __LINE__)
 
 #define voluta_assert_gt(a, b) \
-	voluta_assert_gt_((long)(a), (long)(b), VOLUTA_FL)
+	voluta_assert_gt_((long)(a), (long)(b), __FILE__, __LINE__)
 
 #define voluta_assert_ge(a, b) \
-	voluta_assert_ge_((long)(a), (long)(b), VOLUTA_FL)
+	voluta_assert_ge_((long)(a), (long)(b), __FILE__, __LINE__)
 
 #define voluta_assert_not_null(ptr) \
-	voluta_assert_not_null_(ptr, VOLUTA_FL)
+	voluta_assert_not_null_(ptr, __FILE__, __LINE__)
 
 #define voluta_assert_null(ptr) \
-	voluta_assert_null_(ptr, VOLUTA_FL)
+	voluta_assert_null_(ptr, __FILE__, __LINE__)
 
 #define voluta_assert_ok(err) \
-	voluta_assert_ok_((int)(err), VOLUTA_FL)
+	voluta_assert_ok_((int)(err), __FILE__, __LINE__)
 
 #define voluta_assert_err(err, exp) \
-	voluta_assert_err_((int)(err), (int)(exp), VOLUTA_FL)
+	voluta_assert_err_((int)(err), (int)(exp), __FILE__, __LINE__)
 
 #define voluta_assert_eqs(s1, s2) \
-	voluta_assert_eqs_(s1, s2, VOLUTA_FL)
+	voluta_assert_eqs_(s1, s2, __FILE__, __LINE__)
 
 #define voluta_assert_eqm(m1, m2, nn) \
-	voluta_assert_eqm_(m1, m2, nn, VOLUTA_FL)
+	voluta_assert_eqm_(m1, m2, nn, __FILE__, __LINE__)
 
 void voluta_assert_if_(bool cond, const char *str, const char *file, int line);
 void voluta_assert_eq_(long a, long b, const char *file, int line);

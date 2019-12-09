@@ -104,6 +104,7 @@ static void static_assert_fundamental_types_size(void)
 
 static void static_assert_persistent_types_size(void)
 {
+	REQUIRE_TYPE_SIZE(struct voluta_master_record, VOLUTA_MASTER_SIZE);
 	REQUIRE_TYPE_SIZE(struct voluta_int56, 7);
 	REQUIRE_TYPE_SIZE(struct voluta_header, VOLUTA_HEADER_SIZE);
 	REQUIRE_TYPE_SIZE(struct voluta_uuid, VOLUTA_UUID_SIZE);
@@ -111,7 +112,7 @@ static void static_assert_persistent_types_size(void)
 	REQUIRE_TYPE_SIZE(struct voluta_iv, VOLUTA_IV_SIZE);
 	REQUIRE_TYPE_SIZE(struct voluta_key, VOLUTA_KEY_SIZE);
 	REQUIRE_TYPE_SIZE(struct voluta_itable_entry, 20);
-	REQUIRE_TYPE_SIZE(struct voluta_bkref, 28);
+	REQUIRE_TYPE_SIZE(struct voluta_bkref, 56);
 	REQUIRE_TYPE_SIZE(struct voluta_dir_entry, 16);
 	REQUIRE_TYPE_SIZE(struct voluta_xattr_entry, 8);
 	REQUIRE_TYPE_SIZE(struct voluta_tree_ref, 32);
@@ -147,8 +148,9 @@ static void static_assert_persistent_types_size(void)
 static void static_assert_persistent_types_alignment(void)
 {
 	REQUIRE_AOFFSET(struct voluta_super_block, s_hdr, 0);
-	REQUIRE_AOFFSET(struct voluta_super_block, s_keys, 1024 * 4);
-	REQUIRE_AOFFSET(struct voluta_super_block, s_ivs, 1024 * 8);
+	REQUIRE_AOFFSET(struct voluta_super_block, s_itable_root, 2048);
+	REQUIRE_AOFFSET(struct voluta_super_block, s_keys, 4096);
+	REQUIRE_AOFFSET(struct voluta_super_block, s_ivs, 8192);
 	REQUIRE_AOFFSET(struct voluta_uber_block, u_hdr, 0);
 	REQUIRE_AOFFSET(struct voluta_uber_block, u_fs_uuid, 16);
 	REQUIRE_AOFFSET(struct voluta_uber_block, u_bkmap, 2048);
@@ -193,7 +195,7 @@ static void static_assert_defs_consistency(void)
 	REQUIRE_LT(VOLUTA_DIRDEPTH_MAX, VOLUTA_HASH256_LEN);
 	REQUIRE_GT(VOLUTA_DIRENT_MAX, VOLUTA_LINK_MAX);
 
-	REQUIRE_NBITS(struct voluta_bkref, b_smask, VOLUTA_NKBS_IN_BK);
+	REQUIRE_NBITS(struct voluta_bkref, b_mask, VOLUTA_NKBS_IN_BK);
 	REQUIRE_NELEMS(struct voluta_radix_tnode, r_child_off,
 		       VOLUTA_FILEMAP_NSLOTS);
 	REQUIRE_NELEMS(struct voluta_bkmap, bkref,
@@ -321,45 +323,51 @@ int voluta_verify_count(size_t count, size_t expected)
 	return (count == expected) ? 0 : -EFSCORRUPTED;
 }
 
-int voluta_verify_vbk(const struct voluta_bk_info *bki,
-		      const struct voluta_vaddr *vaddr)
+int voluta_verify_view(const union voluta_view *view,
+		       enum voluta_vtype vtype)
 {
 	int err;
-	union voluta_lview *lview;
-	const enum voluta_vtype vtype = vaddr->vtype;
 
-	if (vtype == VOLUTA_VTYPE_DATA) {
-		return 0;
+	if (vtype != VOLUTA_VTYPE_DATA) {
+		err = verify_hdr(&view->hdr, vtype);
+		if (err) {
+			return err;
+		}
 	}
-	voluta_resolve_lview(bki, vaddr, &lview);
-	err = verify_hdr(&lview->hdr, vtype);
-	if (err) {
-		return err;
-	}
-	switch (vaddr->vtype) {
+	switch (vtype) {
 	case VOLUTA_VTYPE_SUPER:
-		return voluta_verify_super_block(&lview->bk.sb);
+		err = voluta_verify_super_block(&view->bk.sb);
+		break;
 	case VOLUTA_VTYPE_UBER:
-		return voluta_verify_uber_block(&lview->bk.ub);
+		err = voluta_verify_uber_block(&view->bk.ub);
+		break;
 	case VOLUTA_VTYPE_ITNODE:
-		return voluta_verify_itnode(&lview->itable_tnode);
+		err = voluta_verify_itnode(&view->itable_tnode);
+		break;
 	case VOLUTA_VTYPE_INODE:
-		return voluta_verify_inode(&lview->inode);
+		err = voluta_verify_inode(&view->inode);
+		break;
 	case VOLUTA_VTYPE_XANODE:
-		return voluta_verify_xattr_node(&lview->xattr_node);
+		err = voluta_verify_xattr_node(&view->xattr_node);
+		break;
 	case VOLUTA_VTYPE_DTNODE:
-		return voluta_verify_dir_tnode(&lview->dir_tnode);
+		err = voluta_verify_dir_tnode(&view->dir_tnode);
+		break;
 	case VOLUTA_VTYPE_RTNODE:
-		return voluta_verify_radix_tnode(&lview->radix_tnode);
+		err = voluta_verify_radix_tnode(&view->radix_tnode);
+		break;
 	case VOLUTA_VTYPE_SYMVAL:
-		return voluta_verify_symval(&lview->lnk_symval);
+		err = voluta_verify_symval(&view->lnk_symval);
+		break;
 	case VOLUTA_VTYPE_DATA:
-		return 0;
+		err = 0;
+		break;
 	case VOLUTA_VTYPE_NONE:
 	default:
+		err = -EFSCORRUPTED;
 		break;
 	}
-	return -EFSCORRUPTED;
+	return err;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -390,14 +398,15 @@ void voluta_stamp_vbk(struct voluta_bk_info *bki)
 
 void voluta_stamp_vnode(struct voluta_vnode_info *vi)
 {
-	union voluta_lview *lview = vi->lview;
+	union voluta_view *view = vi->view;
 	const size_t phy_len = vi->vaddr.len;
 	const enum voluta_vtype vtype = vi->vaddr.vtype;
 
 	voluta_assert_ne(vtype, VOLUTA_VTYPE_NONE);
-	voluta_assert_ne(vtype, VOLUTA_VTYPE_DATA);
 
-	memset(lview, 0, phy_len);
-	stamp_hdr(&lview->hdr, vtype, phy_len);
+	memset(view, 0, phy_len);
+	if (vtype != VOLUTA_VTYPE_DATA) {
+		stamp_hdr(&view->hdr, vtype, phy_len);
+	}
 }
 

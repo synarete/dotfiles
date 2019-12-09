@@ -50,6 +50,7 @@ struct voluta_dir_tnode_info {
 
 struct voluta_dir_ctx {
 	struct voluta_env *env;
+	struct voluta_sb_info *sbi;
 	struct voluta_inode_info  *dir_ii;
 	struct voluta_inode_info  *parent_dir_ii;
 	struct voluta_inode_info  *ii;
@@ -804,12 +805,11 @@ static int stage_dir_tnode(const struct voluta_dir_ctx *dir_ctx,
 	ino_t dir_ino, ino;
 	struct voluta_vnode_info *vi;
 	const struct voluta_dir_tlink *dtl;
-	struct voluta_sb_info *sbi = sbi_of(dir_ctx->env);
 
 	if (vaddr_isnull(&dti->tnode_vaddr)) {
 		return -ENOENT;
 	}
-	err = voluta_stage_vnode(sbi, &dti->tnode_vaddr, &vi);
+	err = voluta_stage_vnode(dir_ctx->sbi, &dti->tnode_vaddr, &vi);
 	if (err) {
 		return err;
 	}
@@ -993,6 +993,7 @@ int voluta_resolve_by_name(struct voluta_env *env,
 	struct voluta_dirent_info dei;
 	struct voluta_dir_ctx dir_ctx = {
 		.env = env,
+		.sbi = sbi_of(env),
 		.dir_ii = unconst_ii(dir_ii),
 		.name = name
 	};
@@ -1089,7 +1090,7 @@ static int new_dir_tnode(const struct voluta_dir_ctx *dir_ctx,
 static int del_dir_tnode(const struct voluta_dir_ctx *dir_ctx,
 			 struct voluta_vnode_info *vi)
 {
-	return voluta_del_vnode(dir_ctx->env, vi);
+	return voluta_del_vnode(dir_ctx->sbi, vi);
 }
 
 static void update_dir_space(const struct voluta_dir_ctx *dir_ctx,
@@ -1362,6 +1363,7 @@ int voluta_add_dentry(struct voluta_env *env,
 	int err;
 	struct voluta_dir_ctx dir_ctx = {
 		.env = env,
+		.sbi = sbi_of(env),
 		.dir_ii = dir_ii,
 		.ii = ii,
 		.name = name,
@@ -1404,7 +1406,7 @@ static int require_parent(struct voluta_env *env,
 	if (!ino_isvalid(parent_ino)) {
 		return -EFSCORRUPTED;
 	}
-	err = voluta_stage_inode(env, parent_ino, out_parent_ii);
+	err = voluta_stage_inode(sbi_of(env), parent_ino, out_parent_ii);
 	if (err) {
 		return err;
 	}
@@ -1629,6 +1631,7 @@ int voluta_do_readdir(struct voluta_env *env,
 	int err;
 	struct voluta_dir_ctx dir_ctx = {
 		.env = env,
+		.sbi = sbi_of(env),
 		.readdir_ctx = readdir_ctx,
 		.dir_ii = unconst_ii(dir_ii),
 		.keep_iter = true
@@ -1719,6 +1722,7 @@ int voluta_drop_dir(struct voluta_env *env, struct voluta_inode_info *dir_ii)
 {
 	struct voluta_dir_ctx dir_ctx = {
 		.env = env,
+		.sbi = sbi_of(env),
 		.dir_ii = dir_ii,
 	};
 
@@ -1760,6 +1764,7 @@ int voluta_remove_dentry(struct voluta_env *env,
 	struct voluta_dirent_info dei;
 	struct voluta_dir_ctx dir_ctx = {
 		.env = env,
+		.sbi = sbi_of(env),
 		.dir_ii = unconst_ii(dir_ii),
 		.ii = NULL,
 		.name = name
@@ -1773,7 +1778,7 @@ int voluta_remove_dentry(struct voluta_env *env,
 	if (err) {
 		return err;
 	}
-	err = voluta_stage_inode(env, dei.ino_dt.ino, &dir_ctx.ii);
+	err = voluta_stage_inode(dir_ctx.sbi, dei.ino_dt.ino, &dir_ctx.ii);
 	if (err) {
 		return err;
 	}
