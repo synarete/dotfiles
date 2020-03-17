@@ -18,12 +18,13 @@ revision=$(try ${version_sh} --revision)
 archive_tgz=${name}-${version}.tar.gz
 
 builddir=${basedir}/build
-buildauxdir=${builddir}/rpm
-autotoolsdir=${buildauxdir}/autotools/
+rpmhomedir=${builddir}/rpm
+autotoolsdir=${rpmhomedir}/autotools/
 
 rpmsourcedir=${selfdir}/rpm
-rpmbuilddir=${buildauxdir}/rpmbuild
-rpmtmpdir=${rpmbuilddir}/tmp
+rpmbuilddir=${rpmhomedir}/rpmbuild
+rpmvardir=${rpmbuilddir}/var
+rpmtmpdir=${rpmvardir}/tmp
 rpmdate=$(date +"%a %b %d %Y")
 rpmspec_in=${rpmsourcedir}/${name}.spec.in
 rpmspec_out=${rpmbuilddir}/SPECS/${name}.spec
@@ -43,6 +44,10 @@ run ${basedir}/bootstrap
 run ${basedir}/configure
 run make
 run make distcheck
+
+# Pre rpmbuild
+unset HOME
+export HOME=${rpmhomedir}
 
 # Prepare rpm tree
 run mkdir -p ${rpmtmpdir}
@@ -69,7 +74,7 @@ run cp ${autotoolsdir}/${archive_tgz} ${rpmbuilddir}/SOURCES
 run cd ${rpmbuilddir}
 run rpmbuild -bb --clean \
   --define "_topdir ${rpmbuilddir}" \
-  --define "_tmppath ${rpmtmpdir}" \
+  --define "_var ${rpmvardir}" \
   ${rpmspec_out}
 
 # Copy rpms to root of build-dir
@@ -79,7 +84,7 @@ run find ${rpmbuilddir}/RPMS/ ${rpmbuilddir}/SRPMS/ \
 
 # Cleanup build staging area
 cd ${basedir}
-run rm -rf ${buildauxdir}
+run rm -rf ${rpmhomedir}
 
 # Show result rpm files
 run find ${builddir} -type f -name ${name}'*.rpm' -exec basename {} \;

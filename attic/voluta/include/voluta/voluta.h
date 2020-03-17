@@ -1,7 +1,7 @@
 /*
  * This file is part of libvoluta
  *
- * Copyright (C) 2019 Shachar Sharon
+ * Copyright (C) 2020 Shachar Sharon
  *
  * Libvoluta is free software: you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +19,7 @@
 
 #include <unistd.h>
 #include <stdlib.h>
-#include "xsyscall.h"
+#include "voluta-syscall.h"
 #include "voluta-defs.h"
 #include "voluta-infra.h"
 
@@ -116,7 +116,10 @@ size_t voluta_env_allocated_mem(const struct voluta_env *env);
 void voluta_env_cache_stats(const struct voluta_env *env,
 			    struct voluta_cache_stat *);
 
-int voluta_env_setup_key(struct voluta_env *, const char *, const char *);
+int voluta_env_setup_key(struct voluta_env *env,
+			 const char *passphrase, const char *salt);
+
+int voluta_env_setup_tmpkey(struct voluta_env *env);
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
@@ -211,9 +214,8 @@ int voluta_fs_read(struct voluta_env *env, ino_t ino, void *buf,
 int voluta_fs_read_iter(struct voluta_env *env, ino_t ino,
 			struct voluta_rw_iter *io_itr);
 
-
 int voluta_fs_write(struct voluta_env *env, ino_t ino, const void *buf,
-		    size_t len, off_t off, size_t *out_len);
+		    size_t len, off_t off, size_t *out);
 
 int voluta_fs_write_iter(struct voluta_env *env, ino_t ino,
 			 struct voluta_rw_iter *rwi);
@@ -226,6 +228,8 @@ int voluta_resolve_volume_size(const char *path,
 			       loff_t size_want, loff_t *out_size);
 
 int voluta_require_volume_path(const char *path);
+
+int voluta_require_volume_exclusive(const char *path);
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 

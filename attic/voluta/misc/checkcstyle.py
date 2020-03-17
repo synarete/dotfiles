@@ -2,7 +2,7 @@
 #
 # checkcstyle -- Style-checker for C-source files
 #
-# Copyright (C) 2015,2016,2017,2018,2019 Shachar Sharon
+# Copyright (C) 2015,2016,2017,2018,2019,2020 Shachar Sharon
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),

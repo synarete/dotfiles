@@ -2,7 +2,7 @@
 /*
  * This file is part of libvoluta
  *
- * Copyright (C) 2019 Shachar Sharon
+ * Copyright (C) 2020 Shachar Sharon
  *
  * Libvoluta is free software: you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License

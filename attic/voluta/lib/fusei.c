@@ -2,7 +2,7 @@
 /*
  * This file is part of libvoluta
  *
- * Copyright (C) 2019 Shachar Sharon
+ * Copyright (C) 2020 Shachar Sharon
  *
  * Libvoluta is free software: you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -53,13 +53,13 @@
 #define FUSEI_ENTRY_TIMEOUT   (1000000.0f)
 
 #define FUSEI_DATA_BUFSIZE      VOLUTA_IO_SIZE_MAX
-#define FUSEI_READDIR_BUFSIZE   (64 * VOLUTA_KILO)
-#define FUSEI_XATTR_BUFSIZE     (64 * VOLUTA_KILO)
+#define FUSEI_READDIR_BUFSIZE   (64 * VOLUTA_UKILO)
+#define FUSEI_XATTR_BUFSIZE     (64 * VOLUTA_UKILO)
 
 /* Local types */
 struct voluta_fusei_bufvec {
 	struct fuse_bufvec bv;
-	struct fuse_buf buf[VOLUTA_IO_NDF_MAX];
+	struct fuse_buf buf[VOLUTA_IO_NDS_MAX];
 };
 
 
@@ -142,7 +142,7 @@ union voluta_fusei_u {
 	do { require_fi_(fusei, fi); update_fusei(fusei, fi); } while (0)
 
 #define require_ok(fusei, err) \
-	do { if (reply_if_not(fusei, (err == 0), err)) return; } while (0)
+	do { if (reply_if_not(fusei, ((err) == 0), (err))) return; } while (0)
 
 /* Local functions forward declarations */
 static void reply_inval(fuse_req_t req);
@@ -244,7 +244,7 @@ static bool cap_splice(const struct voluta_fusei *fusei)
 
 static void fill_entry_param(struct fuse_entry_param *ep, const struct stat *st)
 {
-	memset(ep, 0, sizeof(*ep));
+	voluta_memzero(ep, sizeof(*ep));
 	ep->ino = st->st_ino;
 	ep->generation = 0;
 	ep->attr_timeout = FUSEI_ATTR_TIMEOUT;
@@ -296,9 +296,9 @@ static void update_dirent(struct voluta_fusei_diter *diter,
 	struct stat *dent_stat = &diter->dent_stat;
 	const size_t namelen_max = sizeof(diter->dent_name) - 1;
 
-	memset(dent_stat, 0, sizeof(*dent_stat));
+	voluta_memzero(dent_stat, sizeof(*dent_stat));
 	diter->dent_namelen = min_size(rdei->name_len, namelen_max);
-	strncpy(diter->dent_name, rdei->name, diter->dent_namelen);
+	memcpy(diter->dent_name, rdei->name, diter->dent_namelen);
 	diter->dent_name[diter->dent_namelen] = '\0';
 	diter->dent_off = rdei->off;
 	dent_stat->st_ino = rdei->ino;
@@ -366,8 +366,8 @@ diter_prep(struct voluta_fusei *fusei, size_t bsz_in, loff_t pos)
 	diter->readdir_ctx.actor = filldir;
 	diter->readdir_ctx.pos = pos;
 	diter->fusei = fusei;
-	memset(diter->dent_name, 0, sizeof(diter->dent_name));
-	memset(&diter->dent_stat, 0, sizeof(diter->dent_stat));
+	voluta_memzero(diter->dent_name, sizeof(diter->dent_name));
+	voluta_memzero(&diter->dent_stat, sizeof(diter->dent_stat));
 	return diter;
 }
 
@@ -414,8 +414,8 @@ static int fillxent(struct voluta_listxattr_ctx *listxent_ctx,
 	return 0;
 }
 
-static struct voluta_fusei_xiter *xiter_prep(struct voluta_fusei *fusei,
-		size_t size)
+static struct voluta_fusei_xiter *
+xiter_prep(struct voluta_fusei *fusei, size_t size)
 {
 	struct voluta_fusei_xiter *xiter = &fusei->u->xi;
 
@@ -563,7 +563,7 @@ static void reply_open(struct voluta_fusei *fusei)
 {
 	struct fuse_file_info fi;
 
-	memset(&fi, 0, sizeof(fi));
+	voluta_memzero(&fi, sizeof(fi));
 	fi.keep_cache = 1;
 
 	fusei->err = fuse_reply_open(fusei->req, &fi);
@@ -583,7 +583,7 @@ static void reply_opendir(struct voluta_fusei *fusei)
 {
 	struct fuse_file_info fi;
 
-	memset(&fi, 0, sizeof(fi));
+	voluta_memzero(&fi, sizeof(fi));
 	fi.cache_readdir = 1;
 
 	fusei->err = fuse_reply_open(fusei->req, &fi);
@@ -606,21 +606,14 @@ static void reply_buf(struct voluta_fusei *fusei,
 	fusei->req = NULL;
 }
 
-static inline void reply_buf_or_err(struct voluta_fusei *fusei, const void *buf,
-				    size_t bsz, int err)
+static void reply_buf_or_err(struct voluta_fusei *fusei, const void *buf,
+			     size_t bsz, int err)
 {
 	if (!err) {
 		reply_buf(fusei, buf, bsz);
 	} else {
 		reply_err(fusei, err);
 	}
-}
-
-static inline void reply_iov(struct voluta_fusei *fusei,
-			     const struct iovec *iov, size_t cnt)
-{
-	fusei->err = fuse_reply_iov(fusei->req, iov, (int)cnt);
-	fusei->req = NULL;
 }
 
 static void reply_bufvec(struct voluta_fusei *fusei, struct fuse_bufvec *bufv)
@@ -670,11 +663,11 @@ static void reply_create(struct voluta_fusei *fusei, const struct stat *st)
 	struct fuse_file_info fi;
 	struct fuse_entry_param entry_param;
 
-	memset(&fi, 0, sizeof(fi));
+	voluta_memzero(&fi, sizeof(fi));
 	fi.direct_io = 0;
 	fi.keep_cache = 1;
 
-	memset(&entry_param, 0, sizeof(entry_param));
+	voluta_memzero(&entry_param, sizeof(entry_param));
 	entry_param.ino = st->st_ino;
 	entry_param.generation = 1;
 	entry_param.attr_timeout = FUSEI_ATTR_TIMEOUT;
@@ -698,16 +691,14 @@ static void reply_create_or_err(struct voluta_fusei *fusei,
 static void reply_readdir_or_err(struct voluta_fusei *fusei,
 				 struct voluta_fusei_diter *diter, int err)
 {
-	size_t bsz;
-	const void *buf;
+	size_t bsz = 0;
+	const void *buf = NULL;
 
 	if (!err) {
 		bsz = diter_length(diter);
 		buf = (bsz > 0) ? diter->beg : NULL;
-		reply_buf(fusei, buf, bsz);
-	} else {
-		reply_err(fusei, err);
 	}
+	reply_buf_or_err(fusei, buf, bsz, err);
 }
 
 static void reply_xattr(struct voluta_fusei *fusei, size_t insize,
@@ -775,7 +766,7 @@ static unsigned int rdwr_max_size(const struct voluta_fusei *fusei)
 	 */
 	size_t pipe_max_size, data_max_size, max_size;
 
-	pipe_max_size = VOLUTA_MEGA; /* should be /proc/sys/fs/pipe-max-size */
+	pipe_max_size = VOLUTA_UMEGA; /* should be /proc/sys/fs/pipe-max-size */
 	data_max_size = data_buf_size(fusei);
 	max_size = voluta_min(pipe_max_size, data_max_size);
 
@@ -942,7 +933,7 @@ static void utimens_of(const struct stat *st, int to_set, struct stat *times)
 {
 	bool ctime_now = !(to_set & FUSE_SET_ATTR_AMTIME_NOW);
 
-	memset(times, 0, sizeof(*times));
+	voluta_memzero(times, sizeof(*times));
 	times->st_atim.tv_nsec = UTIME_OMIT;
 	times->st_mtim.tv_nsec = UTIME_OMIT;
 	times->st_ctim.tv_nsec = ctime_now ? UTIME_NOW : UTIME_OMIT;
@@ -1550,7 +1541,7 @@ static int fusei_alloc_u(struct voluta_fusei *fusei)
 	int err;
 	void *ptr = NULL;
 
-	err = voluta_zalloc(fusei->qmal, sizeof(*fusei->u), &ptr);
+	err = voluta_zalloc(fusei->qal, sizeof(*fusei->u), &ptr);
 	if (!err) {
 		fusei->u = ptr;
 	} else {
@@ -1561,21 +1552,21 @@ static int fusei_alloc_u(struct voluta_fusei *fusei)
 
 static void fusei_free_u(struct voluta_fusei *fusei)
 {
-	voluta_zfree(fusei->qmal, fusei->u, sizeof(*fusei->u));
+	voluta_zfree(fusei->qal, fusei->u, sizeof(*fusei->u));
 	fusei->u = NULL;
 }
 
 int voluta_fusei_init(struct voluta_fusei *fusei, struct voluta_env *env)
 {
 	fusei->env = env;
-	fusei->qmal = &env->qmal;
-	fusei->ucred = &env->ucred;
+	fusei->qal = &env->qal;
+	fusei->ucred = &env->opi.ucred;
 	fusei->page_size = voluta_sc_page_size();
 	fusei->conn_caps = 0;
 	fusei->err = 0;
 	fusei->session_loop_active = false;
 	/* TODO: is it? re-check yourself */
-	fusei->blkdev_mode = (env->vdi.flags & VOLUTA_F_BLKDEV);
+	fusei->blkdev_mode = (env->cstore.pstore.flags & VOLUTA_F_BLKDEV);
 
 	return fusei_alloc_u(fusei);
 }
@@ -1583,7 +1574,7 @@ int voluta_fusei_init(struct voluta_fusei *fusei, struct voluta_env *env)
 void voluta_fusei_fini(struct voluta_fusei *fusei)
 {
 	fusei_free_u(fusei);
-	fusei->qmal = NULL;
+	fusei->qal = NULL;
 	fusei->env = NULL;
 }
 

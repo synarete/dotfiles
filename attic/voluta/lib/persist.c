@@ -2,7 +2,7 @@
 /*
  * This file is part of libvoluta
  *
- * Copyright (C) 2019 Shachar Sharon
+ * Copyright (C) 2020 Shachar Sharon
  *
  * Libvoluta is free software: you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -104,6 +104,11 @@ static void static_assert_fundamental_types_size(void)
 
 static void static_assert_persistent_types_size(void)
 {
+	REQUIRE_TYPE_BK_SIZE(struct voluta_uber_block);
+	REQUIRE_TYPE_BK_SIZE(struct voluta_super_block);
+	REQUIRE_TYPE_BK_SIZE(struct voluta_agroup_map);
+	REQUIRE_TYPE_BK_SIZE(union voluta_vnode_block);
+	REQUIRE_TYPE_BK_SIZE(union voluta_bk);
 	REQUIRE_TYPE_SIZE(struct voluta_master_record, VOLUTA_MASTER_SIZE);
 	REQUIRE_TYPE_SIZE(struct voluta_int56, 7);
 	REQUIRE_TYPE_SIZE(struct voluta_header, VOLUTA_HEADER_SIZE);
@@ -111,49 +116,43 @@ static void static_assert_persistent_types_size(void)
 	REQUIRE_TYPE_SIZE(struct voluta_name, VOLUTA_NAME_MAX + 1);
 	REQUIRE_TYPE_SIZE(struct voluta_iv, VOLUTA_IV_SIZE);
 	REQUIRE_TYPE_SIZE(struct voluta_key, VOLUTA_KEY_SIZE);
-	REQUIRE_TYPE_SIZE(struct voluta_itable_entry, 20);
-	REQUIRE_TYPE_SIZE(struct voluta_bkref, 56);
+	REQUIRE_TYPE_SIZE(struct voluta_itable_entry, 16);
+	REQUIRE_TYPE_SIZE(struct voluta_boctet, 8);
+	REQUIRE_TYPE_SIZE(struct voluta_bkref, 128);
 	REQUIRE_TYPE_SIZE(struct voluta_dir_entry, 16);
 	REQUIRE_TYPE_SIZE(struct voluta_xattr_entry, 8);
-	REQUIRE_TYPE_SIZE(struct voluta_tree_ref, 32);
-	REQUIRE_TYPE_SIZE(union voluta_inode_specific, 256);
+	REQUIRE_TYPE_SIZE(struct voluta_reg_ispec, 64);
+	REQUIRE_TYPE_SIZE(struct voluta_dir_ispec, 64);
+	REQUIRE_TYPE_SIZE(struct voluta_inode_times, 64);
+	REQUIRE_TYPE_SIZE(struct voluta_inode_xattr, 320);
+	REQUIRE_TYPE_SIZE(union voluta_inode_specific, 512);
 	REQUIRE_TYPE_SIZE(struct voluta_inode, VOLUTA_INODE_SIZE);
-	REQUIRE_TYPE_SIZE(struct voluta_kbs_inode, VOLUTA_KBS_SIZE);
-	REQUIRE_TYPE_SIZE(union voluta_kbs, VOLUTA_KBS_SIZE);
-	REQUIRE_TYPE_SIZE(struct voluta_dir_tlink, 192);
-	REQUIRE_TYPE_SIZE(struct voluta_dir_inode, VOLUTA_DIRINODE_SIZE);
-	REQUIRE_TYPE_SIZE(struct voluta_reg_inode, VOLUTA_REGINODE_SIZE);
-	REQUIRE_TYPE_SIZE(struct voluta_lnk_symval, VOLUTA_LNKSYMVAL_SIZE);
-	REQUIRE_TYPE_SIZE(struct voluta_xattr_node, VOLUTA_XATTRNODE_SIZE);
-	REQUIRE_TYPE_SIZE(struct voluta_dir_tnode, VOLUTA_DIRTNODE_SIZE);
-
+	REQUIRE_TYPE_SIZE(struct voluta_kbs_inode, VOLUTA_KB_SIZE);
+	REQUIRE_TYPE_SIZE(union voluta_kbs, VOLUTA_KB_SIZE);
+	REQUIRE_TYPE_SIZE(struct voluta_lnk_value, VOLUTA_SYMLNK_VAL_SIZE);
+	REQUIRE_TYPE_SIZE(struct voluta_xattr_node, VOLUTA_XATTR_NODE_SIZE);
+	REQUIRE_TYPE_SIZE(struct voluta_dir_htree_node, VOLUTA_DIR_HTNODE_SIZE);
+	REQUIRE_TYPE_SIZE(struct voluta_radix_tnode, VOLUTA_FILE_RTNODE_SIZE);
+	REQUIRE_TYPE_SIZE(struct voluta_itable_tnode, VOLUTA_ITNODE_SIZE);
+	REQUIRE_TYPE_SIZE(union voluta_bo, VOLUTA_BO_SIZE);
+	REQUIRE_MEMBER_BK_SIZE(union voluta_vnode_block, kbs);
+	REQUIRE_MEMBER_SIZE(union voluta_bk, bk, VOLUTA_BK_SIZE);
+	REQUIRE_MEMBER_SIZE(struct voluta_itable_tnode, it_child, 2048);
 	REQUIRE_MEMBER_SIZE(struct voluta_super_block,
 			    s_uuid, VOLUTA_UUID_SIZE);
-	REQUIRE_MEMBER_SIZE(union voluta_bk, bk, VOLUTA_BK_SIZE);
-	REQUIRE_MEMBER_SIZE(struct voluta_itable_tnode, it_child_off, 1024);
-
-	REQUIRE_TYPE_BK_SIZE(struct voluta_super_block);
-	REQUIRE_TYPE_BK_SIZE(struct voluta_uber_block);
-	REQUIRE_TYPE_BK_SIZE(struct voluta_itable_tnode);
-	REQUIRE_TYPE_BK_SIZE(union voluta_vnode_block);
-	REQUIRE_TYPE_BK_SIZE(struct voluta_radix_tnode);
-	REQUIRE_TYPE_BK_SIZE(union voluta_vnode_block);
-	REQUIRE_TYPE_BK_SIZE(union voluta_bk);
-
-	REQUIRE_MEMBER_BK_SIZE(union voluta_vnode_block, kbs);
-	REQUIRE_MEMBER_BK_SIZE(union voluta_vnode_block, inode);
-	REQUIRE_MEMBER_BK_SIZE(union voluta_vnode_block, dir_inode);
 }
 
 static void static_assert_persistent_types_alignment(void)
 {
 	REQUIRE_AOFFSET(struct voluta_super_block, s_hdr, 0);
-	REQUIRE_AOFFSET(struct voluta_super_block, s_itable_root, 2048);
-	REQUIRE_AOFFSET(struct voluta_super_block, s_keys, 4096);
-	REQUIRE_AOFFSET(struct voluta_super_block, s_ivs, 8192);
-	REQUIRE_AOFFSET(struct voluta_uber_block, u_hdr, 0);
-	REQUIRE_AOFFSET(struct voluta_uber_block, u_fs_uuid, 16);
-	REQUIRE_AOFFSET(struct voluta_uber_block, u_bkmap, 2048);
+	REQUIRE_AOFFSET64(struct voluta_super_block, s_itable_root, 2048);
+	REQUIRE_AOFFSET64(struct voluta_super_block, s_ivs, 4096);
+	REQUIRE_AOFFSET64(struct voluta_super_block, s_keys, 16384);
+	REQUIRE_AOFFSET(struct voluta_agroup_map, ag_hdr, 0);
+	REQUIRE_AOFFSET(struct voluta_agroup_map, ag_fs_uuid, 16);
+	REQUIRE_AOFFSET64(struct voluta_agroup_map, ag_bkref, 128);
+	REQUIRE_AOFFSET64(struct voluta_itable_tnode, ent, 64);
+	REQUIRE_AOFFSET64(struct voluta_itable_tnode, it_child, 6144);
 	REQUIRE_AOFFSET(struct voluta_inode, i_hdr, 0);
 	REQUIRE_AOFFSET(struct voluta_inode, i_uuid, 16);
 	REQUIRE_AOFFSET(struct voluta_inode, i_ino, 32);
@@ -166,44 +165,46 @@ static void static_assert_persistent_types_alignment(void)
 	REQUIRE_AOFFSET(struct voluta_inode, i_blocks, 72);
 	REQUIRE_AOFFSET(struct voluta_inode, i_nlink, 80);
 	REQUIRE_AOFFSET(struct voluta_inode, i_attributes, 88);
-	REQUIRE_AOFFSET(struct voluta_inode, i_s, 128);
-	REQUIRE_AOFFSET(struct voluta_inode, i_times, 384);
-	REQUIRE_AOFFSET(struct voluta_inode, i_nxattr, 448);
-	REQUIRE_AOFFSET(struct voluta_inode, i_xattr_off, 456);
-	REQUIRE_AOFFSET(struct voluta_inode, i_xe, 512);
+	REQUIRE_AOFFSET64(struct voluta_inode, i_t, 128);
+	REQUIRE_AOFFSET64(struct voluta_inode, i_x, 192);
+	REQUIRE_AOFFSET64(struct voluta_inode, i_s, 512);
 	REQUIRE_AOFFSET(struct voluta_kbs_inode, i, 0);
-	REQUIRE_AOFFSET(struct voluta_dir_inode, d_i, 0);
-	REQUIRE_AOFFSET64(struct voluta_dir_inode, d_h, VOLUTA_KBS_SIZE);
-	REQUIRE_AOFFSET64(struct voluta_dir_head, de, 256);
-	REQUIRE_AOFFSET(struct voluta_reg_inode, r_i, 0);
 	REQUIRE_AOFFSET(struct voluta_dir_entry, de_ino, 0);
 	REQUIRE_AOFFSET(struct voluta_dir_entry, de_nents, 8);
-	REQUIRE_AOFFSET(struct voluta_dir_entry, de_nlen, 12);
+	REQUIRE_XOFFSET(struct voluta_dir_entry, de_nprev, 10);
+	REQUIRE_XOFFSET(struct voluta_dir_entry, de_name_len, 12);
 	REQUIRE_XOFFSET(struct voluta_dir_entry, de_dtype, 14);
-	REQUIRE_AOFFSET(struct voluta_dir_tnode, dt_hdr, 0);
-	REQUIRE_AOFFSET(struct voluta_dir_tnode, dt_tlink, 64);
+	REQUIRE_AOFFSET(struct voluta_dir_htree_node, dh_hdr, 0);
+	REQUIRE_AOFFSET64(struct voluta_dir_htree_node, de, 64);
 	REQUIRE_AOFFSET(struct voluta_radix_tnode, r_hdr, 0);
-	REQUIRE_AOFFSET(struct voluta_radix_tnode, r_child_off, 2048);
+	REQUIRE_AOFFSET64(struct voluta_radix_tnode, r_zeros, 64);
+	REQUIRE_AOFFSET64(struct voluta_radix_tnode, r_child, 1024);
+	REQUIRE_AOFFSET(struct voluta_inode_xattr, xa_nents, 0);
+	REQUIRE_AOFFSET(struct voluta_inode_xattr, xa_off, 8);
 	REQUIRE_AOFFSET(struct voluta_xattr_node, xa_hdr, 0);
+	REQUIRE_AOFFSET(struct voluta_xattr_node, xe, 64);
+	REQUIRE_AOFFSET64(struct voluta_lnk_value, lv_value, 64);
 }
 
 static void static_assert_defs_consistency(void)
 {
 	REQUIRE_EQ(CHAR_BIT, 8);
-	REQUIRE_ZERO(VOLUTA_BK_SIZE % VOLUTA_KBS_SIZE);
-	REQUIRE_LT(VOLUTA_DIRENT_MAX, VOLUTA_DIROFF_MAX);
-	REQUIRE_LT(VOLUTA_DIRDEPTH_MAX, VOLUTA_HASH256_LEN);
-	REQUIRE_GT(VOLUTA_DIRENT_MAX, VOLUTA_LINK_MAX);
+	REQUIRE_ZERO(VOLUTA_BK_SIZE % VOLUTA_KB_SIZE);
+	REQUIRE_LT(VOLUTA_DIR_HTREE_DEPTH_MAX, VOLUTA_HASH256_LEN);
+	REQUIRE_LT(VOLUTA_DIR_HTREE_NODE_MAX, INT32_MAX);
+	REQUIRE_GT(VOLUTA_DIR_ENTRIES_MAX, VOLUTA_LINK_MAX);
+	REQUIRE_LT(VOLUTA_XATTR_VALUE_MAX, VOLUTA_XATTR_NODE_SIZE);
 
-	REQUIRE_NBITS(struct voluta_bkref, b_mask, VOLUTA_NKBS_IN_BK);
-	REQUIRE_NELEMS(struct voluta_radix_tnode, r_child_off,
-		       VOLUTA_FILEMAP_NSLOTS);
-	REQUIRE_NELEMS(struct voluta_bkmap, bkref,
+	REQUIRE_NBITS(struct voluta_header, vtype, 16);
+	REQUIRE_NBITS(struct voluta_boctet, usemask, VOLUTA_NKB_IN_BO);
+	REQUIRE_NELEMS(struct voluta_radix_tnode,
+		       r_child, VOLUTA_FILE_MAP_NCHILD);
+	REQUIRE_NELEMS(struct voluta_agroup_map, ag_bkref,
 		       (VOLUTA_AG_SIZE / VOLUTA_BK_SIZE) - 1);
-	REQUIRE_NELEMS(struct voluta_dir_head, de, VOLUTA_DIRHEAD_NENTS);
-	REQUIRE_NELEMS(struct voluta_dir_tnode, de, VOLUTA_DIRNODE_NENTS);
-	REQUIRE_NELEMS(struct voluta_dir_tlink, dl_child_off,
-		       VOLUTA_DIRNODE_NCHILDS);
+	REQUIRE_NELEMS(struct voluta_dir_htree_node, de,
+		       VOLUTA_DIR_HTNODE_NENTS);
+	REQUIRE_NELEMS(struct voluta_dir_htree_node, dh_child,
+		       VOLUTA_DIR_HTNODE_NCHILDS);
 }
 
 static void static_assert_external_constants(void)
@@ -227,81 +228,149 @@ void voluta_verify_persistent_format(void)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static int psize_by_itype(mode_t mode, size_t *out_size)
+size_t voluta_persistent_size(enum voluta_vtype vtype)
 {
-	int err = 0;
+	size_t psz;
 
-	if (S_ISDIR(mode)) {
-		*out_size = sizeof(struct voluta_dir_inode);
-	} else if (S_ISREG(mode)) {
-		*out_size = sizeof(struct voluta_reg_inode);
-	} else if (S_ISLNK(mode)) {
-		*out_size = sizeof(struct voluta_kbs_inode);
-	} else if (S_ISFIFO(mode) || S_ISSOCK(mode)) {
-		*out_size = sizeof(struct voluta_kbs_inode);
-	} else {
-		err = -ENOTSUP;
-	}
-	return err;
-}
-
-static int psize_of_type(size_t type_size, size_t *out_size)
-{
-	*out_size = type_size;
-	return 0;
-}
-
-#define psize_of(t_, out_)  psize_of_type(sizeof(t_), out_)
-
-
-int voluta_psize_of(enum voluta_vtype vtype, mode_t mode, size_t *out_size)
-{
 	switch (vtype) {
 	case VOLUTA_VTYPE_DATA:
-		return psize_of(union voluta_bk, out_size);
+		psz = sizeof(struct voluta_data_seg);
+		break;
 	case VOLUTA_VTYPE_SUPER:
-		return psize_of(struct voluta_super_block, out_size);
-	case VOLUTA_VTYPE_UBER:
-		return psize_of(struct voluta_uber_block, out_size);
+		psz = sizeof(struct voluta_super_block);
+		break;
+	case VOLUTA_VTYPE_AGMAP:
+		psz = sizeof(struct voluta_agroup_map);
+		break;
 	case VOLUTA_VTYPE_ITNODE:
-		return psize_of(struct voluta_itable_tnode, out_size);
+		psz = sizeof(struct voluta_itable_tnode);
+		break;
 	case VOLUTA_VTYPE_INODE:
-		return psize_by_itype(mode, out_size);
+		psz = sizeof(struct voluta_inode);
+		break;
 	case VOLUTA_VTYPE_XANODE:
-		return psize_of(struct voluta_xattr_node, out_size);
-	case VOLUTA_VTYPE_DTNODE:
-		return psize_of(struct voluta_dir_tnode, out_size);
+		psz = sizeof(struct voluta_xattr_node);
+		break;
+	case VOLUTA_VTYPE_HTNODE:
+		psz = sizeof(struct voluta_dir_htree_node);
+		break;
 	case VOLUTA_VTYPE_RTNODE:
-		return psize_of(struct voluta_radix_tnode, out_size);
+		psz = sizeof(struct voluta_radix_tnode);
+		break;
 	case VOLUTA_VTYPE_SYMVAL:
-		return psize_of(struct voluta_lnk_symval, out_size);
+		psz = sizeof(struct voluta_lnk_value);
+		break;
 	case VOLUTA_VTYPE_NONE:
-		return -EINVAL;
 	default:
+		psz = 0;
 		break;
 	}
-	return -ENOTSUP;
+	return psz;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static int verify_hdr(const struct voluta_header *hdr,
-		      enum voluta_vtype vtype)
+static uint32_t hdr_magic(const struct voluta_header *hdr)
 {
-	/* XXX remove me */
-	voluta_assert_eq(hdr->magic, VOLUTA_MAGIC);
-	voluta_assert_eq(hdr->vtype, vtype);
+	return le32_to_cpu(hdr->magic);
+}
 
-	if (hdr->magic != VOLUTA_MAGIC) {
+static void hdr_set_magic(struct voluta_header *hdr, uint32_t magic)
+{
+	hdr->magic = cpu_to_le32(magic);
+}
+
+static size_t hdr_size(const struct voluta_header *hdr)
+{
+	return le32_to_cpu(hdr->size);
+}
+
+static size_t hdr_payload_size(const struct voluta_header *hdr)
+{
+	return hdr_size(hdr) - sizeof(*hdr);
+}
+
+static void hdr_set_size(struct voluta_header *hdr, size_t size)
+{
+	hdr->size = cpu_to_le32((uint32_t)size);
+}
+
+static enum voluta_vtype hdr_vtype(const struct voluta_header *hdr)
+{
+	return le16_to_cpu(hdr->vtype);
+}
+
+static void hdr_set_vtype(struct voluta_header *hdr, enum voluta_vtype vtype)
+{
+	hdr->vtype = cpu_to_le16((uint16_t)vtype);
+}
+
+static uint32_t hdr_csum(const struct voluta_header *hdr)
+{
+	return le32_to_cpu(hdr->csum);
+}
+
+static void hdr_set_csum(struct voluta_header *hdr, uint32_t csum)
+{
+	hdr->csum = cpu_to_le32(csum);
+}
+
+static const void *hdr_payload(const struct voluta_header *hdr)
+{
+	return hdr + 1;
+}
+
+static struct voluta_header *hdr_of(const union voluta_view *view)
+{
+	const struct voluta_header *hdr = &view->hdr;
+
+	return (struct voluta_header *)hdr;
+}
+
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
+
+static bool vtype_isdata(enum voluta_vtype vt)
+{
+	return vtype_isequal(vt, VOLUTA_VTYPE_DATA);
+}
+
+static int verify_hdr(const union voluta_view *view, enum voluta_vtype vtype)
+{
+	const struct voluta_header *hdr = hdr_of(view);
+	const size_t hsz = hdr_size(hdr);
+	const size_t psz = voluta_persistent_size(vtype);
+
+	if (vtype_isdata(vtype)) {
+		return 0;
+	}
+	if (hdr_magic(hdr) != VOLUTA_MAGIC) {
 		return -EFSCORRUPTED;
 	}
-	if (hdr->vtype != vtype) {
+	if (hdr_vtype(hdr) != vtype) {
 		return -EFSCORRUPTED;
 	}
-	if (!hdr->size || (hdr->size % VOLUTA_KBS_SIZE)) {
+	if (hsz != psz) {
 		return -EFSCORRUPTED;
 	}
+
 	return 0;
+}
+
+static int verify_checksum(const union voluta_view *view,
+			   const struct voluta_crypto *crypto)
+{
+	uint32_t csum;
+	size_t pl_size;
+	const void *payload;
+	const struct voluta_header *hdr = hdr_of(view);
+	const uint32_t hsum = hdr_csum(hdr);
+
+	payload = hdr_payload(hdr);
+	pl_size = hdr_payload_size(hdr);
+	voluta_assert_le(pl_size, VOLUTA_BK_SIZE - VOLUTA_HEADER_SIZE);
+
+	voluta_crc32_of(crypto, payload, pl_size, &csum);
+	return (hsum == csum) ? 0 : -EFSCORRUPTED;
 }
 
 int voluta_verify_ino(ino_t ino)
@@ -318,46 +387,34 @@ int voluta_verify_off(loff_t off)
 	return (off_isnull(off) || (off >= 0)) ? 0 : -EFSCORRUPTED;
 }
 
-int voluta_verify_count(size_t count, size_t expected)
-{
-	return (count == expected) ? 0 : -EFSCORRUPTED;
-}
-
-int voluta_verify_view(const union voluta_view *view,
-		       enum voluta_vtype vtype)
+static int verify_sub(const union voluta_view *view, enum voluta_vtype vtype)
 {
 	int err;
 
-	if (vtype != VOLUTA_VTYPE_DATA) {
-		err = verify_hdr(&view->hdr, vtype);
-		if (err) {
-			return err;
-		}
-	}
 	switch (vtype) {
 	case VOLUTA_VTYPE_SUPER:
 		err = voluta_verify_super_block(&view->bk.sb);
 		break;
-	case VOLUTA_VTYPE_UBER:
-		err = voluta_verify_uber_block(&view->bk.ub);
+	case VOLUTA_VTYPE_AGMAP:
+		err = voluta_verify_agroup_map(&view->bk.agb);
 		break;
 	case VOLUTA_VTYPE_ITNODE:
-		err = voluta_verify_itnode(&view->itable_tnode);
+		err = voluta_verify_itnode(&view->itn);
 		break;
 	case VOLUTA_VTYPE_INODE:
 		err = voluta_verify_inode(&view->inode);
 		break;
 	case VOLUTA_VTYPE_XANODE:
-		err = voluta_verify_xattr_node(&view->xattr_node);
+		err = voluta_verify_xattr_node(&view->xan);
 		break;
-	case VOLUTA_VTYPE_DTNODE:
-		err = voluta_verify_dir_tnode(&view->dir_tnode);
+	case VOLUTA_VTYPE_HTNODE:
+		err = voluta_verify_dir_htree_node(&view->htn);
 		break;
 	case VOLUTA_VTYPE_RTNODE:
-		err = voluta_verify_radix_tnode(&view->radix_tnode);
+		err = voluta_verify_radix_tnode(&view->rtn);
 		break;
 	case VOLUTA_VTYPE_SYMVAL:
-		err = voluta_verify_symval(&view->lnk_symval);
+		err = voluta_verify_lnk_value(&view->lnv);
 		break;
 	case VOLUTA_VTYPE_DATA:
 		err = 0;
@@ -370,43 +427,78 @@ int voluta_verify_view(const union voluta_view *view,
 	return err;
 }
 
+int voluta_verify_view(const union voluta_view *view,
+		       const struct voluta_crypto *crypto,
+		       enum voluta_vtype vtype)
+{
+	int err;
+
+	err = verify_hdr(view, vtype);
+	if (err) {
+		return err;
+	}
+	if (!vtype_isdata(vtype)) {
+		err = verify_checksum(view, crypto);
+		if (err) {
+			return err;
+		}
+	}
+	err = verify_sub(view, vtype);
+	if (err) {
+		return err;
+	}
+	return 0;
+}
+
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void stamp_hdr(struct voluta_header *hdr, enum voluta_vtype vtype,
-		      size_t size)
+static void stamp_hdr(struct voluta_header *hdr,
+		      enum voluta_vtype vtype, size_t size)
 {
-	hdr->magic = VOLUTA_MAGIC;
-	hdr->vtype = (uint16_t)vtype;
-	hdr->size = (uint16_t)size;
-	hdr->crc = 0; /* TODO: FIXME */
+	hdr_set_magic(hdr, VOLUTA_MAGIC);
+	hdr_set_size(hdr, size);
+	hdr_set_vtype(hdr, vtype);
+	hdr_set_csum(hdr, 0);
+	hdr->flags = 0;
 }
 
 void voluta_stamp_meta(struct voluta_header *hdr,
 		       enum voluta_vtype vtype, size_t size)
 {
-	memset(hdr, 0, size);
+	voluta_memzero(hdr, size);
 	stamp_hdr(hdr, vtype, size);
-}
-
-void voluta_stamp_vbk(struct voluta_bk_info *bki)
-{
-	union voluta_bk *bk = bki->bk;
-	struct voluta_header *hdr = &bk->hdr;
-
-	voluta_stamp_meta(hdr, bki->b_vaddr.vtype, sizeof(*bk));
 }
 
 void voluta_stamp_vnode(struct voluta_vnode_info *vi)
 {
-	union voluta_view *view = vi->view;
 	const size_t phy_len = vi->vaddr.len;
 	const enum voluta_vtype vtype = vi->vaddr.vtype;
 
 	voluta_assert_ne(vtype, VOLUTA_VTYPE_NONE);
 
-	memset(view, 0, phy_len);
-	if (vtype != VOLUTA_VTYPE_DATA) {
-		stamp_hdr(&view->hdr, vtype, phy_len);
+	voluta_memzero(vi->view, phy_len);
+	if (!vtype_isdata(vtype)) {
+		voluta_stamp_meta(hdr_of(vi->view), vtype, phy_len);
 	}
+}
+
+void voluta_seal_vnode(struct voluta_vnode_info *vi,
+		       const struct voluta_crypto *crypto)
+{
+	uint32_t csum = 0;
+	size_t pl_size;
+	const void *payload;
+	struct voluta_header *hdr = hdr_of(vi->view);
+
+	voluta_assert_eq(hdr_magic(hdr), VOLUTA_MAGIC);
+	voluta_assert_ne(vi->vaddr.vtype, VOLUTA_VTYPE_DATA);
+	voluta_assert_ne(vi->vaddr.vtype, VOLUTA_VTYPE_NONE);
+
+	payload = hdr_payload(hdr);
+	pl_size = hdr_payload_size(hdr);
+	voluta_assert_le(pl_size, VOLUTA_BK_SIZE - VOLUTA_HEADER_SIZE);
+
+	voluta_crc32_of(crypto, payload, pl_size, &csum);
+	hdr_set_csum(hdr, csum);
 }
 

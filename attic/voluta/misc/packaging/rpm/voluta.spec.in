@@ -15,24 +15,22 @@ Requires: libunwind
 Requires: libgcrypt
 Requires: haveged
 
-BuildRequires: autoconf
-BuildRequires: automake
-BuildRequires: libtool
-BuildRequires: binutils
-BuildRequires: coreutils
-BuildRequires: make
-BuildRequires: bash
-BuildRequires: systemd
-BuildRequires: libcap-devel
-BuildRequires: libuuid-devel
-BuildRequires: libgcrypt-devel
-BuildRequires: libunwind-devel
-BuildRequires: python3-docutils
+# Not working properly on F31 (TODO: FIXME)
+# BuildRequires: autoconf
+# BuildRequires: automake
+# BuildRequires: libtool
+# BuildRequires: binutils
+# BuildRequires: coreutils
+# BuildRequires: make
+# BuildRequires: libcap-devel
+# BuildRequires: libuuid-devel
+# BuildRequires: libgcrypt-devel
+# BuildRequires: libunwind-devel
+# BuildRequires: python3-docutils
 
 %{?systemd_requires}
 
 %define docrootdir %{_docdir}/%{name}-%{version}
-#%%define debug_package %{nil}
 
 %description
 Voluta secure archiver
@@ -72,7 +70,7 @@ Voluta secure archiver
 %preun
 
 %postun
-%systemd_postun
+# %systemd_postun requires service name
 
 %changelog
 * @RPMDATE@ Voluta <synarete@xxxxxxxx> @VERSION@-@RELEASE@

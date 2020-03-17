@@ -13,15 +13,17 @@ SQLITE_GIT_URL="${LOCAL_GIT_REPO_HOME}/sqlite"
 COREUTILS_GIT_GRL="${LOCAL_GIT_REPO_HOME}/coreutils"
 GITSCM_GIT_URL="${LOCAL_GIT_REPO_HOME}/git"
 SUBVERSION_GIT_URL="${LOCAL_GIT_REPO_HOME}/subversion"
+DIFFUTILS_GIT_URL="${LOCAL_GIT_REPO_HOME}/diffutils"
 
 if [[ -z "${LOCAL_GIT_REPO_HOME}" ]]; then
   TOKYOCABINET_GIT_URL="https://github.com/maiha/tokyocabinet"
   RSYNC_GIT_URL="git://git.samba.org/rsync.git"
   POSTGRESQL_GIT_URL="git://git.postgresql.org/git/postgresql.git"
   SQLITE_GIT_URL="https://github.com/mackyle/sqlite.git"
-  COREUTILS_GIT_GRL="git://git.sv.gnu.org/coreutils.git"
+  COREUTILS_GIT_GRL="https://github.com/coreutils/coreutils"
   GITSCM_GIT_URL="https://github.com/git/git.git"
   SUBVERSION_GIT_URL="https://github.com/apache/subversion"
+  DIFFUTILS_GIT_URL="git://git.savannah.gnu.org/diffutils"
 fi
 
 
@@ -29,8 +31,18 @@ msg() { echo "$self: $*" >&2; }
 die() { msg "$*"; exit 1; }
 try() { echo "$self: $@" >&2; ( "$@" ) || msg "failed: $*"; }
 run() { echo "$self: $@" >&2; ( "$@" ) || die "failed: $*"; }
-git_clone() { run git clone "$1" "$2"; }
-git_clean_fxd() { run git clean -fxd; }
+
+git_clone() {
+  url="$1"
+  workdir="$2"
+
+  run rm -rf ${workdir}
+  run git clone ${url} ${workdir}
+}
+
+git_clean_fxd() {
+  run git clean -fxd
+}
 
 
 # GNU coreutils
@@ -51,7 +63,6 @@ do_coreutils_check() {
   run rm -rf ${workdir}
 }
 
-
 # TokyoCabinet
 do_tokyocabinet_check() {
   local currdir=$(pwd)
@@ -68,7 +79,6 @@ do_tokyocabinet_check() {
   cd ${currdir}
   run rm -rf ${workdir}
 }
-
 
 # Rsync
 do_rsync_check() {
@@ -87,7 +97,6 @@ do_rsync_check() {
   run rm -rf ${workdir}
 }
 
-
 # Git-SCM
 do_gitscm_check() {
   local currdir=$(pwd)
@@ -103,7 +112,6 @@ do_gitscm_check() {
   cd ${currdir}
   run rm -rf ${workdir}
 }
-
 
 # PostgreSQL
 do_postgresql_check() {
@@ -122,6 +130,23 @@ do_postgresql_check() {
   run rm -rf ${workdir}
 }
 
+# Diffutils
+do_diffutils_check() {
+  local currdir=$(pwd)
+  local workdir="$1/diffutils"
+
+  git_clone ${DIFFUTILS_GIT_URL} ${workdir}
+
+  cd ${workdir}
+  run ./bootstrap
+  run ./configure
+  run make
+  run make check
+  git_clean_fxd
+
+  cd ${currdir}
+  run rm -rf ${workdir}
+}
 
 # Subversion
 do_subversion_check() {
@@ -140,7 +165,6 @@ do_subversion_check() {
   cd ${currdir}
   run rm -rf ${workdir}
 }
-
 
 # Sqlite
 do_sqlite_check() {
@@ -167,7 +191,6 @@ do_sqlite_check() {
   run rm -rf ${builddir}
 }
 
-
 # All-in-one
 do_all_checks() {
   local workdir="$1"
@@ -175,24 +198,11 @@ do_all_checks() {
   do_tokyocabinet_check ${workdir}
   do_rsync_check ${workdir}
   do_postgresql_check ${workdir}
-  do_subversion_check ${workdir}
   do_coreutils_check ${workdir}
+  do_diffutils_check ${workdir}
   do_sqlite_check ${workdir}
   do_gitscm_check ${workdir}
-}
-
-
-do_all_parallel_checks() {
-  local workdir="$1"
-
-  do_tokyocabinet_check ${workdir} &
-  do_rsync_check ${workdir} &
-  do_postgresql_check ${workdir} &
-  do_subversion_check ${workdir} &
-  do_coreutils_check ${workdir} &
-  do_sqlite_check ${workdir} &
-  do_gitscm_check ${workdir} &
-  wait
+  do_subversion_check ${workdir}
 }
 
 
@@ -200,6 +210,7 @@ show_usage() {
   echo ${self}": generate heavy load on file-system via other tools"
   echo
   echo "  -c|--coreutils        (${COREUTILS_GIT_GRL})"
+  echo "  -d|--diffutils        (${DIFFUTILS_GIT_URL})"
   echo "  -t|--tokyocabinet     (${TOKYOCABINET_GIT_URL})"
   echo "  -r|--rsync            (${RSYNC_GIT_URL})"
   echo "  -p|--postgres         (${POSTGRESQL_GIT_URL})"
@@ -207,7 +218,6 @@ show_usage() {
   echo "  -q|--sqlite           (${SQLITE_GIT_URL})"
   echo "  -g|--gitscm           (${GITSCM_GIT_URL})"
   echo "  -a|--all"
-  echo "  -A|--all-parallel"
   echo
 }
 
@@ -218,6 +228,9 @@ mkdir -p ${wd}
 case "$arg" in
   -c|--coreutils)
     do_coreutils_check ${wd}
+    ;;
+  -d|--diffutils)
+    do_diffutils_check ${wd}
     ;;
   -g|--gitscm)
     do_gitscm_check ${wd}
@@ -239,9 +252,6 @@ case "$arg" in
     ;;
   -a|--all)
     do_all_checks ${wd}
-    ;;
-  -A|--all-parallel)
-    do_all_parallel_checks ${wd}
     ;;
   *)
     show_usage

@@ -38,6 +38,7 @@ AC_DEFUN([AX_VOLUTA_NEED_FUNCS],
   AX_VOLUTA_CHECK_FUNCS([usleep])
   AX_VOLUTA_CHECK_FUNCS([getline])
   AX_VOLUTA_CHECK_FUNCS([ioctl])
+  AX_VOLUTA_CHECK_FUNCS([fcntl])
   AX_VOLUTA_CHECK_FUNCS([posix_fallocate])
   AX_VOLUTA_CHECK_FUNCS([sysconf])
   AX_VOLUTA_CHECK_FUNCS([pread])
@@ -52,5 +53,13 @@ AC_DEFUN([AX_VOLUTA_NEED_FUNCS],
   AX_VOLUTA_CHECK_FUNCS([memfd_create])
   AX_VOLUTA_CHECK_FUNCS([copy_file_range])
   AX_VOLUTA_CHECK_FUNCS([tcgetattr])
+])
+
+
+AC_DEFUN([AX_VOLUTA_NEED_BUILTIN],
+[
+  AX_GCC_BUILTIN(__builtin_expect)
+  AX_GCC_BUILTIN(__builtin_clz)
+  AX_GCC_BUILTIN(__builtin_popcount)
 ])
 

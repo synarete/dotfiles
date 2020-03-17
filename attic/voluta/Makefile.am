@@ -1,5 +1,5 @@
 ACLOCAL_AMFLAGS = -I m4 ${ACLOCAL_FLAGS}
-SUBDIRS = . include lib prog sanity test misc
+SUBDIRS = . include lib src misc test
 
 EXTRA_DIST = $(NULL)
 EXTRA_DIST += version.sh

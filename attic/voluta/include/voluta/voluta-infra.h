@@ -2,7 +2,7 @@
 /*
  * This file is part of libvoluta
  *
- * Copyright (C) 2019 Shachar Sharon
+ * Copyright (C) 2020 Shachar Sharon
  *
  * Libvoluta is free software: you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -24,7 +24,7 @@
 #include <uuid/uuid.h>
 
 
-/* Utility macros */
+/* utility macros */
 #define VOLUTA_CONTAINER_OF(ptr, type, member) \
 	(type *)((void *)((char *)ptr - offsetof(type, member)))
 
@@ -34,7 +34,7 @@
 #define voluta_unused(x_) ((void)x_)
 #define voluta_decl_nonreturn_fn __attribute__((__noreturn__))
 
-/* Compile-time assertions */
+/* compile-time assertions */
 #define VOLUTA_STATICASSERT(expr_)       _Static_assert(expr_, #expr_)
 #define VOLUTA_STATICASSERT_EQ(a_, b_)   VOLUTA_STATICASSERT(a_ == b_)
 #define VOLUTA_STATICASSERT_LE(a_, b_)   VOLUTA_STATICASSERT(a_ <= b_)
@@ -43,69 +43,106 @@
 #define VOLUTA_STATICASSERT_GT(a_, b_)   VOLUTA_STATICASSERT(a_ > b_)
 
 
-/* Utility macro: array's number of elements */
-#define VOLUTA_ARRAY_SIZE(x_)   ( sizeof((x_)) / sizeof((x_)[0]))
+/* utility macro: array's number of elements */
+#define VOLUTA_ARRAY_SIZE(x_)   ( (sizeof((x_))) / (sizeof((x_)[0])) )
 
-/* Utility macro: stringify */
+/* utility macro: stringify */
 #define VOLUTA_STR(x_)          VOLUTA_MAKESTR_(x_)
 #define VOLUTA_MAKESTR_(x_)     #x_
 #define VOLUTA_CONCAT(x_, y_)   x_ ## y_
 
-/* Commons */
+/* commons */
+uint32_t voluta_min32(uint32_t x, uint32_t y);
+
+uint32_t voluta_max32(uint32_t x, uint32_t y);
+
 size_t voluta_min(size_t x, size_t y);
+
 size_t voluta_min3(size_t x, size_t y, size_t z);
+
 size_t voluta_max(size_t x, size_t y);
+
 size_t voluta_clamp(size_t v, size_t lo, size_t hi);
+
 int voluta_compare3(long x, long y);
+
 size_t voluta_clz(unsigned int n);
+
+size_t voluta_popcount(unsigned int n);
+
 void voluta_burnstack(void);
 
-/* Sysconf wrappers */
+
+/* miscellaneous hash functions */
+uint64_t voluta_fnv1a(const void *buf, size_t len, uint64_t hval_base);
+
+uint32_t voluta_adler32(const void *dat, size_t len);
+
+uint64_t voluta_twang_mix64(uint64_t key);
+
+
+/* sysconf wrappers */
 size_t voluta_sc_page_size(void);
+
 size_t voluta_sc_phys_pages(void);
+
 size_t voluta_sc_avphys_pages(void);
+
 size_t voluta_sc_l1_dcache_linesize(void);
 
-/* Linked-list */
+/* linked-list */
 struct voluta_list_head {
 	struct voluta_list_head *prev;
 	struct voluta_list_head *next;
 };
 
-void voluta_list_head_init(struct voluta_list_head *);
-void voluta_list_head_initn(struct voluta_list_head *, size_t);
-void voluta_list_head_destroy(struct voluta_list_head *);
+void voluta_list_head_init(struct voluta_list_head *lnk);
+
+void voluta_list_head_initn(struct voluta_list_head *lnk_arr, size_t cnt);
+
+void voluta_list_head_destroy(struct voluta_list_head *lnk);
+
 void voluta_list_head_destroyn(struct voluta_list_head *, size_t);
+
 void voluta_list_head_insert_after(struct voluta_list_head *,
 				   struct voluta_list_head *);
 void voluta_list_head_insert_before(struct voluta_list_head *,
 				    struct voluta_list_head *);
 void voluta_list_head_remove(struct voluta_list_head *);
 
-void voluta_list_init(struct voluta_list_head *);
-void voluta_list_destroy(struct voluta_list_head *);
-void voluta_list_push_front(struct voluta_list_head *,
-			    struct voluta_list_head *);
-void voluta_list_push_back(struct voluta_list_head *,
-			   struct voluta_list_head *);
-struct voluta_list_head *voluta_list_pop_front(struct voluta_list_head *);
-bool voluta_list_isempty(const struct voluta_list_head *);
+void voluta_list_init(struct voluta_list_head *lst);
 
-/* Monotonic clock */
+void voluta_list_fini(struct voluta_list_head *lst);
+
+void voluta_list_push_front(struct voluta_list_head *lst,
+			    struct voluta_list_head *lnk);
+
+void voluta_list_push_back(struct voluta_list_head *lst,
+			   struct voluta_list_head *lnk);
+
+struct voluta_list_head *voluta_list_front(const struct voluta_list_head *lst);
+
+struct voluta_list_head *voluta_list_pop_front(struct voluta_list_head *lst);
+
+bool voluta_list_isempty(const struct voluta_list_head *lst);
+
+/* monotonic clock */
 void voluta_mclock_now(struct timespec *);
 void voluta_mclock_dur(const struct timespec *, struct timespec *);
 
-/* Random generator */
+/* random generator */
 void voluta_getentropy(void *, size_t);
 
-/* Anonymous memory */
+/* memory */
 int voluta_mmap_memory(size_t, void **);
 int voluta_mmap_secure_memory(size_t, void **);
 void voluta_munmap_memory(void *, size_t);
 void voluta_munmap_secure_memory(void *, size_t);
+void voluta_memzero(void *s, size_t n);
 
-/* Quick memory allocator */
-struct voluta_qmalloc;
+
+/* quick memory allocator */
+struct voluta_qalloc;
 
 struct voluta_qmstat {
 	size_t memsz_data;      /* Size in bytes of data memory */
@@ -123,20 +160,22 @@ struct voluta_qmref {
 };
 
 int voluta_resolve_memsize(size_t, size_t *);
-int voluta_qmalloc_new(size_t, struct voluta_qmalloc **);
-int voluta_qmalloc_del(struct voluta_qmalloc *);
-int voluta_qmalloc_init(struct voluta_qmalloc *, size_t);
-int voluta_qmalloc_fini(struct voluta_qmalloc *);
-int voluta_malloc(struct voluta_qmalloc *, size_t, void **);
-int voluta_nalloc(struct voluta_qmalloc *, size_t, size_t, void **);
-int voluta_zalloc(struct voluta_qmalloc *, size_t, void **);
-int voluta_free(struct voluta_qmalloc *, void *, size_t);
-int voluta_zfree(struct voluta_qmalloc *, void *, size_t);
-int voluta_nfree(struct voluta_qmalloc *, void *, size_t, size_t);
-void voluta_qmstat(const struct voluta_qmalloc *, struct voluta_qmstat *);
+int voluta_qalloc_new(size_t, struct voluta_qalloc **);
+int voluta_qalloc_del(struct voluta_qalloc *);
+int voluta_qalloc_init(struct voluta_qalloc *, size_t);
+int voluta_qalloc_fini(struct voluta_qalloc *);
+int voluta_malloc(struct voluta_qalloc *, size_t, void **);
+int voluta_nalloc(struct voluta_qalloc *, size_t, size_t, void **);
+int voluta_zalloc(struct voluta_qalloc *, size_t, void **);
+int voluta_free(struct voluta_qalloc *, void *, size_t);
+int voluta_zfree(struct voluta_qalloc *, void *, size_t);
+int voluta_nfree(struct voluta_qalloc *, void *, size_t, size_t);
+void voluta_qmstat(const struct voluta_qalloc *, struct voluta_qmstat *);
+int voluta_memref(const struct voluta_qalloc *, const void *,
+		  size_t len, struct voluta_qmref *);
 
 
-/* Tracing */
+/* tracing */
 #define VOLUTA_TRACE_DEBUG      (0x0001)
 #define VOLUTA_TRACE_INFO       (0x0002)
 #define VOLUTA_TRACE_WARN       (0x0004)
@@ -165,11 +204,7 @@ void voluta_tracef(int tr_mask, const char *fmt, ...);
 	voluta_tracef(VOLUTA_TRACE_CRIT, fmt, __VA_ARGS__)
 
 
-/* Miscellaneous */
-void voluta_copy_timespec(struct timespec *, const struct timespec *);
-
-
-/* Run-time assertions*/
+/* run-time assertions*/
 #define voluta_assert(cond) \
 	voluta_assert_if_((cond), VOLUTA_STR(cond), __FILE__, __LINE__)
 
@@ -224,7 +259,7 @@ void voluta_assert_eqs_(const char *, const char *, const char *, int);
 void voluta_assert_eqm_(const void *, const void *, size_t,
 			const char *file, int line);
 
-/* Panic */
+/* panic */
 #define voluta_panic(fmt, ...) \
 	voluta_panicf(__FILE__, __LINE__, fmt, __VA_ARGS__)
 

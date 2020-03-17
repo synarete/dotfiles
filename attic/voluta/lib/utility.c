@@ -2,7 +2,7 @@
 /*
  * This file is part of libvoluta
  *
- * Copyright (C) 2019 Shachar Sharon
+ * Copyright (C) 2020 Shachar Sharon
  *
  * Libvoluta is free software: you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -23,6 +23,7 @@
 #include <syslog.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -32,16 +33,21 @@
 #include "voluta-lib.h"
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-/* Common */
 
-size_t voluta_min(size_t x, size_t y)
+uint32_t voluta_min32(uint32_t x, uint32_t y)
 {
 	return (x < y) ? x : y;
 }
 
-size_t voluta_min3(size_t x, size_t y, size_t z)
+uint32_t voluta_max32(uint32_t x, uint32_t y)
 {
-	return voluta_min(voluta_min(x, y), z);
+	return (x > y) ? x : y;
+}
+
+
+size_t voluta_min(size_t x, size_t y)
+{
+	return (x < y) ? x : y;
 }
 
 size_t voluta_max(size_t x, size_t y)
@@ -53,6 +59,8 @@ size_t voluta_clamp(size_t v, size_t lo, size_t hi)
 {
 	return voluta_min(voluta_max(v, lo), hi);
 }
+
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 static void voluta_burnstack_n(size_t nbytes)
 {
@@ -90,6 +98,10 @@ size_t voluta_clz(unsigned int n)
 	return n ? (size_t)__builtin_clz(n) : 32;
 }
 
+size_t voluta_popcount(unsigned int n)
+{
+	return n ? (size_t)__builtin_popcount(n) : 0;
+}
 
 size_t voluta_sc_l1_dcache_linesize(void)
 {
@@ -112,8 +124,7 @@ size_t voluta_sc_avphys_pages(void)
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-/* Linked-list */
-
+/* double linked-list */
 static void list_head_set(struct voluta_list_head *lnk,
 			  struct voluta_list_head *prv,
 			  struct voluta_list_head *nxt)
@@ -182,7 +193,7 @@ void voluta_list_init(struct voluta_list_head *lst)
 	voluta_list_head_init(lst);
 }
 
-void voluta_list_destroy(struct voluta_list_head *lst)
+void voluta_list_fini(struct voluta_list_head *lst)
 {
 	voluta_list_head_destroy(lst);
 }
@@ -199,10 +210,16 @@ void voluta_list_push_back(struct voluta_list_head *lst,
 	voluta_list_head_insert_before(lnk, lst);
 }
 
+struct voluta_list_head *voluta_list_front(const struct voluta_list_head *lst)
+{
+	return lst->next;
+}
+
 struct voluta_list_head *voluta_list_pop_front(struct voluta_list_head *lst)
 {
-	struct voluta_list_head *lnk = lst->next;
+	struct voluta_list_head *lnk;
 
+	lnk = voluta_list_front(lst);
 	if (lnk != lst) {
 		voluta_list_head_remove(lnk);
 	} else {
@@ -218,20 +235,18 @@ bool voluta_list_isempty(const struct voluta_list_head *lst)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 /* UUID */
-
 void voluta_uuid_generate(struct voluta_uuid *uuid)
 {
 	uuid_generate_random(uuid->uu);
 }
 
-void voluta_uuid_clone(const struct voluta_uuid *uuid,
-		       struct voluta_uuid *other)
+void voluta_uuid_clone(const struct voluta_uuid *u1, struct voluta_uuid *u2)
 {
-	uuid_copy(other->uu, uuid->uu);
+	uuid_copy(u2->uu, u1->uu);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-/* Monotonic clock */
+/* monotonic clock */
 void voluta_mclock_now(struct timespec *ts)
 {
 	int err;
@@ -264,8 +279,7 @@ void voluta_mclock_dur(const struct timespec *start, struct timespec *dur)
 
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-/* Random generator */
-
+/* random generator */
 void voluta_getentropy(void *buf, size_t len)
 {
 	int err;
@@ -284,8 +298,7 @@ void voluta_getentropy(void *buf, size_t len)
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-/* Memory */
-
+/* mapped-memory */
 static size_t size_to_page_up(size_t sz)
 {
 	const size_t page_size = voluta_sc_page_size();
@@ -340,9 +353,13 @@ void voluta_munmap_secure_memory(void *mem, size_t msz)
 	}
 }
 
-/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-/* Traces */
+void voluta_memzero(void *s, size_t n)
+{
+	memset(s, 0, n);
+}
 
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
+/* traces */
 int voluta_g_trace_flags =
 	(VOLUTA_TRACE_ERROR | VOLUTA_TRACE_CRIT | VOLUTA_TRACE_STDOUT);
 
@@ -384,17 +401,10 @@ static void trace_syslog(int tr_mask, const char *msg)
 	syslog(syslog_level(tr_mask), "%s", msg);
 }
 
-static void vtracef(int tr_mask, const char *fmt, va_list ap)
+static void trace_msg(int tr_mask, const char *msg)
 {
-	int len, tr_flags = (tr_mask | voluta_g_trace_flags);
-	char msg[1024];
+	const int tr_flags = (tr_mask | voluta_g_trace_flags);
 
-	len = vsnprintf(msg, sizeof(msg), fmt, ap);
-	va_end(ap);
-
-	if (len >= (int)sizeof(msg)) {
-		msg[sizeof(msg) - 1] = '\0';
-	}
 	if (tr_flags & VOLUTA_TRACE_STDOUT) {
 		trace_stdout(msg);
 	}
@@ -406,23 +416,87 @@ static void vtracef(int tr_mask, const char *fmt, va_list ap)
 void voluta_tracef(int tr_mask, const char *fmt, ...)
 {
 	va_list ap;
+	size_t len;
 	int saved_errno;
+	char msg[512];
 
 	if (tr_mask & voluta_g_trace_flags) {
 		saved_errno = errno;
 		va_start(ap, fmt);
-		vtracef(tr_mask, fmt, ap);
+		len = (size_t)vsnprintf(msg, sizeof(msg), fmt, ap);
 		va_end(ap);
+		len = voluta_min(len, sizeof(msg) - 1);
+		msg[len] = '\0';
+		trace_msg(tr_mask, msg);
 		errno = saved_errno;
 	}
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-/* Miscellaneous */
+/* buffer */
+void voluta_buf_init(struct voluta_buf *buf, void *p, size_t n)
+{
+	buf->buf = p;
+	buf->bsz = n;
+	buf->len = 0;
+}
 
+size_t voluta_buf_append(struct voluta_buf *buf, const void *ptr, size_t len)
+{
+	size_t cnt;
+
+	cnt = voluta_min(len, buf->bsz - buf->len);
+	memcpy((char *)buf->buf + buf->len, ptr, cnt);
+	buf->len += cnt;
+
+	return cnt;
+}
+
+void voluta_buf_seteos(struct voluta_buf *buf)
+{
+	char *s = buf->buf;
+
+	if (buf->len < buf->bsz) {
+		s[buf->len] = '\0';
+	}
+}
+
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
+/* miscellaneous */
 void voluta_copy_timespec(struct timespec *dst, const struct timespec *src)
 {
 	dst->tv_sec = src->tv_sec;
 	dst->tv_nsec = src->tv_nsec;
+}
+
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
+/* bits */
+#define BITS_PER_WORD   (32)
+#define BIT_MASK(nr)    (1UL << ((nr) % BITS_PER_WORD))
+#define BIT_SLOT(nr)    ((nr) / BITS_PER_WORD)
+
+void voluta_set_bit(uint32_t *arr, size_t nr)
+{
+	const unsigned long mask = BIT_MASK(nr);
+	const unsigned long slot = BIT_SLOT(nr);
+
+	arr[slot] |= (uint32_t)mask;
+}
+
+void voluta_clear_bit(uint32_t *arr, size_t nr)
+{
+	const unsigned long mask = BIT_MASK(nr);
+	const unsigned long slot = BIT_SLOT(nr);
+
+	arr[slot] &= (uint32_t)(~mask);
+}
+
+int voluta_test_bit(const uint32_t *arr, size_t nr)
+{
+	int nr_byte;
+	const unsigned long slot = BIT_SLOT(nr);
+
+	nr_byte = (int)arr[slot] >> (nr & (BITS_PER_WORD - 1));
+	return (nr_byte & 1) == 1;
 }
 

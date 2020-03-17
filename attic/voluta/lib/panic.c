@@ -2,7 +2,7 @@
 /*
  * This file is part of libvoluta
  *
- * Copyright (C) 2019 Shachar Sharon
+ * Copyright (C) 2020 Shachar Sharon
  *
  * Libvoluta is free software: you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -36,9 +36,12 @@
 
 int voluta_dump_backtrace(void)
 {
-	int err, lim = 64;
+	int err;
+	int lim = 64;
 	char sym[256];
-	unw_word_t ip, sp, off;
+	unw_word_t ip;
+	unw_word_t sp;
+	unw_word_t off;
 	unw_context_t context;
 	unw_cursor_t cursor;
 
@@ -94,8 +97,8 @@ static void voluta_dump_addr2line(void)
 	void *bt_arr[128];
 	char bt_addrs[1024];
 
-	memset(bt_arr, 0, sizeof(bt_arr));
-	memset(bt_addrs, 0, sizeof(bt_addrs));
+	voluta_memzero(bt_arr, sizeof(bt_arr));
+	voluta_memzero(bt_addrs, sizeof(bt_addrs));
 
 	bt_cnt = (int)(VOLUTA_ARRAY_SIZE(bt_arr));
 	bt_len = unw_backtrace(bt_arr, bt_cnt);
@@ -192,10 +195,10 @@ static void assertion_failure(const char *file, int line, const char *fmt, ...)
 	assertion_failure_at(str, file, line);
 }
 
-void voluta_assert_ok_(int ok, const char *file, int line)
+void voluta_assert_ok_(int err, const char *file, int line)
 {
-	if (voluta_unlikely(ok != 0)) {
-		assertion_failure(file, line, "not ok: %d", ok);
+	if (voluta_unlikely(err != 0)) {
+		assertion_failure(file, line, "not ok: %d", err);
 	}
 }
 
@@ -242,7 +245,8 @@ static char nibble_to_ascii(unsigned int n)
 static const char *
 mem_to_str(const void *mem, size_t nn, char *str, size_t len)
 {
-	size_t pos = 0, i = 0;
+	size_t pos = 0;
+	size_t i = 0;
 	const uint8_t *ptr = mem;
 
 	memset(str, 0, len);
@@ -262,10 +266,9 @@ mem_to_str(const void *mem, size_t nn, char *str, size_t len)
 void voluta_assert_eqm_(const void *m1, const void *m2, size_t nn,
 			const char *file, int line)
 {
-	int cmp;
 	char s1[36], s2[36];
+	const int cmp = memcmp(m1, m2, nn);
 
-	cmp = memcmp(m1, m2, nn);
 	if (voluta_unlikely(cmp != 0)) {
 		assertion_failure(file, line, "memory-not-equal: %s != %s ",
 				  mem_to_str(m1, nn, s1, sizeof(s1)),

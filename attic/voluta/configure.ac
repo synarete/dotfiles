@@ -1,6 +1,6 @@
 dnl SPDX-License-Identifier: GPL-3.0-or-later
 AC_PREREQ([2.69])
-AC_COPYRIGHT([Copyright (C) 2019, Shachar Sharon])
+AC_COPYRIGHT([Copyright (C) 2020, Shachar Sharon])
 AC_INIT([voluta],[0.1],[synarete@xxxxxxxx])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_MACRO_DIR([m4])
@@ -33,6 +33,7 @@ AX_VOLUTA_NEED_EXTRA_TYPES
 AX_VOLUTA_NEED_HEADERS
 AX_VOLUTA_NEED_LIBS
 AX_VOLUTA_NEED_FUNCS
+AX_VOLUTA_NEED_BUILTIN
 dnl AX_VOLUTA_WANT_SYSTEMD
 
 dnl Libtool
@@ -45,10 +46,13 @@ AC_CONFIG_FILES([common.mk])
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([include/Makefile])
 AC_CONFIG_FILES([lib/Makefile])
-AC_CONFIG_FILES([prog/Makefile])
-AC_CONFIG_FILES([sanity/Makefile])
-AC_CONFIG_FILES([test/Makefile])
+AC_CONFIG_FILES([src/Makefile])
 AC_CONFIG_FILES([misc/Makefile])
+AC_CONFIG_FILES([test/Makefile])
+AC_CONFIG_FILES([test/mountd/Makefile])
+AC_CONFIG_FILES([test/sanity/Makefile])
+AC_CONFIG_FILES([test/dstress/Makefile])
+AC_CONFIG_FILES([test/unitest/Makefile])
 AC_OUTPUT
 
 AC_MSG_NOTICE([Package........: $pkg_name])

@@ -2,7 +2,7 @@
 /*
  * This file is part of libvoluta
  *
- * Copyright (C) 2019 Shachar Sharon
+ * Copyright (C) 2020 Shachar Sharon
  *
  * Libvoluta is free software: you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,6 +20,7 @@
 #include <sys/sysmacros.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <dirent.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -28,15 +29,13 @@
 
 static const struct voluta_ucred *ucred_of(const struct voluta_env *env)
 {
-	return &env->ucred;
+	return &env->opi.ucred;
 }
 
-static bool isowner(const struct voluta_env *env,
+static bool isowner(const struct voluta_oper_info *opi,
 		    const struct voluta_inode_info *ii)
 {
-	const struct voluta_ucred *ucred = ucred_of(env);
-
-	return uid_eq(ucred->uid, i_uid_of(ii));
+	return uid_eq(opi->ucred.uid, i_uid_of(ii));
 }
 
 static int require_dir(const struct voluta_inode_info *ii)
@@ -60,15 +59,14 @@ static int require_reg_or_fifo(const struct voluta_inode_info *ii)
 	return 0;
 }
 
-static int require_fileref(const struct voluta_env *env,
+static int require_fileref(const struct voluta_oper_info *opi,
 			   const struct voluta_inode_info *ii)
 {
 	int err = 0;
 	const size_t open_max = 1U << 16; /* XXX */
 	const size_t open_cur = i_refcnt_of(ii);
-	const struct voluta_ucred *ucred = ucred_of(env);
 
-	if ((open_cur >= open_max) && !uid_eq(ucred->uid, 0)) {
+	if ((open_cur >= open_max) && !uid_eq(opi->ucred.uid, 0)) {
 		err = -ENFILE;
 	}
 	return err;
@@ -81,7 +79,7 @@ static bool has_sticky_bit(const struct voluta_inode_info *dir_ii)
 	return ((mode & S_ISVTX) == S_ISVTX);
 }
 
-static int check_sticky(const struct voluta_env *env,
+static int check_sticky(const struct voluta_oper_info *opi,
 			const struct voluta_inode_info *dir_ii,
 			const struct voluta_inode_info *ii)
 {
@@ -89,10 +87,10 @@ static int check_sticky(const struct voluta_env *env,
 	if (!has_sticky_bit(dir_ii)) {
 		return 0; /* No sticky-bit, we're fine */
 	}
-	if (isowner(env, dir_ii)) {
+	if (isowner(opi, dir_ii)) {
 		return 0;
 	}
-	if (ii && isowner(env, ii)) {
+	if (ii && isowner(opi, ii)) {
 		return 0;
 	}
 	/* TODO: Check CAP_FOWNER */
@@ -101,34 +99,43 @@ static int check_sticky(const struct voluta_env *env,
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static int new_inode(struct voluta_env *env, mode_t mode,
-		     ino_t parent_ino, struct voluta_inode_info **out_ii)
+static int new_inode(struct voluta_sb_info *sbi,
+		     const struct voluta_oper_info *opi,
+		     mode_t mode, ino_t parent_ino,
+		     struct voluta_inode_info **out_ii)
 {
-	return voluta_new_inode(env, mode, parent_ino, out_ii);
+	return voluta_new_inode(sbi, opi, mode, parent_ino, out_ii);
 }
 
-static int new_dir_inode(struct voluta_env *env, mode_t mode, ino_t parent_ino,
+static int new_dir_inode(struct voluta_sb_info *sbi,
+			 const struct voluta_oper_info *opi,
+			 mode_t mode, ino_t parent_ino,
 			 struct voluta_inode_info **out_ii)
 {
 	const mode_t ifmt = S_IFMT;
+	const mode_t imod = (mode & ~ifmt) | S_IFDIR;
 
-	return new_inode(env, (mode & ~ifmt) | S_IFDIR, parent_ino, out_ii);
+	return new_inode(sbi, opi, imod, parent_ino, out_ii);
 }
 
-static int new_reg_inode(struct voluta_env *env, mode_t mode, ino_t parent_ino,
+static int new_reg_inode(struct voluta_sb_info *sbi,
+			 const struct voluta_oper_info *opi,
+			 mode_t mode, ino_t parent_ino,
 			 struct voluta_inode_info **out_ii)
 {
 	const mode_t ifmt = S_IFMT;
+	const mode_t imod = (mode & ~ifmt) | S_IFREG;
 
-	return new_inode(env, (mode & ~ifmt) | S_IFREG, parent_ino, out_ii);
+	return new_inode(sbi, opi, imod, parent_ino, out_ii);
 }
 
-static int new_lnk_inode(struct voluta_env *env, ino_t parent_ino,
+static int new_lnk_inode(struct voluta_sb_info *sbi,
+			 const struct voluta_oper_info *opi, ino_t parent_ino,
 			 struct voluta_inode_info **out_ii)
 {
-	const mode_t mode = S_IFLNK | S_IRWXU | S_IRWXG | S_IRWXO;
+	const mode_t imod = S_IFLNK | S_IRWXU | S_IRWXG | S_IRWXO;
 
-	return voluta_new_inode(env, mode, parent_ino, out_ii);
+	return voluta_new_inode(sbi, opi, imod, parent_ino, out_ii);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -147,13 +154,12 @@ int voluta_authorize(const struct voluta_env *env)
 	return -EPERM;
 }
 
-int voluta_do_access(struct voluta_env *env,
+int voluta_do_access(const struct voluta_oper_info *opi,
 		     const struct voluta_inode_info *ii, int mode)
 {
 	mode_t rwx = 0;
-	const struct voluta_ucred *ucred = ucred_of(env);
-	const uid_t uid = ucred->uid;
-	const gid_t gid = ucred->gid;
+	const uid_t uid = opi->ucred.uid;
+	const gid_t gid = opi->ucred.gid;
 	const uid_t i_uid = i_uid_of(ii);
 	const gid_t i_gid = i_gid_of(ii);
 	const mode_t i_mode = i_mode_of(ii);
@@ -206,19 +212,20 @@ int voluta_do_access(struct voluta_env *env,
 	return ((rwx & mask) == mask) ? 0 : -EACCES;
 }
 
-static int require_waccess(struct voluta_env *env,
+static int require_waccess(const struct voluta_oper_info *opi,
 			   const struct voluta_inode_info *ii)
 {
-	return voluta_do_access(env, ii, W_OK);
+	return voluta_do_access(opi, ii, W_OK);
 }
 
-static int require_xaccess(struct voluta_env *env,
+static int require_xaccess(const struct voluta_oper_info *opi,
 			   const struct voluta_inode_info *ii)
 {
-	return voluta_do_access(env, ii, X_OK);
+	return voluta_do_access(opi, ii, X_OK);
 }
 
-int voluta_do_lookup(struct voluta_env *env,
+int voluta_do_lookup(struct voluta_sb_info *sbi,
+		     const struct voluta_oper_info *opi,
 		     const struct voluta_inode_info *dir_ii,
 		     const struct voluta_qstr *qstr,
 		     struct voluta_inode_info **out_ii)
@@ -231,15 +238,15 @@ int voluta_do_lookup(struct voluta_env *env,
 	if (err) {
 		return err;
 	}
-	err = require_xaccess(env, dir_ii);
+	err = require_xaccess(opi, dir_ii);
 	if (err) {
 		return err;
 	}
-	err = voluta_resolve_by_name(env, dir_ii, qstr, &ino_dt);
+	err = voluta_resolve_by_name(sbi, opi, dir_ii, qstr, &ino_dt);
 	if (err) {
 		return err;
 	}
-	err = voluta_stage_inode(sbi_of(env), ino_dt.ino, &ii);
+	err = voluta_stage_inode(sbi, ino_dt.ino, &ii);
 	if (err) {
 		return err;
 	}
@@ -261,7 +268,7 @@ static int check_create_mode(mode_t mode)
 	return 0;
 }
 
-static int check_create(struct voluta_env *env,
+static int check_create(const struct voluta_oper_info *opi,
 			const struct voluta_inode_info *dir_ii, mode_t mode)
 {
 	int err;
@@ -274,7 +281,7 @@ static int check_create(struct voluta_env *env,
 	if (err) {
 		return err;
 	}
-	err = require_waccess(env, dir_ii);
+	err = require_waccess(opi, dir_ii);
 	if (err) {
 		return err;
 	}
@@ -287,8 +294,10 @@ static int require_nodent(struct voluta_env *env,
 {
 	int err;
 	struct voluta_ino_dt ino_dt;
+	struct voluta_sb_info *sbi = sbi_of(env);
+	const struct voluta_oper_info *opi = opi_of(env);
 
-	err = voluta_resolve_by_name(env, dir_ii, name, &ino_dt);
+	err = voluta_resolve_by_name(sbi, opi, dir_ii, name, &ino_dt);
 	if (err == 0) {
 		return -EEXIST;
 	}
@@ -304,8 +313,10 @@ int voluta_do_create(struct voluta_env *env, struct voluta_inode_info *dir_ii,
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
+	struct voluta_sb_info *sbi = sbi_of(env);
+	const struct voluta_oper_info *opi = opi_of(env);
 
-	err = check_create(env, dir_ii, mode);
+	err = check_create(opi, dir_ii, mode);
 	if (err) {
 		return err;
 	}
@@ -317,27 +328,27 @@ int voluta_do_create(struct voluta_env *env, struct voluta_inode_info *dir_ii,
 	if (err) {
 		return err;
 	}
-	err = require_fileref(env, ii);
+	err = require_fileref(opi, ii);
 	if (err) {
 		return err;
 	}
-	err = new_reg_inode(env, mode, i_ino_of(dir_ii), &ii);
+	err = new_reg_inode(sbi, opi, mode, i_ino_of(dir_ii), &ii);
 	if (err) {
 		return err;
 	}
-	err = voluta_add_dentry(env, dir_ii, name, ii);
+	err = voluta_add_dentry(sbi, opi, dir_ii, name, ii);
 	if (err) {
 		/* TODO: Proper cleanups */
 		return err;
 	}
-	voluta_inc_fileref(env, ii);
-	i_update_times(env, dir_ii, VOLUTA_ATTR_RMCTIME);
+	voluta_inc_fileref(opi, ii);
+	i_update_times(dir_ii, opi, VOLUTA_ATTR_MCTIME);
 
 	*out_ii = ii;
 	return 0;
 }
 
-static int check_mknod(struct voluta_env *env,
+static int check_mknod(const struct voluta_oper_info *opi,
 		       const struct voluta_inode_info *dir_ii,
 		       mode_t mode, dev_t dev)
 {
@@ -355,22 +366,10 @@ static int check_mknod(struct voluta_env *env,
 	if (dev != 0) {
 		return -EINVAL; /* XXX see man 3p mknod */
 	}
-	err = require_waccess(env, dir_ii);
+	err = require_waccess(opi, dir_ii);
 	if (err) {
 		return err;
 	}
-	return 0;
-}
-
-static int setup_special(struct voluta_inode_info *ii, dev_t rdev)
-{
-	struct voluta_inode *inode = ii->inode;
-
-	if (!i_isfifo(ii) && !i_issock(ii)) {
-		return -ENOTSUP;
-	}
-	inode->i_rdev_major = major(rdev);
-	inode->i_rdev_minor = minor(rdev);
 	return 0;
 }
 
@@ -380,12 +379,14 @@ int voluta_do_mknod(struct voluta_env *env, struct voluta_inode_info *dir_ii,
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
+	struct voluta_sb_info *sbi = sbi_of(env);
+	const struct voluta_oper_info *opi = opi_of(env);
 
 	err = require_dir(dir_ii);
 	if (err) {
 		return err;
 	}
-	err = check_mknod(env, dir_ii, mode, dev);
+	err = check_mknod(opi, dir_ii, mode, dev);
 	if (err) {
 		return err;
 	}
@@ -397,21 +398,21 @@ int voluta_do_mknod(struct voluta_env *env, struct voluta_inode_info *dir_ii,
 	if (err) {
 		return err;
 	}
-	err = new_inode(env, mode, i_ino_of(dir_ii), &ii);
+	err = new_inode(sbi, opi, mode, i_ino_of(dir_ii), &ii);
 	if (err) {
 		return err;
 	}
-	err = setup_special(ii, dev);
-	if (err) {
-		/* TODO: Proper cleanups */
-		return err;
-	}
-	err = voluta_add_dentry(env, dir_ii, name, ii);
+	err = voluta_setup_ispecial(ii, dev);
 	if (err) {
 		/* TODO: Proper cleanups */
 		return err;
 	}
-	i_update_times(env, dir_ii, VOLUTA_ATTR_RMCTIME);
+	err = voluta_add_dentry(sbi, opi, dir_ii, name, ii);
+	if (err) {
+		/* TODO: Proper cleanups */
+		return err;
+	}
+	i_update_times(dir_ii, opi, VOLUTA_ATTR_MCTIME);
 
 	*out_ii = ii;
 	return 0;
@@ -428,7 +429,7 @@ static int check_open(struct voluta_env *env,
 	if (flags & (O_CREAT | O_EXCL)) {
 		return -EEXIST; /* XXX ? */
 	}
-	err = require_fileref(env, ii);
+	err = require_fileref(&env->opi, ii);
 	if (err) {
 		return err;
 	}
@@ -468,7 +469,8 @@ static int post_open(struct voluta_env *env, struct voluta_inode_info *ii,
 	return err;
 }
 
-int voluta_open(struct voluta_env *env, struct voluta_inode_info *ii, int flags)
+int voluta_do_open(struct voluta_env *env,
+		   struct voluta_inode_info *ii, int flags)
 {
 	int err, mask;
 
@@ -481,11 +483,11 @@ int voluta_open(struct voluta_env *env, struct voluta_inode_info *ii, int flags)
 		return err;
 	}
 	mask = oflags_to_access_mask(flags);
-	err = voluta_do_access(env, ii, mask);
+	err = voluta_do_access(&env->opi, ii, mask);
 	if (err) {
 		return err;
 	}
-	err = voluta_inc_fileref(env, ii);
+	err = voluta_inc_fileref(&env->opi, ii);
 	if (err) {
 		return err;
 	}
@@ -496,45 +498,110 @@ int voluta_open(struct voluta_env *env, struct voluta_inode_info *ii, int flags)
 	return 0;
 }
 
-static int drop_ispecific(struct voluta_env *env, struct voluta_inode_info *ii)
+static int drop_ispecific(struct voluta_sb_info *sbi,
+			  struct voluta_inode_info *ii)
 {
 	int err;
 
 	if (i_isdir(ii)) {
-		err = voluta_drop_dir(env, ii);
+		err = voluta_drop_dir(sbi, ii);
 	} else if (i_isreg(ii)) {
-		err = voluta_drop_reg(env, ii);
+		err = voluta_drop_reg(sbi, ii);
 	} else if (i_islnk(ii)) {
-		err = voluta_drop_symlink(env, ii);
+		err = voluta_drop_symlink(sbi, ii);
 	} else {
 		err = 0;
 	}
 	return err;
 }
 
-static int update_or_drop_unlinked(struct voluta_env *env,
-				   struct voluta_inode_info *ii)
+static int drop_unlinked(struct voluta_sb_info *sbi,
+			 const struct voluta_oper_info *opi,
+			 struct voluta_inode_info *ii)
 {
 	int err;
-	const nlink_t nlink = i_nlink_of(ii);
 
-	if (!i_isdir(ii) && (nlink || i_refcnt_of(ii))) {
-		i_update_times(env, ii, VOLUTA_ATTR_CTIME);
-		return 0;
-	}
-	err = voluta_drop_xattr(env, ii);
+	err = voluta_drop_xattr(sbi, opi, ii);
 	if (err) {
 		return err;
 	}
-	err = drop_ispecific(env, ii);
+	err = drop_ispecific(sbi, ii);
 	if (err) {
 		return err;
 	}
-	err = voluta_del_inode(sbi_of(env), ii);
+	err = voluta_del_inode(sbi, ii);
 	if (err) {
 		return err;
 	}
 	return 0;
+}
+
+static bool i_isdropable(const struct voluta_inode_info *ii)
+{
+	bool res;
+
+	if (!i_isdir(ii)) {
+		res = !i_nlink_of(ii) && !i_refcnt_of(ii);
+	} else {
+		res = (i_nlink_of(ii) <= 2);
+	}
+	return res;
+}
+
+static int try_drop_unlinked(struct voluta_sb_info *sbi,
+			     const struct voluta_oper_info *opi,
+			     struct voluta_inode_info *ii, bool update_ctime)
+{
+	int err = 0;
+
+	if (i_isdropable(ii)) {
+		err = drop_unlinked(sbi, opi, ii);
+	} else if (update_ctime) {
+		i_update_times(ii, opi, VOLUTA_ATTR_CTIME);
+	}
+	return err;
+}
+
+static int lookup_by_name(struct voluta_sb_info *sbi,
+			  const struct voluta_oper_info *opi,
+			  const struct voluta_inode_info *dir_ii,
+			  const struct voluta_qstr *name,
+			  bool expecting_dir, ino_t *out_ino)
+{
+	int err;
+	struct voluta_ino_dt ino_dt;
+
+	err = voluta_resolve_by_name(sbi, opi, dir_ii, name, &ino_dt);
+	if (err) {
+		return err;
+	}
+	if (expecting_dir) {
+		if (ino_dt.dt != DT_DIR) {
+			return -ENOTDIR;
+		}
+	} else {
+		if (ino_dt.dt == DT_DIR) {
+			return -EISDIR;
+		}
+	}
+	*out_ino = ino_dt.ino;
+	return 0;
+}
+
+static int lookup_by_dname(struct voluta_sb_info *sbi,
+			   const struct voluta_oper_info *opi,
+			   const struct voluta_inode_info *dir_ii,
+			   const struct voluta_qstr *name, ino_t *out_ino)
+{
+	return lookup_by_name(sbi, opi, dir_ii, name, true, out_ino);
+}
+
+static int lookup_by_iname(struct voluta_sb_info *sbi,
+			   const struct voluta_oper_info *opi,
+			   const struct voluta_inode_info *dir_ii,
+			   const struct voluta_qstr *name, ino_t *out_ino)
+{
+	return lookup_by_name(sbi, opi, dir_ii, name, false, out_ino);
 }
 
 int voluta_do_unlink(struct voluta_env *env, struct voluta_inode_info *dir_ii,
@@ -543,20 +610,22 @@ int voluta_do_unlink(struct voluta_env *env, struct voluta_inode_info *dir_ii,
 	int err;
 	ino_t ino;
 	struct voluta_inode_info *ii;
+	struct voluta_sb_info *sbi = sbi_of(env);
+	const struct voluta_oper_info *opi = opi_of(env);
 
 	err = require_dir(dir_ii);
 	if (err) {
 		return err;
 	}
-	err = require_waccess(env, dir_ii);
+	err = require_waccess(opi, dir_ii);
 	if (err) {
 		return err;
 	}
-	err = voluta_lookup_by_iname(env, dir_ii, name, &ino);
+	err = lookup_by_iname(sbi, opi, dir_ii, name, &ino);
 	if (err) {
 		return err;
 	}
-	err = voluta_stage_inode(sbi_of(env), ino, &ii);
+	err = voluta_stage_inode(sbi, ino, &ii);
 	if (err) {
 		return err;
 	}
@@ -564,19 +633,19 @@ int voluta_do_unlink(struct voluta_env *env, struct voluta_inode_info *dir_ii,
 	if (err) {
 		return err;
 	}
-	err = check_sticky(env, dir_ii, ii);
+	err = check_sticky(opi, dir_ii, ii);
 	if (err) {
 		return err;
 	}
-	err = voluta_remove_dentry(env, dir_ii, name);
+	err = voluta_remove_dentry(sbi, opi, dir_ii, name);
 	if (err) {
 		return err;
 	}
-	err = update_or_drop_unlinked(env, ii);
+	err = try_drop_unlinked(sbi, opi, ii, true);
 	if (err) {
 		return err;
 	}
-	i_update_times(env, dir_ii, VOLUTA_ATTR_MCTIME);
+	i_update_times(dir_ii, opi, VOLUTA_ATTR_MCTIME);
 	return 0;
 }
 
@@ -592,6 +661,7 @@ check_link(struct voluta_env *env, struct voluta_inode_info *dir_ii,
 	   const struct voluta_qstr *name, struct voluta_inode_info *ii)
 {
 	int err;
+	const struct voluta_oper_info *opi = &env->opi;
 
 	err = require_dir(dir_ii);
 	if (err) {
@@ -601,7 +671,7 @@ check_link(struct voluta_env *env, struct voluta_inode_info *dir_ii,
 	if (err) {
 		return err;
 	}
-	err = require_waccess(env, dir_ii);
+	err = require_waccess(opi, dir_ii);
 	if (err) {
 		return err;
 	}
@@ -624,37 +694,42 @@ int voluta_do_link(struct voluta_env *env, struct voluta_inode_info *dir_ii,
 		   const struct voluta_qstr *name, struct voluta_inode_info *ii)
 {
 	int err;
+	struct voluta_sb_info *sbi = sbi_of(env);
+	const struct voluta_oper_info *opi = opi_of(env);
 
 	err = check_link(env, dir_ii, name, ii);
 	if (err) {
 		return err;
 	}
-	err = voluta_add_dentry(env, dir_ii, name, ii);
+	err = voluta_add_dentry(sbi, opi, dir_ii, name, ii);
 	if (err) {
 		/* TODO: Proper cleanups */
 		return err;
 	}
-	i_update_times(env, dir_ii, VOLUTA_ATTR_MCTIME);
-	i_update_times(env, ii, VOLUTA_ATTR_CTIME);
+	i_update_times(dir_ii, opi, VOLUTA_ATTR_MCTIME);
+	i_update_times(ii, opi, VOLUTA_ATTR_CTIME);
 
 	return 0;
 }
 
-int voluta_inc_fileref(const struct voluta_env *env,
+int voluta_inc_fileref(const struct voluta_oper_info *opi,
 		       struct voluta_inode_info *ii)
 {
 	int err;
 
-	err = require_fileref(env, ii);
-	if (!err) {
-		ii->vi.ce.ce_refcnt += 1;
+	err = require_fileref(opi, ii);
+	if (err) {
+		return err;
 	}
-	return err;
+	ii->vi.ce.ce_refcnt += 1;
+	return 0;
 }
 
 int voluta_do_release(struct voluta_env *env, struct voluta_inode_info *ii)
 {
 	int err;
+	struct voluta_sb_info *sbi = sbi_of(env);
+	const struct voluta_oper_info *opi = opi_of(env);
 
 	if (!i_refcnt_of(ii)) {
 		return -EBADF;
@@ -663,7 +738,7 @@ int voluta_do_release(struct voluta_env *env, struct voluta_inode_info *ii)
 		return -EINVAL;
 	}
 	ii->vi.ce.ce_refcnt -= 1;
-	err = update_or_drop_unlinked(env, ii);
+	err = try_drop_unlinked(sbi, opi, ii, false);
 	if (err) {
 		return err;
 	}
@@ -675,12 +750,13 @@ static int check_mkdir(struct voluta_env *env,
 		       const struct voluta_qstr *name)
 {
 	int err;
+	const struct voluta_oper_info *opi = &env->opi;
 
 	err = require_dir(dir_ii);
 	if (err) {
 		return err;
 	}
-	err = require_waccess(env, dir_ii);
+	err = require_waccess(opi, dir_ii);
 	if (err) {
 		return err;
 	}
@@ -701,6 +777,8 @@ int voluta_do_mkdir(struct voluta_env *env, struct voluta_inode_info *dir_ii,
 {
 	int err;
 	struct voluta_inode_info *ii;
+	struct voluta_sb_info *sbi = sbi_of(env);
+	const struct voluta_oper_info *opi = opi_of(env);
 
 	err = check_mkdir(env, dir_ii, name);
 	if (err) {
@@ -710,16 +788,16 @@ int voluta_do_mkdir(struct voluta_env *env, struct voluta_inode_info *dir_ii,
 	if (err) {
 		return err;
 	}
-	err = new_dir_inode(env, mode, i_ino_of(dir_ii), &ii);
+	err = new_dir_inode(sbi, opi, mode, i_ino_of(dir_ii), &ii);
 	if (err) {
 		return err;
 	}
-	err = voluta_add_dentry(env, dir_ii, name, ii);
+	err = voluta_add_dentry(sbi, opi, dir_ii, name, ii);
 	if (err) {
 		/* TODO: Poreper cleanups */
 		return err;
 	}
-	i_update_times(env, dir_ii, VOLUTA_ATTR_RMCTIME);
+	i_update_times(dir_ii, opi, VOLUTA_ATTR_MCTIME);
 
 	*out_ii = ii;
 	return 0;
@@ -736,7 +814,7 @@ static bool dir_isempty(const struct voluta_inode_info *dir_ii)
 	return true;
 }
 
-static int check_rmdir(const struct voluta_env *env,
+static int check_rmdir(const struct voluta_oper_info *opi,
 		       const struct voluta_inode_info *parent_ii,
 		       const struct voluta_inode_info *dir_ii)
 {
@@ -756,7 +834,7 @@ static int check_rmdir(const struct voluta_env *env,
 	if (i_refcnt_of(dir_ii)) {
 		return -EBUSY;
 	}
-	err = check_sticky(env, parent_ii, dir_ii);
+	err = check_sticky(opi, parent_ii, dir_ii);
 	if (err) {
 		return err;
 	}
@@ -769,32 +847,34 @@ int voluta_do_rmdir(struct voluta_env *env, struct voluta_inode_info *dir_ii,
 	int err;
 	ino_t ino;
 	struct voluta_inode_info *ii = NULL;
+	struct voluta_sb_info *sbi = sbi_of(env);
+	const struct voluta_oper_info *opi = opi_of(env);
 
 	err = require_dir(dir_ii);
 	if (err) {
 		return err;
 	}
-	err = require_waccess(env, dir_ii);
+	err = require_waccess(opi, dir_ii);
 	if (err) {
 		return err;
 	}
-	err = voluta_lookup_by_dname(env, dir_ii, name, &ino);
+	err = lookup_by_dname(sbi, opi, dir_ii, name, &ino);
 	if (err) {
 		return err;
 	}
-	err = voluta_stage_inode(sbi_of(env), ino, &ii);
+	err = voluta_stage_inode(sbi, ino, &ii);
 	if (err) {
 		return err;
 	}
-	err = check_rmdir(env, dir_ii, ii);
+	err = check_rmdir(&env->opi, dir_ii, ii);
 	if (err) {
 		return err;
 	}
-	err = voluta_remove_dentry(env, dir_ii, name);
+	err = voluta_remove_dentry(sbi, opi, dir_ii, name);
 	if (err) {
 		return err;
 	}
-	err = update_or_drop_unlinked(env, ii);
+	err = try_drop_unlinked(sbi, opi, ii, false);
 	if (err) {
 		return err;
 	}
@@ -822,6 +902,8 @@ int voluta_do_symlink(struct voluta_env *env,
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
+	struct voluta_sb_info *sbi = sbi_of(env);
+	const struct voluta_oper_info *opi = opi_of(env);
 
 	err = require_dir(dir_ii);
 	if (err) {
@@ -835,21 +917,21 @@ int voluta_do_symlink(struct voluta_env *env,
 	if (err) {
 		return err;
 	}
-	err = new_lnk_inode(env, i_ino_of(dir_ii), &ii);
+	err = new_lnk_inode(sbi, opi, i_ino_of(dir_ii), &ii);
 	if (err) {
 		return err;
 	}
-	err = voluta_setup_symlink(env, ii, linkpath);
+	err = voluta_setup_symlink(sbi, &env->opi, ii, linkpath);
 	if (err) {
 		/* TODO: Cleanups */
 		return err;
 	}
-	err = voluta_add_dentry(env, dir_ii, name, ii);
+	err = voluta_add_dentry(sbi, opi, dir_ii, name, ii);
 	if (err) {
 		/* TODO: Poreper cleanups */
 		return err;
 	}
-	i_update_times(env, dir_ii, VOLUTA_ATTR_RMCTIME);
+	i_update_times(dir_ii, opi, VOLUTA_ATTR_MCTIME);
 
 	*out_ii = ii;
 	return 0;
@@ -859,6 +941,8 @@ int voluta_do_symlink(struct voluta_env *env,
 
 struct voluta_rename_ctx {
 	struct voluta_env *env;
+	struct voluta_sb_info *sbi;
+	const struct voluta_oper_info *opi;
 	struct voluta_inode_info *dir_ii;
 	const struct voluta_qstr *name;
 	struct voluta_inode_info *ii;
@@ -869,132 +953,113 @@ struct voluta_rename_ctx {
 };
 
 
-static int rename_move(const struct voluta_rename_ctx *rename_ctx)
+static int rename_move(const struct voluta_rename_ctx *rc)
 {
 	int err;
-	struct voluta_env *env = rename_ctx->env;
-	struct voluta_inode_info *dir_ii = rename_ctx->dir_ii;
-	struct voluta_inode_info *newdir_ii = rename_ctx->newdir_ii;
-	struct voluta_inode_info *ii = rename_ctx->ii;
-	const struct voluta_qstr *name = rename_ctx->name;
-	const struct voluta_qstr *newname = rename_ctx->newname;
 
-	err = voluta_check_add_dentry(newdir_ii, newname);
+	err = voluta_check_add_dentry(rc->newdir_ii, rc->newname);
 	if (err) {
 		return err;
 	}
-	err = voluta_remove_dentry(env, dir_ii, name);
+	err = voluta_remove_dentry(rc->sbi, rc->opi, rc->dir_ii, rc->name);
 	if (err) {
 		return err;
 	}
-	err = voluta_add_dentry(env, newdir_ii, newname, ii);
+	err = voluta_add_dentry(rc->sbi, rc->opi, rc->newdir_ii,
+				rc->newname, rc->ii);
 	if (err) {
 		return err;
 	}
 	return 0;
 }
 
-static int rename_unlink(const struct voluta_rename_ctx *rename_ctx)
+static int rename_unlink(const struct voluta_rename_ctx *rc)
 {
-	struct voluta_env *env = rename_ctx->env;
-	struct voluta_inode_info *dir_ii = rename_ctx->dir_ii;
-	const struct voluta_qstr *name = rename_ctx->name;
-
-	return voluta_do_unlink(env, dir_ii, name);
+	return voluta_do_unlink(rc->env, rc->dir_ii, rc->name);
 }
 
-static int rename_replace(const struct voluta_rename_ctx *rename_ctx)
+static int rename_replace(const struct voluta_rename_ctx *rc)
 {
 	int err;
-	struct voluta_env *env = rename_ctx->env;
-	struct voluta_inode_info *dir_ii = rename_ctx->dir_ii;
-	struct voluta_inode_info *newdir_ii = rename_ctx->newdir_ii;
-	struct voluta_inode_info *ii = rename_ctx->ii;
-	struct voluta_inode_info *old_ii = rename_ctx->old_ii;
-	const struct voluta_qstr *name = rename_ctx->name;
-	const struct voluta_qstr *newname = rename_ctx->newname;
 
-	err = voluta_remove_dentry(env, dir_ii, name);
+	err = voluta_remove_dentry(rc->sbi, rc->opi, rc->dir_ii, rc->name);
 	if (err) {
 		return err;
 	}
-	err = voluta_remove_dentry(env, newdir_ii, newname);
+	err = voluta_remove_dentry(rc->sbi, rc->opi,
+				   rc->newdir_ii, rc->newname);
 	if (err) {
 		return err;
 	}
-	err = voluta_add_dentry(env, newdir_ii, newname, ii);
+	err = voluta_add_dentry(rc->sbi, rc->opi,
+				rc->newdir_ii, rc->newname, rc->ii);
 	if (err) {
 		return err;
 	}
-	err = update_or_drop_unlinked(env, old_ii);
+	err = try_drop_unlinked(rc->sbi, rc->opi, rc->old_ii, true);
 	if (err) {
 		return err;
 	}
 	return 0;
 }
 
-static int rename_exchange(const struct voluta_rename_ctx *rename_ctx)
+static int rename_exchange(const struct voluta_rename_ctx *rc)
 {
 	int err;
-	struct voluta_env *env = rename_ctx->env;
-	struct voluta_inode_info *dir_ii = rename_ctx->dir_ii;
-	struct voluta_inode_info *newdir_ii = rename_ctx->newdir_ii;
-	struct voluta_inode_info *ii = rename_ctx->ii;
-	struct voluta_inode_info *old_ii = rename_ctx->old_ii;
-	const struct voluta_qstr *name = rename_ctx->name;
-	const struct voluta_qstr *newname = rename_ctx->newname;
 
-	err = voluta_remove_dentry(env, dir_ii, name);
+	err = voluta_remove_dentry(rc->sbi, rc->opi, rc->dir_ii, rc->name);
 	if (err) {
 		return err;
 	}
-	err = voluta_remove_dentry(env, newdir_ii, newname);
+	err = voluta_remove_dentry(rc->sbi, rc->opi,
+				   rc->newdir_ii, rc->newname);
 	if (err) {
 		return err;
 	}
-	err = voluta_add_dentry(env, newdir_ii, newname, ii);
+	err = voluta_add_dentry(rc->sbi, rc->opi,
+				rc->newdir_ii, rc->newname, rc->ii);
 	if (err) {
 		return err;
 	}
-	err = voluta_add_dentry(env, dir_ii, name, old_ii);
+	err = voluta_add_dentry(rc->sbi, rc->opi,
+				rc->dir_ii, rc->name, rc->old_ii);
 	if (err) {
 		return err;
 	}
 	return 0;
 }
 
-static int rename_safely(const struct voluta_rename_ctx *rename_ctx)
+static int do_rename(const struct voluta_rename_ctx *rc)
 {
 	int err;
-	struct voluta_env *env = rename_ctx->env;
-	struct voluta_inode_info *dir_ii = rename_ctx->dir_ii;
-	struct voluta_inode_info *newdir_ii = rename_ctx->newdir_ii;
-	struct voluta_inode_info *ii = rename_ctx->ii;
-	struct voluta_inode_info *old_ii = rename_ctx->old_ii;
-	const int flags = rename_ctx->flags;
+	struct voluta_oper_info *opi = &rc->env->opi;
+	struct voluta_inode_info *dir_ii = rc->dir_ii;
+	struct voluta_inode_info *newdir_ii = rc->newdir_ii;
+	struct voluta_inode_info *ii = rc->ii;
+	struct voluta_inode_info *old_ii = rc->old_ii;
 
 	if (old_ii == NULL) {
-		err = rename_move(rename_ctx);
+		err = rename_move(rc);
 	} else if (ii == old_ii) {
-		err = rename_unlink(rename_ctx);
+		err = rename_unlink(rc);
 		ii = old_ii = NULL;
-	} else if (flags & RENAME_EXCHANGE) {
-		err = rename_exchange(rename_ctx);
+	} else if (rc->flags & RENAME_EXCHANGE) {
+		err = rename_exchange(rc);
 	} else {
-		err = rename_replace(rename_ctx);
+		err = rename_replace(rc);
 		old_ii = NULL;
 	}
-	i_update_times(env, dir_ii, VOLUTA_ATTR_MCTIME);
-	i_update_times(env, newdir_ii, VOLUTA_ATTR_MCTIME);
-	i_update_times(env, ii, VOLUTA_ATTR_CTIME);
-	i_update_times(env, old_ii, VOLUTA_ATTR_CTIME);
+	i_update_times(dir_ii, opi, VOLUTA_ATTR_MCTIME);
+	i_update_times(newdir_ii, opi, VOLUTA_ATTR_MCTIME);
+	i_update_times(ii, opi, VOLUTA_ATTR_CTIME);
+	i_update_times(old_ii, opi, VOLUTA_ATTR_CTIME);
 	return err;
 }
 
-static int check_rename_flags(const struct voluta_rename_ctx *rename_ctx)
+static int check_rename_flags(const struct voluta_rename_ctx *rc)
 {
-	const int flags = rename_ctx->flags;
-	const struct voluta_inode_info *old_ii = rename_ctx->old_ii;
+	const int flags = rc->flags;
+	const struct voluta_inode_info *old_ii = rc->old_ii;
 
 	if (flags & RENAME_WHITEOUT) {
 		return -EINVAL;
@@ -1011,37 +1076,36 @@ static int check_rename_flags(const struct voluta_rename_ctx *rename_ctx)
 	return 0;
 }
 
-static int check_rename(const struct voluta_rename_ctx *rename_ctx)
+static int check_rename(const struct voluta_rename_ctx *rc)
 {
 	int err;
-	struct voluta_env *env = rename_ctx->env;
-	const struct voluta_inode_info *dir_ii = rename_ctx->dir_ii;
-	const struct voluta_inode_info *ii = rename_ctx->ii;
-	const struct voluta_inode_info *newdir_ii = rename_ctx->newdir_ii;
-	const struct voluta_inode_info *old_ii = rename_ctx->old_ii;
-	const int flags = rename_ctx->flags;
+	struct voluta_env *env = rc->env;
+	const struct voluta_inode_info *dir_ii = rc->dir_ii;
+	const struct voluta_inode_info *ii = rc->ii;
+	const struct voluta_inode_info *newdir_ii = rc->newdir_ii;
+	const struct voluta_inode_info *old_ii = rc->old_ii;
 
-	err = check_rename_flags(rename_ctx);
+	err = check_rename_flags(rc);
 	if (err) {
 		return err;
 	}
-	err = require_waccess(env, dir_ii);
+	err = require_waccess(rc->opi, dir_ii);
 	if (err) {
 		return err;
 	}
-	err = require_waccess(env, newdir_ii);
+	err = require_waccess(rc->opi, newdir_ii);
 	if (err) {
 		return err;
 	}
-	err = check_sticky(env, dir_ii, ii);
+	err = check_sticky(rc->opi, dir_ii, ii);
 	if (err) {
 		return err;
 	}
-	err = check_sticky(env, newdir_ii, old_ii);
+	err = check_sticky(rc->opi, newdir_ii, old_ii);
 	if (err) {
 		return err;
 	}
-	if (flags & RENAME_EXCHANGE) {
+	if (rc->flags & RENAME_EXCHANGE) {
 		if (!ii) {
 			return -EINVAL;
 		}
@@ -1054,12 +1118,29 @@ static int check_rename(const struct voluta_rename_ctx *rename_ctx)
 		}
 	} else if (old_ii && i_isdir(old_ii) && (old_ii != ii)) {
 		if (ii) {
-			err = check_rmdir(env, dir_ii, old_ii);
+			err = check_rmdir(&env->opi, dir_ii, old_ii);
 		} else {
 			err = require_nomlink(newdir_ii);
 		}
 	}
 	return err;
+}
+
+static int resolve_rename(struct voluta_rename_ctx *rc)
+{
+	int err;
+
+	err = voluta_do_lookup(rc->sbi, rc->opi,
+			       rc->dir_ii, rc->name, &rc->ii);
+	if (err) {
+		return err;
+	}
+	err = voluta_do_lookup(rc->sbi, rc->opi,
+			       rc->newdir_ii, rc->newname, &rc->old_ii);
+	if (err && (err != -ENOENT)) {
+		return err;
+	}
+	return 0;
 }
 
 int voluta_do_rename(struct voluta_env *env,
@@ -1071,6 +1152,8 @@ int voluta_do_rename(struct voluta_env *env,
 	int err;
 	struct voluta_rename_ctx rename_ctx = {
 		.env = env,
+		.sbi = sbi_of(env),
+		.opi = opi_of(env),
 		.dir_ii = dir_ii,
 		.name = name,
 		.ii = NULL,
@@ -1081,19 +1164,15 @@ int voluta_do_rename(struct voluta_env *env,
 		.flags = flags
 	};
 
-	err = voluta_do_lookup(env, dir_ii, name, &rename_ctx.ii);
+	err = resolve_rename(&rename_ctx);
 	if (err) {
-		return err;
-	}
-	err = voluta_do_lookup(env, newdir_ii, newname, &rename_ctx.old_ii);
-	if (err && (err != -ENOENT)) {
 		return err;
 	}
 	err = check_rename(&rename_ctx);
 	if (err) {
 		return err;
 	}
-	err = rename_safely(&rename_ctx);
+	err = do_rename(&rename_ctx);
 	if (err) {
 		return err;
 	}
@@ -1108,29 +1187,53 @@ union voluta_utf32_name_buf {
 } voluta_aligned64;
 
 
-static int name_to_hash(const struct voluta_env *env, const char *name,
-			size_t name_len, struct voluta_hash256 *out_hash)
+static int require_utf8_name(const struct voluta_sb_info *sbi,
+			     const char *name, size_t name_len)
 {
-	int err;
 	char *in, *out;
 	size_t len, ret, outlen, datlen;
-	const struct voluta_crypto *crypto = &env->crypto;
 	union voluta_utf32_name_buf outbuf;
 
 	in = (char *)name;
 	len = name_len;
 	out = outbuf.dat;
 	outlen = sizeof(outbuf.dat);
-	ret = iconv(env->iconv_handle, &in, &len, &out, &outlen);
+	ret = iconv(sbi->s_namei_iconv, &in, &len, &out, &outlen);
 	if ((ret != 0) || len || (outlen % 4)) {
 		return errno ? -errno : -EINVAL;
 	}
 	datlen = sizeof(outbuf.dat) - outlen;
-	err = voluta_sha256_of(crypto, outbuf.dat, datlen, out_hash);
-	if (err) {
-		return err;
+	if (datlen == 0) {
+		return -EINVAL;
 	}
 	return 0;
+}
+
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
+
+static uint64_t hash256_to_u64(const struct voluta_hash256 *hash)
+{
+	uint64_t v = 0;
+
+	VOLUTA_STATICASSERT_GT(sizeof(hash->hash), sizeof(v));
+	for (size_t i = 0; i < 8; ++i) {
+		v = (v << 8) | (uint64_t)(hash->hash[i]);
+	}
+	return v;
+}
+
+static int name_to_hash(const struct voluta_crypto *crypto,
+			const struct voluta_inode_info *dir_ii,
+			const char *name, size_t name_len, uint64_t *out_hash)
+{
+	int err = -EINVAL;
+	struct voluta_hash256 sha256;
+
+	if (voluta_dir_hasflag(dir_ii, VOLUTA_DIRF_HASH_SHA256)) {
+		err = voluta_sha256_of(crypto, name, name_len, &sha256);
+		*out_hash = hash256_to_u64(&sha256);
+	}
+	return err;
 }
 
 static int require_valid_name(const char *name, size_t len)
@@ -1150,7 +1253,16 @@ static int require_valid_name(const char *name, size_t len)
 	return 0;
 }
 
-int voluta_name_to_str(struct voluta_env *env,
+
+static int require_valid_encoding(const struct voluta_sb_info *sbi,
+				  const struct voluta_inode_info *ii,
+				  const char *name, size_t name_len)
+{
+	return voluta_has_iname_utf8(ii) ?
+	       require_utf8_name(sbi, name, name_len) : -EINVAL;
+}
+
+int voluta_name_to_str(const struct voluta_sb_info *sbi,
 		       const struct voluta_inode_info *ii,
 		       const char *name, struct voluta_str *str)
 {
@@ -1162,30 +1274,32 @@ int voluta_name_to_str(struct voluta_env *env,
 	if (err) {
 		return err;
 	}
+	err = require_valid_encoding(sbi, ii, name, len);
+	if (err) {
+		return err;
+	}
 	str->str = name;
 	str->len = len;
-
-	/* TODO: if ii is dir, Use flags to verify names (+xattr-names) */
-	voluta_unused(env);
-	voluta_unused(ii);
 	return 0;
 }
 
-int voluta_name_to_qstr(struct voluta_env *env,
+int voluta_name_to_qstr(const struct voluta_sb_info *sbi,
 			const struct voluta_inode_info *dir_ii,
 			const char *name, struct voluta_qstr *qstr)
 {
 	int err;
+	struct voluta_str *str = &qstr->str;
+	const struct voluta_crypto *crypto = sbi->s_cstore->crypto;
 
 	err = require_dir(dir_ii);
 	if (err) {
 		return err;
 	}
-	err = voluta_name_to_str(env, dir_ii, name, &qstr->str);
+	err = voluta_name_to_str(sbi, dir_ii, name, str);
 	if (err) {
 		return err;
 	}
-	err = name_to_hash(env, qstr->str.str, qstr->str.len, &qstr->hash);
+	err = name_to_hash(crypto, dir_ii, str->str, str->len, &qstr->hash);
 	if (err) {
 		return err;
 	}
@@ -1194,11 +1308,9 @@ int voluta_name_to_qstr(struct voluta_env *env,
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-int voluta_do_statvfs(struct voluta_env *env, struct statvfs *stvfs)
+int voluta_do_statvfs(const struct voluta_sb_info *sbi, struct statvfs *stvfs)
 {
-	const struct voluta_sb_info *sbi = sbi_of(env);
-
-	memset(stvfs, 0, sizeof(*stvfs));
+	voluta_memzero(stvfs, sizeof(*stvfs));
 	stvfs->f_namemax = VOLUTA_NAME_MAX;
 	voluta_space_to_statvfs(sbi, stvfs);
 	return 0;

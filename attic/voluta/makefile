@@ -87,9 +87,9 @@ CFLAGS += -Wunknown-pragmas -Wunused-macros -Wendif-labels
 CFLAGS += -Wvla -Waddress -Woverlength-strings -Wconversion -Wsign-conversion
 CFLAGS += -Wunreachable-code -Wwrite-strings -Wlarger-than=4096
 CFLAGS += -Wframe-larger-than=4096 -Wmissing-field-initializers
-CFLAGS += -Wstrict-aliasing=2 -Warray-bounds -Wstringop-truncation
+CFLAGS += -Wstrict-aliasing=2 -Warray-bounds
 CFLAGS += -fPIC -fwrapv -fstrict-aliasing
-CFLAGS += -fstack-protector -fstack-check -fstack-protector-strong
+CFLAGS += -fstack-protector -fstack-protector-strong # -fstack-check
 
 # C-Dialect compilation flags
 CFLAGS += -Wbad-function-cast -Wmissing-prototypes -Waggregate-return
@@ -121,6 +121,7 @@ ifeq ($(CC), gcc)
 CFLAGS += -Werror -Wstack-usage=4096 -Wlogical-op -Wjump-misses-init
 CFLAGS += -Wunsuffixed-float-constants -Wmultistatement-macros
 CFLAGS += -Wunused-const-variable=2 -Wswitch-unreachable
+CFLAGS += -Wstringop-truncation
 else ifeq ($(CC), clang)
 endif
 

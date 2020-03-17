@@ -102,7 +102,7 @@ def clang_analyzer_checkers(clang: str, subs: tuple) -> list:
 def clang_scan_build(srcdir: str) -> None:
     '''Run clang tool on root-dir of project'''
     (clang, clangxx, scan_build) = setup_clang_env()
-    subs = ('core', 'unix', 'deadcode', 'security')
+    subs = ('core', 'unix', 'deadcode', 'nullability', 'unix', 'valist')
     chks = clang_analyzer_checkers(clang, subs)
     enable_chks = ' '.join([' -enable-checker ' + chk for chk in chks])
     builddir = os.path.join(srcdir, 'build')

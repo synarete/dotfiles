@@ -2,7 +2,7 @@
 /*
  * This file is part of libvoluta
  *
- * Copyright (C) 2019 Shachar Sharon
+ * Copyright (C) 2020 Shachar Sharon
  *
  * Libvoluta is free software: you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -26,17 +26,6 @@
 #include "voluta-lib.h"
 
 
-/*
- * ISSUE-0000 (INFO): Sample issue
- *
- * An example of a way to document isses within the code. First line of issue's
- * comment must be in the format of: ISSUE-<NUM> (<TYPE>): <DESC>, where:
- *   <NUM> is a 4 digits unique issue number
- *   <TYPE> is the issue's type (BUG, FIXME, TODO, INFO)
- *   <DESC> is a short human-readable description
- */
-
-
 /* Default mode for root inode */
 #define VOLUTA_ROOTDIR_MODE (S_IFDIR | 0755)
 
@@ -47,13 +36,13 @@ static int g_libvoluta_init;
 
 void voluta_env_setmode(struct voluta_env *env, bool pedantic)
 {
-	env->qmal.pedantic_mode = pedantic;
+	env->qal.pedantic_mode = pedantic;
 }
 
 void voluta_env_setcreds(struct voluta_env *env,
 			 const struct voluta_ucred *ucred)
 {
-	struct voluta_ucred *dst_ucred = &env->ucred;
+	struct voluta_ucred *dst_ucred = &env->opi.ucred;
 
 	memcpy(dst_ucred, ucred, sizeof(*dst_ucred));
 }
@@ -67,22 +56,22 @@ static void env_setup_defaults(struct voluta_env *env)
 		.umask = 0002
 	};
 
-	memset(env, 0, sizeof(*env));
+	voluta_memzero(env, sizeof(*env));
 	voluta_env_setcreds(env, &self_ucred);
 	env->tmpfs_mode = false;
-	env->iconv_handle = (iconv_t)(-1);
 }
 
 static int env_init_memory_allocator(struct voluta_env *env)
 {
 	int err;
-	size_t memsize = 0, memwant = 4 * VOLUTA_GIGA;
+	size_t memsize = 0;
+	const size_t memwant = 4 * VOLUTA_UGIGA;
 
 	err = voluta_resolve_memsize(memwant, &memsize);
 	if (err) {
 		return err;
 	}
-	err = voluta_qmalloc_init(&env->qmal, memsize);
+	err = voluta_qalloc_init(&env->qal, memsize);
 	if (err) {
 		return err;
 	}
@@ -91,32 +80,12 @@ static int env_init_memory_allocator(struct voluta_env *env)
 
 static int env_init_cache(struct voluta_env *env)
 {
-	return voluta_cache_init(&env->cache, &env->qmal);
-}
-
-static int env_open_iconv(struct voluta_env *env)
-{
-	int err = 0;
-
-	/* Using UTF32LE to avoid BOM (byte-order-mark) character */
-	env->iconv_handle = iconv_open("UTF32LE", "UTF8");
-	if (env->iconv_handle == (iconv_t)(-1)) {
-		err = errno ? -errno : -ENOTSUP;
-	}
-	return err;
-}
-
-static void env_close_iconv(struct voluta_env *env)
-{
-	if (env->iconv_handle == (iconv_t)(-1)) {
-		iconv_close(env->iconv_handle);
-		env->iconv_handle = (iconv_t)(-1);
-	}
+	return voluta_cache_init(&env->cache, &env->qal);
 }
 
 static int env_init_super(struct voluta_env *env)
 {
-	return voluta_sbi_init(&env->sbi, &env->cache, &env->vdi);
+	return voluta_sbi_init(&env->sbi, &env->cache, &env->cstore);
 }
 
 static int env_init_crypto(struct voluta_env *env)
@@ -126,7 +95,7 @@ static int env_init_crypto(struct voluta_env *env)
 
 static int env_init_volume(struct voluta_env *env)
 {
-	return voluta_vdi_init(&env->vdi, &env->qmal, &env->crypto);
+	return voluta_cstore_init(&env->cstore, &env->qal, &env->crypto);
 }
 
 static int env_init_fusei(struct voluta_env *env)
@@ -145,10 +114,6 @@ static int env_init(struct voluta_env *env)
 		return err;
 	}
 	err = env_init_cache(env);
-	if (err) {
-		return err;
-	}
-	err = env_open_iconv(env);
 	if (err) {
 		return err;
 	}
@@ -192,13 +157,12 @@ int voluta_env_new(struct voluta_env **out_env)
 
 static void env_fini(struct voluta_env *env)
 {
-	env_close_iconv(env);
 	voluta_fusei_fini(&env->fusei);
-	voluta_vdi_fini(&env->vdi);
+	voluta_cstore_fini(&env->cstore);
 	voluta_crypto_fini(&env->crypto);
 	voluta_sbi_fini(&env->sbi);
 	voluta_cache_fini(&env->cache);
-	voluta_qmalloc_fini(&env->qmal);
+	voluta_qalloc_fini(&env->qal);
 	voluta_burnstack();
 }
 
@@ -221,11 +185,11 @@ static int env_derive_key(struct voluta_env *env,
 				    pass->salt, strlen(pass->salt), iv_key);
 }
 
-
 int voluta_env_setup_key(struct voluta_env *env,
 			 const char *passphrase, const char *salt)
 {
-	size_t passlen, saltlen;
+	size_t passlen;
+	size_t saltlen;
 	struct voluta_passphrase pass;
 
 	if (passphrase == NULL) {
@@ -239,11 +203,28 @@ int voluta_env_setup_key(struct voluta_env *env,
 	if (saltlen >= sizeof(pass.salt)) {
 		return -EINVAL;
 	}
-	memset(&pass, 0, sizeof(pass));
+	voluta_memzero(&pass, sizeof(pass));
 	memcpy(pass.pass, passphrase, passlen);
 	memcpy(pass.salt, salt, saltlen);
 
 	return env_derive_key(env, &pass);
+}
+
+static void generate_random_passphrase(struct voluta_passphrase *pass)
+{
+	voluta_memzero(pass, sizeof(*pass));
+
+	voluta_fill_random_ascii(pass->pass, sizeof(pass->pass) - 1);
+	voluta_fill_random_ascii(pass->salt, sizeof(pass->salt) - 1);
+}
+
+int voluta_env_setup_tmpkey(struct voluta_env *env)
+{
+	struct voluta_passphrase pass;
+
+	env->tmpfs_mode = true;
+	generate_random_passphrase(&pass);
+	return voluta_env_setup_key(env, pass.pass, pass.salt);
 }
 
 static int load_master_record(const struct voluta_sb_info *sbi)
@@ -254,7 +235,7 @@ static int load_master_record(const struct voluta_sb_info *sbi)
 		.version = VOLUTA_VERSION,
 	};
 
-	err = voluta_vdi_read(sbi->s_vdi, 0, sizeof(mr), &mr);
+	err = voluta_pstore_read(sbi->s_pstore, 0, sizeof(mr), &mr);
 	if (err) {
 		return err;
 	}
@@ -274,15 +255,15 @@ static int reload_meta_data(struct voluta_env *env)
 	struct voluta_inode_info *root_ii = NULL;
 	struct voluta_sb_info *sbi = sbi_of(env);
 
-	err = voluta_load_super_block(sbi);
+	err = voluta_load_sb(sbi);
 	if (err) {
 		return err;
 	}
-	err = voluta_load_ag_space(sbi);
+	err = voluta_load_agmaps(sbi);
 	if (err) {
 		return err;
 	}
-	err = voluta_load_inode_table(sbi);
+	err = voluta_load_itable(sbi);
 	if (err) {
 		return err;
 	}
@@ -298,7 +279,6 @@ static int reload_meta_data(struct voluta_env *env)
 	return 0;
 }
 
-
 static int load_from_volume(struct voluta_env *env)
 {
 	int err;
@@ -309,7 +289,11 @@ static int load_from_volume(struct voluta_env *env)
 	if (err) {
 		return err;
 	}
-	err = voluta_vdi_open(&env->vdi, path);
+	err = voluta_pstore_open(sbi->s_pstore, path);
+	if (err) {
+		return err;
+	}
+	err = voluta_pstore_flock(sbi->s_pstore);
 	if (err) {
 		return err;
 	}
@@ -318,7 +302,7 @@ static int load_from_volume(struct voluta_env *env)
 		return err;
 	}
 	/* TODO: Wrong logic -- FIXME */
-	err = voluta_prepare_space(sbi, path, env->vdi.size);
+	err = voluta_prepare_space(sbi, path, sbi->s_pstore->size);
 	if (err) {
 		return err;
 	}
@@ -329,31 +313,22 @@ static int load_from_volume(struct voluta_env *env)
 	return 0;
 }
 
-static void fill_random_pass(struct voluta_passphrase *pass)
-{
-	memset(pass, 0, sizeof(*pass));
-
-	voluta_fill_random_ascii(pass->pass, sizeof(pass->pass) - 1);
-	voluta_fill_random_ascii(pass->salt, sizeof(pass->salt) - 1);
-}
-
 static int load_as_tmpfs(struct voluta_env *env)
 {
 	int err;
-	loff_t size;
-	struct voluta_passphrase pass;
 
-	fill_random_pass(&pass);
-	err = voluta_env_setup_key(env, pass.pass, pass.salt);
+	err = voluta_env_setup_tmpkey(env);
 	if (err) {
 		return err;
 	}
-	size = (loff_t)env->volume_size;
-	err = voluta_fs_format(env, NULL, size);
+	err = voluta_fs_format(env, NULL, env->volume_size);
 	if (err) {
 		return err;
 	}
-	voluta_itable_init(&env->sbi.s_itable); /* revert state */
+	err = voluta_init_itable(&env->sbi); /* revert state */
+	if (err) {
+		return err;
+	}
 	err = reload_meta_data(env);
 	if (err) {
 		return err;
@@ -397,7 +372,14 @@ int voluta_env_exec(struct voluta_env *env)
 
 int voluta_env_term(struct voluta_env *env)
 {
-	voluta_vdi_close(&env->vdi);
+	int err;
+	struct voluta_sb_info *sbi = sbi_of(env);
+
+	err = voluta_pstore_funlock(sbi->s_pstore);
+	if (err) {
+		return err;
+	}
+	voluta_pstore_close(sbi->s_pstore);
 	voluta_burnstack();
 	return 0;
 }
@@ -431,7 +413,7 @@ void voluta_env_setparams(struct voluta_env *env, const char *mntpoint,
 
 size_t voluta_env_allocated_mem(const struct voluta_env *env)
 {
-	return env->qmal.st.nbytes_used;
+	return env->qal.st.nbytes_used;
 }
 
 void voluta_env_cache_stats(const struct voluta_env *env,
@@ -439,9 +421,9 @@ void voluta_env_cache_stats(const struct voluta_env *env,
 {
 	const struct voluta_cache *cache = &env->cache;
 
-	cst->nblocks = cache->bcmap.count;
-	cst->ninodes = cache->icmap.count;
-	cst->nvnodes = cache->vcmap.count;
+	cst->nblocks = cache->bcq.count;
+	cst->ninodes = cache->icq.count;
+	cst->nvnodes = cache->vcq.count;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -453,43 +435,45 @@ static int format_master_record(const struct voluta_sb_info *sbi)
 		.version = VOLUTA_VERSION,
 	};
 
-	return voluta_vdi_write(sbi->s_vdi, 0, sizeof(mr), &mr);
+	return voluta_pstore_write(sbi->s_pstore, 0, sizeof(mr), &mr);
 }
 
 static void fixup_root_inode(struct voluta_inode_info *ii)
 {
-	struct voluta_inode *inode = ii->inode;
-
-	inode->i_nlink = 2;
-	inode->i_parent_ino = i_ino_of(ii);
+	voluta_fixup_rootd(ii);
 	i_dirtify(ii);
 }
 
-static int format_root_inode(struct voluta_env *env,
-			     struct voluta_inode_info **out_ii)
+static int format_root_inode(struct voluta_sb_info *sbi,
+			     const struct voluta_oper_info *opi)
 {
 	int err;
 	const mode_t mode = VOLUTA_ROOTDIR_MODE;
+	struct voluta_inode_info *root_ii = NULL;
 
-	err = voluta_new_inode(env, mode, VOLUTA_INO_NULL, out_ii);
+	err = voluta_new_inode(sbi, opi, mode, VOLUTA_INO_NULL, &root_ii);
 	if (err) {
 		return err;
 	}
-	fixup_root_inode(*out_ii);
+	fixup_root_inode(root_ii);
+	voluta_bind_root_ino(sbi, i_ino_of(root_ii));
 	return 0;
 }
 
 int voluta_fs_format(struct voluta_env *env, const char *path, loff_t size)
 {
 	int err;
-	struct voluta_inode_info *root_ii = NULL;
-	struct voluta_sb_info *sbi = &env->sbi;
+	struct voluta_sb_info *sbi = sbi_of(env);
 
 	err = voluta_prepare_space(sbi, env->volume_path, size);
 	if (err) {
 		return err;
 	}
-	err = voluta_vdi_create(&env->vdi, path, size);
+	err = voluta_pstore_create(sbi->s_pstore, path, size);
+	if (err) {
+		return err;
+	}
+	err = voluta_pstore_flock(sbi->s_pstore);
 	if (err) {
 		return err;
 	}
@@ -497,11 +481,11 @@ int voluta_fs_format(struct voluta_env *env, const char *path, loff_t size)
 	if (err) {
 		return err;
 	}
-	err = voluta_format_super_block(sbi);
+	err = voluta_format_sb(sbi);
 	if (err) {
 		return err;
 	}
-	err = voluta_format_uber_blocks(sbi);
+	err = voluta_format_agmaps(sbi);
 	if (err) {
 		return err;
 	}
@@ -509,12 +493,10 @@ int voluta_fs_format(struct voluta_env *env, const char *path, loff_t size)
 	if (err) {
 		return err;
 	}
-	err = format_root_inode(env, &root_ii);
+	err = format_root_inode(sbi, opi_of(env));
 	if (err) {
 		return err;
 	}
-	voluta_bind_root_ino(sbi, i_ino_of(root_ii));
-
 	err = voluta_commit_dirtyq(sbi, VOLUTA_F_SYNC);
 	if (err) {
 		return err;
@@ -557,7 +539,8 @@ static int check_sysconf(void)
 
 static int check_system_page_size(void)
 {
-	size_t page_size, page_shift[] = { 12, 13, 14, 16 };
+	size_t page_size;
+	const size_t page_shift[] = { 12, 13, 14, 16 };
 
 	page_size = voluta_sc_page_size();
 	if (page_size <= VOLUTA_BK_SIZE) {

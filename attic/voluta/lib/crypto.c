@@ -2,7 +2,7 @@
 /*
  * This file is part of libvoluta
  *
- * Copyright (C) 2019 Shachar Sharon
+ * Copyright (C) 2020 Shachar Sharon
  *
  * Libvoluta is free software: you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -42,7 +42,8 @@ int voluta_init_gcrypt(void)
 {
 	gcry_error_t err;
 	enum gcry_ctl_cmds cmd;
-	const char *version, *expected_version = GCRYPT_VERSION;
+	const char *version;
+	const char *expected_version = GCRYPT_VERSION;
 
 	version = gcry_check_version(expected_version);
 	if (!version) {
@@ -153,6 +154,16 @@ int voluta_sha512_of(const struct voluta_crypto *crypto,
 	return 0;
 }
 
+static uint32_t digest_to_uint32(const uint8_t *digest)
+{
+	const uint32_t d0 = digest[0];
+	const uint32_t d1 = digest[1];
+	const uint32_t d2 = digest[2];
+	const uint32_t d3 = digest[3];
+
+	return (d0 << 24) | (d1 << 16) | (d2 << 8) << d3;
+}
+
 int voluta_crc32_of(const struct voluta_crypto *crypto,
 		    const void *buf, size_t bsz, uint32_t *out_crc32)
 {
@@ -171,8 +182,7 @@ int voluta_crc32_of(const struct voluta_crypto *crypto,
 	gcry_md_final(md_hd);
 	ptr = gcry_md_read(md_hd, algo);
 
-	/* TODO: Fix endieness */
-	memcpy(out_crc32, ptr, sizeof(*out_crc32));
+	*out_crc32 = digest_to_uint32(ptr);
 	return 0;
 }
 
@@ -201,11 +211,11 @@ static void destroy_cipher(struct voluta_crypto *crypto)
 	}
 }
 
-static int prepare_encdec(const struct voluta_crypto *crypto,
+static int prepare_cipher(const struct voluta_crypto *crypto,
 			  const struct voluta_iv *iv,
 			  const struct voluta_key *key)
 {
-	size_t blklen, keysz;
+	size_t blklen;
 	gcry_error_t err;
 
 	blklen = gcry_cipher_get_algo_blklen(GCRY_CIPHER_AES256);
@@ -218,8 +228,7 @@ static int prepare_encdec(const struct voluta_crypto *crypto,
 		voluta_trace_gcrypt_err("gcry_cipher_reset", err);
 		return gcrypt_err(err);
 	}
-	keysz = sizeof(key->key);
-	err = gcry_cipher_setkey(crypto->chiper_hd, key->key, keysz);
+	err = gcry_cipher_setkey(crypto->chiper_hd, key->key, sizeof(key->key));
 	if (err) {
 		voluta_trace_gcrypt_err("gcry_cipher_setkey", err);
 		return gcrypt_err(err);
@@ -243,6 +252,11 @@ static int encrypt_data(const struct voluta_crypto *crypto,
 		voluta_trace_gcrypt_err("gcry_cipher_encrypt", err);
 		return gcrypt_err(err);
 	}
+	err = gcry_cipher_final(crypto->chiper_hd);
+	if (err) {
+		voluta_trace_gcrypt_err("gcry_cipher_final", err);
+		return gcrypt_err(err);
+	}
 	return 0;
 }
 
@@ -251,15 +265,17 @@ int voluta_encrypt_bk(const struct voluta_crypto *crypto,
 		      const union voluta_bk *bk, union voluta_bk *enc_bk)
 {
 	int err;
-	const size_t bksz = sizeof(bk->bk);
 
-	err = prepare_encdec(crypto, iv, key);
+	err = prepare_cipher(crypto, iv, key);
 	if (err) {
 		return err;
 	}
-	err = encrypt_data(crypto, bk->bk, enc_bk->bk, bksz);
-	if (err) {
-		return err;
+	for (size_t i = 0; i < ARRAY_SIZE(bk->kbs); ++i) {
+		err = encrypt_data(crypto, &bk->kbs[i], &enc_bk->kbs[i],
+				   sizeof(enc_bk->kbs[i]));
+		if (err) {
+			return err;
+		}
 	}
 	return 0;
 }
@@ -275,6 +291,11 @@ static int decrypt_data(const struct voluta_crypto *crypto,
 		voluta_trace_gcrypt_err("gcry_cipher_decrypt", err);
 		return gcrypt_err(err);
 	}
+	err = gcry_cipher_final(crypto->chiper_hd);
+	if (err) {
+		voluta_trace_gcrypt_err("gcry_cipher_final", err);
+		return gcrypt_err(err);
+	}
 	return 0;
 }
 
@@ -283,15 +304,17 @@ int voluta_decrypt_bk(const struct voluta_crypto *crypto,
 		      const union voluta_bk *bk, union voluta_bk *dec_bk)
 {
 	int err;
-	const size_t bksz = sizeof(bk->bk);
 
-	err = prepare_encdec(crypto, iv, key);
+	err = prepare_cipher(crypto, iv, key);
 	if (err) {
 		return err;
 	}
-	err = decrypt_data(crypto, bk->bk, dec_bk->bk, bksz);
-	if (err) {
-		return err;
+	for (size_t i = 0; i < ARRAY_SIZE(bk->kbs); ++i) {
+		err = decrypt_data(crypto, &bk->kbs[i], &dec_bk->kbs[i],
+				   sizeof(dec_bk->kbs[i]));
+		if (err) {
+			return err;
+		}
 	}
 	return 0;
 }
@@ -310,7 +333,7 @@ int voluta_derive_iv_key(const struct voluta_crypto *crypto,
 	struct voluta_key *key = &iv_key->key;
 	struct voluta_hash512 sha;
 
-	memset(&sha, 0, sizeof(sha));
+	voluta_memzero(&sha, sizeof(sha));
 	err = voluta_sha512_of(crypto, salt, saltlen, &sha);
 	if (err) {
 		return err;
@@ -344,12 +367,13 @@ void voluta_fill_random(void *buf, size_t len, bool very_strong)
 
 void voluta_fill_random_ascii(char *str, size_t len)
 {
-	size_t pos, nchars, nrands = 0;
+	size_t pos;
+	size_t nrands = 0;
 	uint32_t rands[64];
 	const char *chset = "abcdefghijklmnopqrstuvwxyz"
 			    "ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789";
+	const size_t nchars = strlen(chset);
 
-	nchars = strlen(chset);
 	for (size_t i = 0; i < len; ++i) {
 		if (nrands == 0) {
 			nrands = ARRAY_SIZE(rands);
@@ -366,7 +390,7 @@ int voluta_crypto_init(struct voluta_crypto *crypto)
 {
 	int err;
 
-	memset(crypto, 0, sizeof(*crypto));
+	voluta_memzero(crypto, sizeof(*crypto));
 	err = setup_mdigest(crypto);
 	if (err) {
 		return err;
