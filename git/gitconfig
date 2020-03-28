@@ -5,7 +5,7 @@
 [core]
 	whitespace = trailing-space,space-before-tab
 	# editor = "emacsclient -t"
-        editor = vim
+        editor = emacs
 	bigfilethreshold = 256k
 	autocrlf = input
 	# excludesfile = ${HOME}/.gitignore_global
@@ -75,6 +75,3 @@
 
 [credential]
 	helper = cache
-
-
-

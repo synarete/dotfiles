@@ -21,12 +21,10 @@
 (require 'make-mode)
 (require 'magit)
 (require 'git-commit)
-(require 'rst)
-(require 'color-theme)
 (require 'smart-tabs-mode)
 (require 'generic-x)
-(require 'whitespace)
 (require 'smooth-scroll)
+(require 'rst)
 
 ;;;; Appearence:
 
@@ -74,20 +72,19 @@
 (setq default-major-mode 'text-mode)
 
 ;; Text lines limit to 80 chars
-(setq-default fill-column 80)
+(require 'fill-column-indicator)
+(setq fci-style 'rule)
+(setq fci-rule-width 1)
+(setq fci-rule-color "ivory")
+(setq-default fci-rule-column 80)
+(add-hook 'c-mode-hook 'fci-mode)
+(setq auto-fill-mode 1)
 
 ;; Turn on syntax hilighting
 (global-font-lock-mode)
 
 ;; Delete seleted text when typing
 (delete-selection-mode 1)
-
-;; Show trailing whitespaces
-(setq-default show-trailing-whitespace t)
-
-;; Make whitespace-mode use just basic coloring (no space)
-(setq whitespace-style
-      (quote (tabs newline tab-mark newline-mark)))
 
 ;; Highlight matching parantheses when the point is on them
 (show-paren-mode 1)
@@ -109,8 +106,17 @@
 (set-default-font "Monospace 11")
 
 
-
 ;;;; Behaviour:
+
+;; Enable whitespace-mode
+(require 'whitespace)
+(setq whitespace-line-column 80
+      whitespace-style '(tabs tab-mark trailing lines-tail))
+(add-hook 'python-mode-hook 'whitespace-mode)
+(add-hook 'c-mode-hook 'whitespace-mode)
+;(global-whitespace-mode 1)
+
+(setq-default show-trailing-whitespace t)
 
 ;; Truncate lines at 80
 (add-hook 'text-mode-hook 'turn-on-auto-fill)
@@ -130,7 +136,6 @@
 ;; Remove trailing whitespaces upon save
 (add-hook 'before-save-hook 'delete-trailing-whitespace)
 (add-hook 'before-save-hook 'whitespace-cleanup)
-
 
 ;; Enable smoth-scrolling
 (smooth-scroll-mode t)
@@ -201,6 +206,10 @@
 ;; Window switching
 (windmove-default-keybindings 'control)  ;; C-[direction]
 (global-set-key (kbd "C-x -") 'rotate-windows)
+(global-set-key (kbd "C-x <up>") 'windmove-up)
+(global-set-key (kbd "C-x <down>") 'windmove-down)
+(global-set-key (kbd "C-x <left>") 'windmove-left)
+(global-set-key (kbd "C-x <right>") 'windmove-right)
 
 ;; Buffer navigation
 (global-set-key "\M-[M" 'scroll-down)      ; PgUp = scroll-down
@@ -288,12 +297,6 @@
             (setq indent-tabs-mode t)
             (setq tab-width 8)))
 
-;; SCons
-(setq auto-mode-alist
-      (cons '("SConstruct" . python-mode) auto-mode-alist))
-(setq auto-mode-alist
-      (cons '("SConscript" . python-mode) auto-mode-alist))
-
 ;; Shell-mode
 (add-hook 'sh-mode-hook
           (lambda ()
@@ -320,21 +323,7 @@
 ;;;; Colors:
 
 ;; Prefered color theme + private customizations
-(color-theme-initialize)
-(load-theme 'wombat t)
-                                        ;(load-theme 'twilight t)
+(require 'color-theme)
+(color-theme-initialize)                                       
+(load-theme 'twilight t) ;; wombat
 (set-face-underline-p 'highlight nil)
-(custom-set-variables
- ;; custom-set-variables was added by Custom.
- ;; If you edit it by hand, you could mess it up, so be careful.
- ;; Your init file should contain only one such instance.
- ;; If there is more than one, they won't work right.
- '(custom-safe-themes
-   (quote
-    ("b46ee2c193e350d07529fcd50948ca54ad3b38446dcbd9b28d0378792db5c088" default))))
-(custom-set-faces
- ;; custom-set-faces was added by Custom.
- ;; If you edit it by hand, you could mess it up, so be careful.
- ;; Your init file should contain only one such instance.
- ;; If there is more than one, they won't work right.
- )
