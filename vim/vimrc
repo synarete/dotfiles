@@ -101,6 +101,12 @@ set laststatus=2
 highlight StatusLine cterm=NONE ctermfg=DarkGray ctermbg=NONE
 	\ gui=NONE guifg=Gray32 guibg=NONE
 
+" Display buffers-list with F5
+nnoremap <F5> :buffers<CR>:buffer<Space>
+" Cycle buffers
+nnoremap <C-n> :bnext<CR>
+nnoremap <C-p> :bprevious<CR>
+
 
 
 
