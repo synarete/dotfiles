@@ -101,6 +101,7 @@ set nocscopeverbose
 
 " Display status line with nice colors
 set laststatus=2
+set statusline=%-10.3n
 highlight StatusLine cterm=NONE ctermfg=DarkGray ctermbg=NONE
 	\ gui=NONE guifg=Gray32 guibg=NONE
 

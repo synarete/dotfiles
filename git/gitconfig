@@ -4,8 +4,7 @@
 
 [core]
 	whitespace = trailing-space,space-before-tab
-	# editor = "emacsclient -t"
-        editor = emacs
+        editor = vim
 	bigfilethreshold = 256k
 	autocrlf = input
 	# excludesfile = ${HOME}/.gitignore_global
@@ -72,6 +71,10 @@
 
 [merge]
 	conflictstyle = diff3
+	tool = vimdiff
+
+[diff]
+	tool = vimdiff
 
 [credential]
 	helper = cache
