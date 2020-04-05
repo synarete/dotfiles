@@ -72,7 +72,7 @@ highlight LineNr term=bold cterm=NONE ctermfg=DarkGray ctermbg=NONE
 	\ gui=NONE guifg=Gray16 guibg=NONE
 
 " Colored colum at 80
-highlight ColorColumn ctermbg=7 guibg=Gray7
+highlight ColorColumn ctermbg=3 guibg=Gray3
 set colorcolumn=80
 
 " Set utf8 as standard encoding and en_US as the standard language
