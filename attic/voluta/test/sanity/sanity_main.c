@@ -123,9 +123,9 @@ static void voluta_t_setup_globals(int argc, char *argv[])
 	voluta_t_g_globals.argc = argc;
 	voluta_t_g_globals.argv = argv;
 	voluta_t_g_globals.repeat_count = 1;
-	voluta_g_trace_flags =
-		(VOLUTA_TRACE_INFO | VOLUTA_TRACE_WARN |
-		 VOLUTA_TRACE_ERROR | VOLUTA_TRACE_CRIT | VOLUTA_TRACE_STDOUT);
+	voluta_g_log_mask =
+		(VOLUTA_LOG_INFO | VOLUTA_LOG_WARN |
+		 VOLUTA_LOG_ERROR | VOLUTA_LOG_CRIT | VOLUTA_LOG_STDOUT);
 }
 
 static int voluta_t_tests_mask(void)

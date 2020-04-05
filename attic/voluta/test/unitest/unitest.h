@@ -175,8 +175,10 @@ voluta_ut_new_iobuf(struct voluta_ut_ctx *, loff_t, size_t);
 int voluta_ut_load(struct voluta_ut_ctx *ut_ctx);
 int voluta_ut_statfs(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 		     struct statvfs *st);
-int voluta_ut_getattr(struct voluta_ut_ctx *ut_ctx, ino_t ino, struct stat *st);
-int voluta_ut_statx(struct voluta_ut_ctx *ut_ctx, ino_t ino, struct statx *stx);
+int voluta_ut_getattr(struct voluta_ut_ctx *ut_ctx, ino_t ino,
+		      struct stat *st);
+int voluta_ut_statx(struct voluta_ut_ctx *ut_ctx, ino_t ino,
+		    struct statx *stx);
 int voluta_ut_utimens(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 		      const struct stat *utimes, struct stat *st);
 int voluta_ut_access(struct voluta_ut_ctx *ut_ctx, ino_t ino, int mode);
@@ -229,7 +231,8 @@ int voluta_ut_listxattr(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 			struct voluta_ut_listxattr_ctx *ut_listxattr_ctx);
 
 /* no-fail operations wrappers */
-void voluta_ut_statfs_ok(struct voluta_ut_ctx *ut_ctx, ino_t, struct statvfs *);
+void voluta_ut_statfs_ok(struct voluta_ut_ctx *ut_ctx, ino_t,
+			 struct statvfs *);
 void voluta_ut_statfs_rootd(struct voluta_ut_ctx *ut_ctx, struct statvfs *st);
 void voluta_ut_statx_exists(struct voluta_ut_ctx *ut_ctx,
 			    ino_t ino, struct statx *stx);
@@ -372,7 +375,6 @@ void voluta_ut_prandom_seq(long *arr, size_t len, long base);
 #define ut_assert_ok(err)       voluta_assert_ok(err)
 #define ut_assert_err(err, val) voluta_assert_err(err, val)
 #define ut_assert_notnull(ptr)  voluta_assert_not_null(ptr)
-#define ut_assert_zero(z)       voluta_assert_eq(z, 0)
 
 #define ut_zerobuf(ut_ctx, n)   voluta_ut_zerobuf(ut_ctx, n)
 #define ut_biovec(ut_ctx, n)    voluta_ut_new_biovec(ut_ctx, n)

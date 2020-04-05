@@ -52,10 +52,6 @@
 #define VOLUTA_CONCAT(x_, y_)   x_ ## y_
 
 /* commons */
-uint32_t voluta_min32(uint32_t x, uint32_t y);
-
-uint32_t voluta_max32(uint32_t x, uint32_t y);
-
 size_t voluta_min(size_t x, size_t y);
 
 size_t voluta_min3(size_t x, size_t y, size_t z);
@@ -175,33 +171,33 @@ int voluta_memref(const struct voluta_qalloc *, const void *,
 		  size_t len, struct voluta_qmref *);
 
 
-/* tracing */
-#define VOLUTA_TRACE_DEBUG      (0x0001)
-#define VOLUTA_TRACE_INFO       (0x0002)
-#define VOLUTA_TRACE_WARN       (0x0004)
-#define VOLUTA_TRACE_ERROR      (0x0008)
-#define VOLUTA_TRACE_CRIT       (0x0010)
-#define VOLUTA_TRACE_STDOUT     (0x1000)
-#define VOLUTA_TRACE_SYSLOG     (0x2000)
+/* logging */
+#define VOLUTA_LOG_DEBUG        (0x0001)
+#define VOLUTA_LOG_INFO         (0x0002)
+#define VOLUTA_LOG_WARN         (0x0004)
+#define VOLUTA_LOG_ERROR        (0x0008)
+#define VOLUTA_LOG_CRIT         (0x0010)
+#define VOLUTA_LOG_STDOUT       (0x1000)
+#define VOLUTA_LOG_SYSLOG       (0x2000)
 
-extern int voluta_g_trace_flags;
+extern int voluta_g_log_mask;
 
-void voluta_tracef(int tr_mask, const char *fmt, ...);
+void voluta_logf(int log_mask, const char *fmt, ...);
 
-#define voluta_tr_debug(fmt, ...) \
-	voluta_tracef(VOLUTA_TRACE_DEBUG, fmt, __VA_ARGS__)
+#define voluta_log_debug(fmt, ...) \
+	voluta_logf(VOLUTA_LOG_DEBUG, fmt, __VA_ARGS__)
 
-#define voluta_tr_info(fmt, ...) \
-	voluta_tracef(VOLUTA_TRACE_INFO, fmt, __VA_ARGS__)
+#define voluta_log_info(fmt, ...) \
+	voluta_logf(VOLUTA_LOG_INFO, fmt, __VA_ARGS__)
 
-#define voluta_tr_warn(fmt, ...) \
-	voluta_tracef(VOLUTA_TRACE_WARN, fmt, __VA_ARGS__)
+#define voluta_log_warn(fmt, ...) \
+	voluta_logf(VOLUTA_LOG_WARN, fmt, __VA_ARGS__)
 
-#define voluta_tr_error(fmt, ...) \
-	voluta_tracef(VOLUTA_TRACE_ERROR, fmt, __VA_ARGS__)
+#define voluta_log_error(fmt, ...) \
+	voluta_logf(VOLUTA_LOG_ERROR, fmt, __VA_ARGS__)
 
-#define voluta_tr_crit(fmt, ...) \
-	voluta_tracef(VOLUTA_TRACE_CRIT, fmt, __VA_ARGS__)
+#define voluta_log_crit(fmt, ...) \
+	voluta_logf(VOLUTA_LOG_CRIT, fmt, __VA_ARGS__)
 
 
 /* run-time assertions*/

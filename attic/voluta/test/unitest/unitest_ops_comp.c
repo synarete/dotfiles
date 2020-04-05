@@ -40,7 +40,6 @@ void voluta_ut_statfs_rootd(struct voluta_ut_ctx *ut_ctx, struct statvfs *st)
 	voluta_ut_statfs_ok(ut_ctx, VOLUTA_INO_ROOT, st);
 }
 
-
 static void ut_assert_sane_statx(const struct statx *stx)
 {
 	ut_assert_gt(stx->stx_blksize, 0);
@@ -868,7 +867,7 @@ void voluta_ut_drop_caches_fully(struct voluta_ut_ctx *ut_ctx)
 
 	voluta_ut_drop_caches(ut_ctx);
 	voluta_env_cache_stats(ut_ctx->env, &cst);
-	ut_assert_zero(cst.nblocks);
-	ut_assert_zero(cst.ninodes);
-	ut_assert_zero(cst.nvnodes);
+	ut_assert_eq(cst.nblocks, 0);
+	ut_assert_eq(cst.nvnodes, 0);
+	ut_assert_eq(cst.ninodes, 0);
 }

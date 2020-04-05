@@ -76,7 +76,8 @@ struct voluta_globals {
 	char   *mount_point;
 	char   *mount_point_real;
 	char   *mount_subopts;
-	loff_t  mount_tmpfs;
+	char   *mount_tmpfs;
+	loff_t  mount_tmpfs_size;
 
 	/* Options for 'mkfs' sub-command */
 	char   *mkfs_passphrase;

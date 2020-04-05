@@ -28,7 +28,7 @@
 #define ARRAY_SIZE(x) VOLUTA_ARRAY_SIZE(x)
 
 #define voluta_trace_gcrypt_err(fn, err) \
-	do { voluta_tr_error("%s: %s", fn, gcry_strerror(err)); } while (0)
+	do { voluta_log_error("%s: %s", fn, gcry_strerror(err)); } while (0)
 
 
 static int gcrypt_err(gcry_error_t gcry_err)
@@ -47,7 +47,7 @@ int voluta_init_gcrypt(void)
 
 	version = gcry_check_version(expected_version);
 	if (!version) {
-		voluta_tr_warn("libgcrypt version != %s", expected_version);
+		log_warn("libgcrypt version != %s", expected_version);
 		return -1;
 	}
 	cmd = GCRYCTL_SUSPEND_SECMEM_WARN;
@@ -220,7 +220,7 @@ static int prepare_cipher(const struct voluta_crypto *crypto,
 
 	blklen = gcry_cipher_get_algo_blklen(GCRY_CIPHER_AES256);
 	if (blklen > sizeof(iv->iv)) {
-		voluta_tr_warn("bad blklen: %lu", blklen);
+		log_warn("bad blklen: %lu", blklen);
 		return -1;
 	}
 	err = gcry_cipher_reset(crypto->chiper_hd);

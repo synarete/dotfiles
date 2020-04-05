@@ -63,5 +63,6 @@ static const struct voluta_ut_testdef ut_local_tests[] = {
 	UT_DEFTEST(ut_access_root),
 };
 
-const struct voluta_ut_tests voluta_ut_utest_super = UT_MKTESTS(ut_local_tests);
+const struct voluta_ut_tests voluta_ut_utest_super = UT_MKTESTS(
+			ut_local_tests);
 

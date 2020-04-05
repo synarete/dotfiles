@@ -114,8 +114,9 @@ static void ut_link_unlink_many(struct voluta_ut_ctx *ut_ctx)
 	const char *lname;
 	const char *dname = T_NAME;
 	const char *fname = T_NAME;
-	const size_t nlinks_max = voluta_min(10000, VOLUTA_LINK_MAX);
+	const size_t nlinks_max = 10000;
 
+	ut_assert_le(nlinks_max, VOLUTA_LINK_MAX);
 	voluta_ut_mkdir_ok(ut_ctx, root_ino, dname, &dino);
 	voluta_ut_create_file(ut_ctx, dino, fname, &ino);
 	for (i = 0; i < nlinks_max; ++i) {

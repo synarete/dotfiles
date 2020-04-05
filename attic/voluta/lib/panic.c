@@ -72,8 +72,8 @@ int voluta_dump_backtrace(void)
 		if (err) {
 			return err;
 		}
-		voluta_tr_error("[<%p>] 0x%lx %s+0x%lx",
-				(void *)ip, (long)sp, sym, (long)off);
+		log_error("[<%p>] 0x%lx %s+0x%lx",
+			  (void *)ip, (long)sp, sym, (long)off);
 	}
 	return 0;
 }
@@ -103,8 +103,8 @@ static void voluta_dump_addr2line(void)
 	bt_cnt = (int)(VOLUTA_ARRAY_SIZE(bt_arr));
 	bt_len = unw_backtrace(bt_arr, bt_cnt);
 	bt_addrs_to_str(bt_addrs, sizeof(bt_addrs) - 1, bt_arr, bt_len);
-	voluta_tr_error("addr2line -a -C -e %s -f -p -s %s",
-			program_invocation_name, bt_addrs);
+	log_error("addr2line -a -C -e %s -f -p -s %s",
+		  program_invocation_name, bt_addrs);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -292,13 +292,13 @@ static void voluta_dump_panic_msg(const char *file, int line,
 	const char *es = " ";
 	const char *name = basename_of(file);
 
-	voluta_tr_error("%s", es);
+	log_error("%s", es);
 	if (errnum) {
-		voluta_tr_error("%s:%d: %s %d", name, line, msg, errnum);
+		log_error("%s:%d: %s %d", name, line, msg, errnum);
 	} else {
-		voluta_tr_error("%s:%d: %s", name, line, msg);
+		log_error("%s:%d: %s", name, line, msg);
 	}
-	voluta_tr_error("%s", es);
+	log_error("%s", es);
 }
 
 voluta_decl_nonreturn_fn

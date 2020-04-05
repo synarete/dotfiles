@@ -74,12 +74,12 @@ voluta_signal_hook_fn voluta_signal_callback_hook = NULL;
 static void sigaction_info_handler(int signum)
 {
 	/* TODO: trace DEBUG */
-	voluta_tr_info("signal: %d", signum);
+	voluta_log_info("signal: %d", signum);
 }
 
 static void sigaction_halt_handler(int signum)
 {
-	voluta_tr_info("halt-signal: %d", signum);
+	voluta_log_info("halt-signal: %d", signum);
 	voluta_globals.sig_halt = signum;
 	if (voluta_signal_callback_hook != NULL) {
 		/* Call sub-program specific logic */
@@ -93,7 +93,7 @@ static void sigaction_halt_handler(int signum)
 static void sigaction_term_handler(int signum)
 {
 	voluta_dump_backtrace();
-	voluta_tr_crit("term-signal: %d", signum);
+	voluta_log_crit("term-signal: %d", signum);
 	voluta_globals.sig_halt = signum;
 	voluta_globals.sig_fatal = signum;
 	exit(EXIT_FAILURE);
@@ -106,7 +106,7 @@ static void sigaction_abort_handler(int signum)
 	}
 
 	voluta_dump_backtrace();
-	voluta_tr_crit("abort-signal: %d", signum);
+	voluta_log_crit("abort-signal: %d", signum);
 	voluta_globals.sig_halt = signum;
 	voluta_globals.sig_fatal = signum;
 	abort(); /* Re-raise to _exit */
@@ -300,22 +300,22 @@ void voluta_daemonize(void)
 	if (err) {
 		voluta_die(0, "failed to daemonize");
 	}
-	voluta_g_trace_flags |= VOLUTA_TRACE_SYSLOG;
-	voluta_g_trace_flags |= VOLUTA_TRACE_STDOUT;
+	voluta_g_log_mask |= VOLUTA_LOG_SYSLOG;
+	voluta_g_log_mask |= VOLUTA_LOG_STDOUT;
 	voluta_burnstack();
 }
 
 void voluta_open_syslog(void)
 {
-	voluta_g_trace_flags |= VOLUTA_TRACE_SYSLOG;
+	voluta_g_log_mask |= VOLUTA_LOG_SYSLOG;
 	openlog(voluta_globals.name, LOG_CONS | LOG_NDELAY, 0);
 }
 
 void voluta_close_syslog(void)
 {
-	if (voluta_g_trace_flags & VOLUTA_TRACE_SYSLOG) {
+	if (voluta_g_log_mask & VOLUTA_LOG_SYSLOG) {
 		closelog();
-		voluta_g_trace_flags &= ~VOLUTA_TRACE_SYSLOG;
+		voluta_g_log_mask &= ~VOLUTA_LOG_SYSLOG;
 	}
 }
 
@@ -477,10 +477,10 @@ void voluta_init_process(void)
 	if (err) {
 		voluta_die(err, "unable to init lib");
 	}
-	voluta_g_trace_flags =
-		(VOLUTA_TRACE_INFO | VOLUTA_TRACE_WARN |
-		 VOLUTA_TRACE_ERROR | VOLUTA_TRACE_CRIT |
-		 VOLUTA_TRACE_STDOUT | VOLUTA_TRACE_SYSLOG);
+	voluta_g_log_mask =
+		(VOLUTA_LOG_INFO | VOLUTA_LOG_WARN |
+		 VOLUTA_LOG_ERROR | VOLUTA_LOG_CRIT |
+		 VOLUTA_LOG_STDOUT | VOLUTA_LOG_SYSLOG);
 	voluta_resolve_caps();
 }
 

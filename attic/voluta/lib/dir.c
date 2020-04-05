@@ -89,7 +89,7 @@ static mode_t safe_dttoif(mode_t dt)
 
 static void vaddr_of_htnode(struct voluta_vaddr *vaddr, loff_t off)
 {
-	voluta_vaddr_by_off(vaddr, VOLUTA_VTYPE_HTNODE, off);
+	vaddr_by_off(vaddr, VOLUTA_VTYPE_HTNODE, off);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -733,7 +733,8 @@ static enum voluta_dir_flags dis_flags(struct voluta_dir_ispec *dis)
 	return le32_to_cpu(dis->d_flags);
 }
 
-static void dis_set_flags(struct voluta_dir_ispec *dis, enum voluta_dir_flags f)
+static void dis_set_flags(struct voluta_dir_ispec *dis,
+			  enum voluta_dir_flags f)
 {
 	dis->d_flags = cpu_to_le32((uint32_t)f);
 }

@@ -131,8 +131,6 @@ WRAPPER_FUNCS = \
     assert
     bzero
     usleep
-    min
-    max
     '''
 
 DEPRECATED_FUNCS = \

@@ -33,6 +33,8 @@
 #define vaddr_isnull(va)                voluta_vaddr_isnull(va)
 #define vaddr_reset(va)                 voluta_vaddr_reset(va)
 #define vaddr_clone(va1, va2)           voluta_vaddr_clone(va1, va2)
+#define vaddr_by_off(va, vt, o)         voluta_vaddr_by_off(va, vt, o)
+#define vaddr_len(va)                   voluta_vaddr_len(va)
 #define v_dirtify(vi)                   voluta_dirtify_vi(vi)
 #define i_dirtify(ii)                   voluta_dirtify_ii(ii)
 #define i_refcnt_of(ii)                 voluta_inode_refcnt(ii)
@@ -71,8 +73,41 @@
 #define list_front(ls)                  voluta_list_front(ls)
 #define list_isempty(ls)                voluta_list_isempty(ls)
 
+#define log_debug(fmt, ...)             voluta_log_debug(fmt, __VA_ARGS__)
+#define log_info(fmt, ...)              voluta_log_info(fmt, __VA_ARGS__)
+#define log_warn(fmt, ...)              voluta_log_warn(fmt, __VA_ARGS__)
+#define log_error(fmt, ...)             voluta_log_error(fmt, __VA_ARGS__)
+#define log_crit(fmt, ...)              voluta_log_crit(fmt, __VA_ARGS__)
+
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 /* inlines */
+
+static inline size_t min(size_t x, size_t y)
+{
+	return (x < y) ? x : y;
+}
+
+static inline size_t min3(size_t x, size_t y, size_t z)
+{
+	return min(min(x, y), z);
+}
+
+static inline size_t max(size_t x, size_t y)
+{
+	return (x > y) ? x : y;
+}
+
+static inline size_t clamp(size_t v, size_t lo, size_t hi)
+{
+	return min(max(v, lo), hi);
+}
+
+static inline size_t div_round_up(size_t n, size_t d)
+{
+	return (n + d - 1) / d;
+}
+
+
 static inline bool off_isnull(loff_t off)
 {
 	return (off == VOLUTA_OFF_NULL);

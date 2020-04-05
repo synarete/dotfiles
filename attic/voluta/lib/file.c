@@ -176,12 +176,12 @@ static bool off_is_inrange(loff_t off, loff_t beg, loff_t end)
 
 static void vaddr_of_leaf(struct voluta_vaddr *vaddr, loff_t off)
 {
-	voluta_vaddr_by_off(vaddr, VOLUTA_VTYPE_DATA, off);
+	vaddr_by_off(vaddr, VOLUTA_VTYPE_DATA, off);
 }
 
 static void vaddr_of_tnode(struct voluta_vaddr *vaddr, loff_t off)
 {
-	voluta_vaddr_by_off(vaddr, VOLUTA_VTYPE_RTNODE, off);
+	vaddr_by_off(vaddr, VOLUTA_VTYPE_RTNODE, off);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -349,7 +349,8 @@ rtn_set_child_by_file_pos(struct voluta_radix_tnode *rtn,
 	rtn_set_child_at(rtn, slot, vaddr->off);
 }
 
-static bool rtn_isinrange(const struct voluta_radix_tnode *rtn, loff_t file_pos)
+static bool rtn_isinrange(const struct voluta_radix_tnode *rtn,
+			  loff_t file_pos)
 {
 	return off_is_inrange(file_pos, rtn_beg(rtn), rtn_end(rtn));
 }
@@ -388,7 +389,8 @@ static loff_t rtn_offset_at(const struct voluta_radix_tnode *rtn, size_t slot)
 	return off_to_ds(next_off);
 }
 
-static loff_t rtn_next_offset(const struct voluta_radix_tnode *rtn, size_t slot)
+static loff_t
+rtn_next_offset(const struct voluta_radix_tnode *rtn, size_t slot)
 {
 	size_t nbps;
 	loff_t soff;
@@ -423,7 +425,8 @@ static void rtn_init(struct voluta_radix_tnode *rtn,
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static struct voluta_reg_ispec *reg_ispec_of(const struct voluta_inode_info *ii)
+static struct voluta_reg_ispec *
+reg_ispec_of(const struct voluta_inode_info *ii)
 {
 	struct voluta_inode *inode = ii->inode;
 
@@ -594,16 +597,15 @@ static size_t io_length(const struct voluta_file_ctx *file_ctx)
 }
 
 static void post_io_update(const struct voluta_file_ctx *file_ctx,
-			   size_t *len, bool kill_priv)
+			   bool killprv)
 {
 	struct voluta_iattr attr;
 	struct voluta_inode_info *ii = file_ctx->ii;
 	const loff_t isz = i_size_of(ii);
 	const loff_t off = file_ctx->off;
+	const size_t len = io_length(file_ctx);
 
 	iattr_init(&attr, ii);
-
-	*len = io_length(file_ctx);
 	if (file_ctx->falloc) {
 		attr.ia_flags |= VOLUTA_ATTR_MCTIME;
 		if (!fl_keep_size(file_ctx)) {
@@ -613,7 +615,7 @@ static void post_io_update(const struct voluta_file_ctx *file_ctx,
 	} else if (file_ctx->write) {
 		attr.ia_flags |= VOLUTA_ATTR_MCTIME | VOLUTA_ATTR_SIZE;
 		attr.ia_size = off_max(off, isz);
-		if (kill_priv && (*len > 0)) {
+		if (killprv && (len > 0)) {
 			attr.ia_flags |= VOLUTA_ATTR_KILL_PRIV;
 		}
 	} else if (file_ctx->read) {
@@ -1055,7 +1057,6 @@ int voluta_do_read_iter(struct voluta_env *env, struct voluta_inode_info *ii,
 			struct voluta_rw_iter *rwi)
 {
 	int err;
-	size_t len = 0;
 	struct voluta_file_ctx file_ctx = {
 		.sbi = &env->sbi,
 		.opi = &env->opi,
@@ -1069,7 +1070,7 @@ int voluta_do_read_iter(struct voluta_env *env, struct voluta_inode_info *ii,
 		return err;
 	}
 	err = read_data(&file_ctx);
-	post_io_update(&file_ctx, &len, false);
+	post_io_update(&file_ctx, false);
 	return err;
 }
 
@@ -1214,7 +1215,7 @@ static int create_tree_levels(struct voluta_file_ctx *file_ctx)
 	struct voluta_vnode_info *vi;
 
 	new_height = rtn_height_by_offset(NULL, file_ctx->off);
-	cur_height = voluta_max(1, file_tree_height(file_ctx->ii));
+	cur_height = max(1, file_tree_height(file_ctx->ii));
 	while (new_height > cur_height) {
 		err = create_root_node(file_ctx, ++cur_height, &vi);
 		if (err) {
@@ -1408,7 +1409,8 @@ struct voluta_write_iter {
 };
 
 
-static struct voluta_write_iter *write_iter_of(const struct voluta_rw_iter *rwi)
+static struct voluta_write_iter *
+write_iter_of(const struct voluta_rw_iter *rwi)
 {
 	return container_of(rwi, struct voluta_write_iter, rwi);
 }
@@ -1463,7 +1465,6 @@ int voluta_do_write_iter(struct voluta_sb_info *sbi,
 			 struct voluta_rw_iter *rwi)
 {
 	int err;
-	size_t len = 0;
 	struct voluta_file_ctx file_ctx = {
 		.sbi = sbi,
 		.opi = opi,
@@ -1477,7 +1478,7 @@ int voluta_do_write_iter(struct voluta_sb_info *sbi,
 		return err;
 	}
 	err = write_data(&file_ctx);
-	post_io_update(&file_ctx, &len, err == 0);
+	post_io_update(&file_ctx, err == 0);
 	return err;
 }
 
@@ -1524,7 +1525,8 @@ int voluta_do_fsync(struct voluta_env *env,
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static int drop_recursive(struct voluta_file_ctx *, struct voluta_vnode_info *);
+static int drop_recursive(struct voluta_file_ctx *,
+			  struct voluta_vnode_info *);
 
 static int discard_data_leaf(const struct voluta_file_ctx *file_ctx,
 			     const struct voluta_vaddr *vaddr)
@@ -1855,7 +1857,6 @@ int voluta_do_truncate(struct voluta_env *env,
 		       struct voluta_inode_info *ii, loff_t off)
 {
 	int err;
-	size_t len = 0;
 	struct voluta_file_ctx file_ctx = {
 		.sbi = &env->sbi,
 		.opi = &env->opi,
@@ -1884,7 +1885,7 @@ int voluta_do_truncate(struct voluta_env *env,
 	if (err) {
 		return err;
 	}
-	post_io_update(&file_ctx, &len, false);
+	post_io_update(&file_ctx, false);
 	return err;
 }
 
@@ -2149,7 +2150,7 @@ int voluta_do_fallocate(struct voluta_env *env, struct voluta_inode_info *ii,
 	if (err) {
 		return err;
 	}
-	post_io_update(&file_ctx, &len, false);
+	post_io_update(&file_ctx, false);
 	return err;
 }
 

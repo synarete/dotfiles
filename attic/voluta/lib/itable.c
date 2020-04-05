@@ -28,13 +28,13 @@
 
 static void iaddr_setup(struct voluta_iaddr *iaddr, ino_t ino, loff_t off)
 {
-	voluta_vaddr_by_off(&iaddr->vaddr, VOLUTA_VTYPE_INODE, off);
+	vaddr_by_off(&iaddr->vaddr, VOLUTA_VTYPE_INODE, off);
 	iaddr->ino = ino;
 }
 
 static void vaddr_of_itnode(struct voluta_vaddr *vaddr, loff_t off)
 {
-	voluta_vaddr_by_off(vaddr, VOLUTA_VTYPE_ITNODE, off);
+	vaddr_by_off(vaddr, VOLUTA_VTYPE_ITNODE, off);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -423,8 +423,8 @@ static int stage_child(struct voluta_sb_info *sbi,
 	return stage_itnode(sbi, &child_vaddr, out_child_vi);
 }
 
-static int stage_root(struct voluta_sb_info *sbi,
-		      struct voluta_vnode_info **out_vi)
+static int stage_itroot(struct voluta_sb_info *sbi,
+			struct voluta_vnode_info **out_vi)
 {
 	int err;
 	struct voluta_vnode_info *vi;
@@ -486,7 +486,7 @@ static int lookup_iaddr_of(struct voluta_sb_info *sbi, ino_t ino,
 	int err;
 	struct voluta_vnode_info *vi = NULL;
 
-	err = stage_root(sbi, &vi);
+	err = stage_itroot(sbi, &vi);
 	if (err) {
 		return err;
 	}
@@ -530,15 +530,15 @@ static int del_itnode(struct voluta_sb_info *sbi,
 	return voluta_del_vnode(sbi, itnode_vi);
 }
 
-static int create_itable_root(struct voluta_sb_info *sbi,
-			      struct voluta_vnode_info **out_vi)
+static int create_itroot(struct voluta_sb_info *sbi,
+			 struct voluta_vnode_info **out_vi)
 {
 	int err;
 	struct voluta_vaddr vaddr;
 	struct voluta_vnode_info *itnode_vi;
 	struct voluta_itable *itable = itable_of(sbi);
 
-	voluta_vaddr_by_off(&vaddr, VOLUTA_VTYPE_ITNODE, VOLUTA_OFF_NULL);
+	vaddr_of_itnode(&vaddr, VOLUTA_OFF_NULL);
 	err = new_itnode(sbi, &vaddr, ITNODE_ROOT_DEPTH, &itnode_vi);
 	if (err) {
 		return err;
@@ -586,15 +586,15 @@ static int stage_or_create_root(struct voluta_sb_info *sbi,
 	const struct voluta_itable *itable = itable_of(sbi);
 
 	if (!vaddr_isnull(&itable->it_tree_vaddr)) {
-		err = stage_root(sbi, &it_root_vi);
+		err = stage_itroot(sbi, &it_root_vi);
 	} else {
-		err = create_itable_root(sbi, &it_root_vi);
+		err = create_itroot(sbi, &it_root_vi);
 	}
 	if (err) {
 		return err;
 	}
 
-	voluta_assert_eq(it_root_vi->vaddr.ag_index, 1);
+	voluta_assert_eq(it_root_vi->vaddr.ag_index, 2);
 	*out_vi = it_root_vi;
 	return 0;
 }
@@ -735,7 +735,7 @@ static int remove_itable_entry(struct voluta_sb_info *sbi, ino_t ino)
 	int err;
 	struct voluta_vnode_info *root_itnode_vi;
 
-	err = stage_root(sbi, &root_itnode_vi);
+	err = stage_itroot(sbi, &root_itnode_vi);
 	if (err) {
 		return err;
 	}
@@ -762,7 +762,8 @@ int voluta_acquire_ino(struct voluta_sb_info *sbi, struct voluta_iaddr *iaddr)
 	return 0;
 }
 
-int voluta_real_ino(const struct voluta_sb_info *sbi, ino_t ino, ino_t *out_ino)
+int voluta_real_ino(const struct voluta_sb_info *sbi, ino_t ino,
+		    ino_t *out_ino)
 {
 	const struct voluta_itable *itable = itable_of(sbi);
 
@@ -858,7 +859,7 @@ int voluta_find_root_ino(struct voluta_sb_info *sbi,
 	voluta_assert(!vaddr_isnull(&itable->it_tree_vaddr));
 	voluta_assert_eq(itable->it_ino_rootd, VOLUTA_INO_NULL);
 
-	err = stage_root(sbi, &vi);
+	err = stage_itroot(sbi, &vi);
 	if (err) {
 		return err;
 	}

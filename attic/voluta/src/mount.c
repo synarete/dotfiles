@@ -43,7 +43,7 @@ static void mount_seup_env_params(void)
 				     voluta_globals.mount_volume, 0);
 	} else {
 		voluta_env_setparams(env, voluta_globals.mount_point_real,
-				     NULL, voluta_globals.mount_tmpfs);
+				     NULL, voluta_globals.mount_tmpfs_size);
 	}
 }
 
@@ -176,13 +176,14 @@ static void mount_check_mntpoint(void)
 static void check_tmpfs_backend(void)
 {
 	int err;
-	loff_t size = voluta_globals.mount_tmpfs;
+	loff_t size = voluta_globals.mount_tmpfs_size;
 	const char *volume_path = voluta_globals.mount_volume;
 
 	err = voluta_resolve_volume_size(volume_path, size,
-					 &voluta_globals.mount_tmpfs);
+					 &voluta_globals.mount_tmpfs_size);
 	if (err) {
-		voluta_die(0, "illegal tmpfs size: %ld", size);
+		voluta_die(0, "illegal tmpfs size: %s",
+			   voluta_globals.mount_tmpfs);
 	}
 }
 
@@ -203,7 +204,7 @@ static void check_volume_backend(void)
 
 static void mount_check_backend_storage(void)
 {
-	if (voluta_globals.mount_tmpfs) {
+	if (voluta_globals.mount_tmpfs_size) {
 		check_tmpfs_backend();
 	} else {
 		check_volume_backend();
@@ -240,7 +241,7 @@ static void setup_volume_passphrase(void)
 
 static void mount_setup_passphrase(void)
 {
-	if (voluta_globals.mount_tmpfs) {
+	if (voluta_globals.mount_tmpfs_size) {
 		setup_tmpfs_passphrase();
 	} else {
 		setup_volume_passphrase();
@@ -272,20 +273,20 @@ static void mount_prepare_process(void)
  */
 static void mount_trace_start(void)
 {
-	voluta_tr_info("program: %s", voluta_globals.prog);
-	voluta_tr_info("version: %s", voluta_globals.version);
-	voluta_tr_info("mount-point: %s", voluta_globals.mount_point_real);
+	voluta_log_info("program: %s", voluta_globals.prog);
+	voluta_log_info("version: %s", voluta_globals.version);
+	voluta_log_info("mount-point: %s", voluta_globals.mount_point_real);
 	if (voluta_globals.mount_volume) {
-		voluta_tr_info("backend-storage: %s",
-			       voluta_globals.mount_volume);
+		voluta_log_info("backend-storage: %s",
+				voluta_globals.mount_volume);
 	}
 }
 
 static void mount_trace_finish(void)
 {
-	voluta_tr_info("mount done: %s", voluta_globals.mount_point_real);
-	voluta_tr_info("execution time: %ld seconds",
-		       time(NULL) - voluta_globals.start_time);
+	voluta_log_info("mount done: %s", voluta_globals.mount_point_real);
+	voluta_log_info("execution time: %ld seconds",
+			time(NULL) - voluta_globals.start_time);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -382,7 +383,9 @@ void voluta_mount_parse_args(int subcmd)
 		} else if (c == 'S') {
 			voluta_globals.mount_salt = optarg;
 		} else if (c == 't') {
-			voluta_globals.mount_tmpfs = voluta_parse_size(optarg);
+			voluta_globals.mount_tmpfs = optarg;
+			voluta_globals.mount_tmpfs_size =
+				voluta_parse_size(optarg);
 		} else if (c == 'D') {
 			voluta_globals.dont_daemonize = true;
 		} else if (c == 'C') {
@@ -393,7 +396,7 @@ void voluta_mount_parse_args(int subcmd)
 			voluta_die(0, "unsupported code 0%o", c);
 		}
 	}
-	if (voluta_globals.mount_tmpfs) {
+	if (voluta_globals.mount_tmpfs != NULL) {
 		if (optind >= argc) {
 			voluta_die(0, "missing mount-point");
 		}

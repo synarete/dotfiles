@@ -29,12 +29,13 @@
 static size_t get_link_max(void)
 {
 	long ret;
+	const long lim = 2048;
 
 	ret = sysconf(_PC_LINK_MAX);
 	voluta_t_expect_gt(ret, 0);
 	voluta_t_expect_lt(ret, UGIGA);
 
-	return voluta_min((size_t)ret, 2048);
+	return (size_t)((ret < lim) ? ret : lim);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/

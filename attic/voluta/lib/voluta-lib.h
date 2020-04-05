@@ -133,7 +133,6 @@ struct voluta_vaddr {
 	size_t ag_index;        /* Uber-group index */
 	loff_t off;             /* Bytes-offset within logical space */
 	loff_t lba;             /* Corresponding logical block */
-	size_t len;             /* Size in bytes ("on-disk" size, optional) */
 	enum voluta_vtype vtype;/* Referenced object type */
 };
 
@@ -192,14 +191,17 @@ struct voluta_bk_info {
 	struct voluta_dirtyq b_dq;              /* This block dirty vis */
 	union voluta_bk *bk;                    /* Actual block's data */
 	struct voluta_sb_info *b_sbi;           /* Top-level super-block */
-	struct voluta_vnode_info *b_agm;        /* Allocation group */
+	struct voluta_vnode_info *b_ua_vi;      /* Uber-or-alloc map */
 	loff_t  b_lba;                          /* Logical block address */
 	int     b_staged;                       /* Is fully staged ? */
-} voluta_aligned64;
+};
 
 union voluta_vnode_u {
+	struct voluta_super_block       *sb;
+	struct voluta_uspace_map        *usm;
 	struct voluta_agroup_map        *agm;
 	struct voluta_itable_tnode      *itn;
+	struct voluta_inode             *inode;
 	struct voluta_radix_tnode       *rtn;
 	struct voluta_dir_htree_node    *htn;
 	struct voluta_xattr_node        *xan;
@@ -214,14 +216,14 @@ struct voluta_vnode_info {
 	struct voluta_bk_info *bki;     /* Containing block */
 	union voluta_view *view;        /* "View" into "on-disk" element */
 	union voluta_vnode_u u;
-
-} voluta_aligned;
+};
 
 struct voluta_inode_info {
 	struct voluta_vnode_info vi;    /* Base logical-node info */
 	struct voluta_inode *inode;     /* Referenced inode */
 	ino_t ino;                      /* Unique ino number */
-} voluta_aligned;
+	struct timespec i_atime;        /* Lazy atime */
+};
 
 /* Persistent-storage I/O-control */
 struct voluta_pstore {
@@ -258,27 +260,21 @@ struct voluta_cache {
 	union voluta_bk *null_bk;
 };
 
-struct voluta_sp_stat {
-	ssize_t sp_nbytes;
-	ssize_t sp_nmeta;
-	ssize_t sp_ndata;
+struct voluta_space_stat {
+	ssize_t ndata;
+	ssize_t nmeta;
+	ssize_t nfiles;
+};
+
+struct voluta_space_info {
+	loff_t  sp_size;
+	size_t  sp_usp_count;
+	size_t  sp_usp_index_lo;
+	size_t  sp_ag_count;
+	size_t  sp_ag_apex;
+	ssize_t sp_used_meta;
+	ssize_t sp_used_data;
 	ssize_t sp_nfiles;
-};
-
-struct voluta_ag_info {
-	struct voluta_list_head lh;
-	int  index;
-	int  nfree;
-	bool formatted;
-	bool live;
-	bool cap_alloc_bo;
-};
-
-struct voluta_ag_space {
-	size_t ags_count;        /* Number of allocation groups */
-	size_t ags_nlive;
-	struct voluta_list_head spq;
-	struct voluta_ag_info agi[VOLUTA_VOLUME_NAG_MAX]; /* TODO: dynamic */
 };
 
 struct voluta_itable {
@@ -300,10 +296,9 @@ struct voluta_sb_info {
 	struct voluta_cstore  *s_cstore;
 	struct voluta_pstore  *s_pstore;
 	struct voluta_super_block *sb;  /* Super-block */
+	struct voluta_space_info s_spi; /* Space allocation meta-state */
 	struct voluta_itable s_itable;  /* Inodes table */
-	struct voluta_iv_key s_iv_key;     /* Master encryption IV/key */
-	struct voluta_sp_stat s_sp_stat;   /* Space accounting */
-	struct voluta_ag_space s_ag_space; /* Allocation-groups space-map */
+	struct voluta_iv_key s_iv_key;  /* Master encryption IV/key */
 };
 
 /* FUSE interface */
@@ -373,15 +368,21 @@ void voluta_vaddr_clone(const struct voluta_vaddr *vaddr,
 void voluta_vaddr_by_off(struct voluta_vaddr *vaddr,
 			 enum voluta_vtype vtype, loff_t off);
 
+size_t voluta_vaddr_len(const struct voluta_vaddr *vaddr);
+
 void voluta_clear_unwritten(const struct voluta_vnode_info *vi);
 
 int voluta_prepare_space(struct voluta_sb_info *, const char *, loff_t);
 
 int voluta_format_sb(struct voluta_sb_info *sbi);
 
+int voluta_format_usmaps(struct voluta_sb_info *sbi);
+
 int voluta_format_agmaps(struct voluta_sb_info *sbi);
 
 int voluta_load_sb(struct voluta_sb_info *sbi);
+
+int voluta_load_usmaps(struct voluta_sb_info *sbi);
 
 int voluta_load_agmaps(struct voluta_sb_info *sbi);
 
@@ -416,10 +417,11 @@ int voluta_del_vnode_at(struct voluta_sb_info *sbi,
 int voluta_new_vspace(struct voluta_sb_info *sbi,
 		      enum voluta_vtype vtype, struct voluta_vaddr *out_vaddr);
 
-int voluta_verify_agroup_map(const struct voluta_agroup_map *agm);
-
 int voluta_verify_super_block(const struct voluta_super_block *sb);
 
+int voluta_verify_uspace_map(const struct voluta_uspace_map *usm);
+
+int voluta_verify_agroup_map(const struct voluta_agroup_map *agm);
 
 /* itable */
 int voluta_init_itable(struct voluta_sb_info *sbi);
@@ -658,6 +660,8 @@ void voluta_update_iattr(struct voluta_inode_info *ii,
 void voluta_iattr_init(struct voluta_iattr *iattr,
 		       const struct voluta_inode_info *ii);
 
+void voluta_refresh_atime(struct voluta_inode_info *ii, bool to_volatile);
+
 /* symlink */
 void voluta_setup_new_symlnk(struct voluta_inode_info *lnk_ii);
 
@@ -783,7 +787,7 @@ int voluta_cache_lookup_bk(struct voluta_cache *cache, loff_t lba,
 			   struct voluta_bk_info **out_bki);
 
 int voluta_cache_spawn_bk(struct voluta_cache *cache, loff_t lba,
-			  struct voluta_vnode_info *agm_vi,
+			  struct voluta_vnode_info *uag_vi,
 			  struct voluta_bk_info **out_bki);
 
 void voluta_cache_forget_bk(struct voluta_cache *cache,
@@ -812,6 +816,9 @@ void voulta_cache_forget_vi(struct voluta_cache *cache,
 
 int voluta_cache_get_dirty(const struct voluta_cache *cache,
 			   struct voluta_bk_info **out_bki);
+
+void voluta_cache_may_evict_vi(struct voluta_cache *cache,
+			       struct voluta_vnode_info *vi);
 
 void voluta_dirtify_vi(struct voluta_vnode_info *vi);
 

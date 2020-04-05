@@ -1029,11 +1029,6 @@ static size_t align_down(size_t sz, size_t align)
 	return (sz / align) * align;
 }
 
-static size_t min3(size_t x, size_t y, size_t z)
-{
-	return voluta_min(voluta_min(x, y), z);
-}
-
 int voluta_resolve_memsize(size_t mem_want, size_t *out_memsize)
 {
 	int err;
@@ -1059,7 +1054,7 @@ int voluta_resolve_memsize(size_t mem_want, size_t *out_memsize)
 	}
 	mem_glim = 4 * VOLUTA_UGIGA;
 	mem_ceil = min3(mem_glim, mem_rlim, mem_total / 4);
-	mem_uget = voluta_clamp(mem_want, mem_floor, mem_ceil);
+	mem_uget = clamp(mem_want, mem_floor, mem_ceil);
 	*out_memsize = align_down(mem_uget, mem_align);
 	return 0;
 }

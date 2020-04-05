@@ -25,7 +25,7 @@ astyle1tbs() {
     --indent-preprocessor \
     --add-brackets \
     --break-after-logical \
-    --max-code-length=80 \
+    --max-code-length=79 \
     --indent-col1-comments \
     --lineend=linux \
     "$@"

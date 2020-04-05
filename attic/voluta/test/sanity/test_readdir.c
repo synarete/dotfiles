@@ -129,9 +129,12 @@ static void voluta_t_getdents_from(struct voluta_t_ctx *t_ctx,
  */
 static void test_readdir_basic_(struct voluta_t_ctx *t_ctx, size_t lim)
 {
-	int dfd, fd;
-	loff_t pos, off = 0;
-	size_t cnt = 0, itr = 0;
+	int fd;
+	int dfd;
+	loff_t pos;
+	loff_t off = 0;
+	size_t cnt = 0;
+	size_t itr = 0;
 	struct stat st;
 	struct dirent64 dent = { .d_ino = 0 };
 	const char *path1 = NULL;
@@ -187,12 +190,14 @@ static void test_readdir_basic(struct voluta_t_ctx *t_ctx)
  */
 static void test_readdir_unlink_(struct voluta_t_ctx *t_ctx, size_t lim)
 {
-	int dfd, fd;
-	loff_t pos, off = 0;
+	int fd;
+	int dfd;
+	loff_t pos;
+	loff_t off = 0;
 	size_t cnt = 0;
 	struct stat st;
 	struct dirent64 dent;
-	char *path1, *name;
+	const char *path1;
 	const char *path0 = voluta_t_new_path_unique(t_ctx);
 
 	voluta_t_mkdir(path0, 0700);
@@ -220,8 +225,7 @@ static void test_readdir_unlink_(struct voluta_t_ctx *t_ctx, size_t lim)
 		voluta_t_expect_true(dirent_isreg(&dent));
 		voluta_t_expect_false(dirent_isdir(&dent));
 
-		name = dent.d_name;
-		path1 = voluta_t_new_path_nested(t_ctx, path0, name);
+		path1 = voluta_t_new_path_nested(t_ctx, path0, dent.d_name);
 		voluta_t_stat(path1, &st);
 		voluta_t_unlink(path1);
 		voluta_t_stat_noent(path1);
@@ -256,9 +260,13 @@ static const char *make_iname(struct voluta_t_ctx *t_ctx,
 
 static void test_readdir_getdents(struct voluta_t_ctx *t_ctx, size_t lim)
 {
-	int dfd, fd, cmp;
-	loff_t pos, off = 0;
-	size_t nde, cnt = 0;
+	int fd;
+	int dfd;
+	int cmp;
+	loff_t pos;
+	loff_t off = 0;
+	size_t nde;
+	size_t cnt = 0;
 	struct stat st;
 	struct dirent64 dents[8];
 	const struct dirent64 *dent;
@@ -401,9 +409,12 @@ static void fill_name(char *name, size_t lim, size_t idx)
 
 static void test_readdir_unlinkat_(struct voluta_t_ctx *t_ctx, size_t lim)
 {
-	int dfd1, dfd2, fd;
+	int fd;
+	int dfd1;
+	int dfd2;
 	loff_t doff;
-	size_t i, cnt = 0, itr = 0;
+	size_t cnt = 0;
+	size_t itr = 0;
 	struct stat st;
 	char name[VOLUTA_NAME_MAX + 1] = "";
 	const struct dirent64 *dent;
@@ -417,13 +428,13 @@ static void test_readdir_unlinkat_(struct voluta_t_ctx *t_ctx, size_t lim)
 	voluta_t_mkdir(path2, 0700);
 	voluta_t_open(path2, O_DIRECTORY | O_RDONLY, 0, &dfd2);
 	voluta_t_openat(dfd2, fname, O_CREAT | O_RDWR, 0600, &fd);
-	for (i = 0; i < lim; ++i) {
+	for (size_t i = 0; i < lim; ++i) {
 		fill_name(name, sizeof(name) - 1, i + 1);
 		voluta_t_linkat(dfd2, fname, dfd1, name, 0);
 		voluta_t_fstat(dfd1, &st);
 		voluta_t_expect_ge(st.st_size, i + 1);
 	}
-	for (i = 0; i < lim; ++i) {
+	for (size_t i = 0; i < lim; ++i) {
 		fill_name(name, sizeof(name) - 1, i + 1);
 		voluta_t_linkat_err(dfd2, fname, dfd1, name, 0, -EEXIST);
 	}

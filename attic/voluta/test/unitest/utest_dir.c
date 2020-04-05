@@ -24,7 +24,8 @@ struct ut_namesarr {
 	const char *arr[1];
 };
 
-static const char *make_name(struct voluta_ut_ctx *ut_ctx, long idx, size_t len)
+static const char *make_name(struct voluta_ut_ctx *ut_ctx, long idx,
+			     size_t len)
 {
 	char name[UT_NAME_MAX + 1] = "";
 	const size_t name_max = sizeof(name) - 1;

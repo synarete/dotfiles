@@ -242,7 +242,8 @@ static bool cap_splice(const struct voluta_fusei *fusei)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void fill_entry_param(struct fuse_entry_param *ep, const struct stat *st)
+static void fill_entry_param(struct fuse_entry_param *ep,
+			     const struct stat *st)
 {
 	voluta_memzero(ep, sizeof(*ep));
 	ep->ino = st->st_ino;
@@ -768,7 +769,7 @@ static unsigned int rdwr_max_size(const struct voluta_fusei *fusei)
 
 	pipe_max_size = VOLUTA_UMEGA; /* should be /proc/sys/fs/pipe-max-size */
 	data_max_size = data_buf_size(fusei);
-	max_size = voluta_min(pipe_max_size, data_max_size);
+	max_size = min(pipe_max_size, data_max_size);
 
 	/* from libfuse lib/fuse_i.h */
 #define FUSE_BUFFER_HEADER_SIZE 0x1000
@@ -807,8 +808,8 @@ static void do_init(void *userdata, struct fuse_conn_info *coni)
 	/* Store connection's params internally */
 	fusei->conn_caps = coni->capable;
 
-	voluta_tr_info("fuse-init: userdata=%p capable=%#x",
-		       userdata, fusei->conn_caps);
+	log_info("fuse-init: userdata=%p capable=%#x",
+		 userdata, fusei->conn_caps);
 }
 
 static void do_destroy(void *userdata)
@@ -818,8 +819,8 @@ static void do_destroy(void *userdata)
 	/* XXX: TODO me */
 	voluta_assert_eq(fusei->magic, VOLUTA_MAGIC);
 
-	voluta_tr_info("fuse-destroy: userdata=%p capable=%#x",
-		       userdata, fusei->conn_caps);
+	log_info("fuse-destroy: userdata=%p capable=%#x",
+		 userdata, fusei->conn_caps);
 }
 
 static void do_forget(fuse_req_t req, ino_t ino, uint64_t nlookup)
@@ -1466,7 +1467,8 @@ static void do_ioc_getflags(fuse_req_t req, fuse_ino_t ino,
 	reply_ioctl_or_err(fusei, 0, &ret, sizeof(ret), err);
 }
 
-static void do_ioc_notimpl(fuse_req_t req, ino_t ino, struct fuse_file_info *fi)
+static void do_ioc_notimpl(fuse_req_t req, ino_t ino,
+			   struct fuse_file_info *fi)
 {
 	struct voluta_fusei *fusei;
 

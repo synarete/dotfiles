@@ -61,6 +61,12 @@ static void cpu_to_ts(const struct timespec *ts, struct voluta_timespec *vts)
 	}
 }
 
+static void assign_ts(struct timespec *ts, const struct timespec *other)
+{
+	ts->tv_sec = other->tv_sec;
+	ts->tv_nsec = other->tv_nsec;
+}
+
 static void assign_statx_ts(struct statx_timestamp *stx_ts,
 			    const struct timespec *ts)
 {
@@ -150,19 +156,19 @@ static void inode_set_nlink(struct voluta_inode *inode, nlink_t nlink)
 	inode->i_nlink = cpu_to_le64(nlink);
 }
 
-static long inode_version(const struct voluta_inode *inode)
+static long inode_revision(const struct voluta_inode *inode)
 {
-	return (long)le64_to_cpu(inode->i_version);
+	return (long)le64_to_cpu(inode->i_revision);
 }
 
-static void inode_set_version(struct voluta_inode *inode, long version)
+static void inode_set_revision(struct voluta_inode *inode, long r)
 {
-	inode->i_version = cpu_to_le64((uint64_t)version);
+	inode->i_revision = cpu_to_le64((uint64_t)r);
 }
 
-static void inode_inc_version(struct voluta_inode *inode)
+static void inode_inc_revision(struct voluta_inode *inode)
 {
-	inode_set_version(inode, inode_version(inode) + 1);
+	inode_set_revision(inode, inode_revision(inode) + 1);
 }
 
 static enum voluta_inode_flags inode_flags(const struct voluta_inode *inode)
@@ -377,7 +383,7 @@ static void fill_inode(struct voluta_inode *inode, ino_t ino, mode_t mode,
 	inode_set_size(inode, 0);
 	inode_set_blocks(inode, 0);
 	inode_set_nlink(inode, 0);
-	inode_set_version(inode, 0);
+	inode_set_revision(inode, 0);
 	voluta_uuid_generate(&inode->i_uuid);
 }
 
@@ -757,7 +763,7 @@ static void i_extern_attrs(const struct voluta_inode_info *ii, struct stat *st)
 	st->st_size = i_size_of(ii);
 	st->st_blocks = i_s_blocks_of(ii);
 	st->st_blksize = i_s_blksize_of(ii);
-	inode_atime(ii->inode, &st->st_atim);
+	assign_ts(&st->st_atim, &ii->i_atime);
 	inode_mtime(ii->inode, &st->st_mtim);
 	inode_ctime(ii->inode, &st->st_ctim);
 }
@@ -786,8 +792,7 @@ i_extern_attrs_x(const struct voluta_inode_info *ii, struct statx *stx)
 
 	inode_btime(ii->inode, &ts);
 	assign_statx_ts(&stx->stx_btime, &ts);
-	inode_atime(ii->inode, &ts);
-	assign_statx_ts(&stx->stx_atime, &ts);
+	assign_statx_ts(&stx->stx_atime, &ii->i_atime);
 	inode_mtime(ii->inode, &ts);
 	assign_statx_ts(&stx->stx_mtime, &ts);
 	inode_ctime(ii->inode, &ts);
@@ -866,16 +871,34 @@ timespec_from_attr(const struct voluta_oper_info *opi,
 	return ts;
 }
 
+static void i_update_atime(struct voluta_inode_info *ii,
+			   const struct timespec *atime)
+{
+	if (atime != NULL) {
+		memcpy(&ii->i_atime, atime, sizeof(ii->i_atime));
+	}
+}
+
 static void update_inode_attr(struct voluta_inode_info *ii,
 			      const struct voluta_oper_info *opi,
-			      enum voluta_attr_flags flags,
+			      enum voluta_attr_flags attr_flags,
 			      const struct voluta_iattr *attr)
 {
+	int flags = attr_flags;
 	struct voluta_inode *inode;
 	const struct timespec *ts;
 
-	if ((ii == NULL) || (flags == 0)) {
+	if (ii == NULL) {
 		return; /* e.g., rename */
+	}
+	if (flags & (VOLUTA_ATTR_LAZY | VOLUTA_ATTR_ATIME)) {
+		ts = timespec_from_attr(opi, &attr->ia_atime);
+		i_update_atime(ii, ts);
+		flags &= ~VOLUTA_ATTR_ATIME;
+	}
+	flags &= ~VOLUTA_ATTR_LAZY;
+	if (!flags) {
+		return;
 	}
 	inode = ii->inode;
 	if (flags & VOLUTA_ATTR_PARENT) {
@@ -894,10 +917,6 @@ static void update_inode_attr(struct voluta_inode_info *ii,
 		ts = timespec_from_attr(opi, &attr->ia_btime);
 		inode_set_btime(inode, ts);
 	}
-	if (flags & VOLUTA_ATTR_ATIME) {
-		ts = timespec_from_attr(opi, &attr->ia_atime);
-		inode_set_atime(inode, ts);
-	}
 	if (flags & VOLUTA_ATTR_MTIME) {
 		ts = timespec_from_attr(opi, &attr->ia_mtime);
 		inode_set_mtime(inode, ts);
@@ -906,13 +925,17 @@ static void update_inode_attr(struct voluta_inode_info *ii,
 		ts = timespec_from_attr(opi, &attr->ia_ctime);
 		inode_set_ctime(inode, ts);
 	}
+	if (flags & VOLUTA_ATTR_ATIME) {
+		ts = timespec_from_attr(opi, &attr->ia_atime);
+		inode_set_atime(inode, ts);
+		voluta_refresh_atime(ii, true);
+	} else if (flags & VOLUTA_ATTR_TIMES) {
+		voluta_refresh_atime(ii, false);
+	}
 	if (flags & VOLUTA_ATTR_KILL_PRIV) {
 		i_kill_priv(opi, ii);
 	}
-	if (flags & VOLUTA_ATTR_LAZY) {
-		return; /* When update atime in memory only ("lazytime") */
-	}
-	inode_inc_version(inode);
+	inode_inc_revision(inode);
 	i_dirtify(ii);
 }
 
@@ -947,6 +970,15 @@ void voluta_iattr_init(struct voluta_iattr *iattr,
 	iattr->ia_mtime.tv_nsec = UTIME_NOW;
 	iattr->ia_ctime.tv_nsec = UTIME_NOW;
 	iattr->ia_ino = ii ? i_ino_of(ii) : VOLUTA_INO_NULL;
+}
+
+void voluta_refresh_atime(struct voluta_inode_info *ii, bool to_volatile)
+{
+	if (to_volatile) {
+		inode_atime(ii->inode, &ii->i_atime);
+	} else {
+		inode_set_atime(ii->inode, &ii->i_atime);
+	}
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/

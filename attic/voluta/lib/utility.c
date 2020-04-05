@@ -34,30 +34,19 @@
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-uint32_t voluta_min32(uint32_t x, uint32_t y)
-{
-	return (x < y) ? x : y;
-}
-
-uint32_t voluta_max32(uint32_t x, uint32_t y)
-{
-	return (x > y) ? x : y;
-}
-
-
 size_t voluta_min(size_t x, size_t y)
 {
-	return (x < y) ? x : y;
+	return min(x, y);
 }
 
 size_t voluta_max(size_t x, size_t y)
 {
-	return (x > y) ? x : y;
+	return max(x, y);
 }
 
 size_t voluta_clamp(size_t v, size_t lo, size_t hi)
 {
-	return voluta_min(voluta_max(v, lo), hi);
+	return clamp(v, lo, hi);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -65,7 +54,7 @@ size_t voluta_clamp(size_t v, size_t lo, size_t hi)
 static void voluta_burnstack_n(size_t nbytes)
 {
 	char buf[1024];
-	const size_t cnt = voluta_min(sizeof(buf), nbytes);
+	const size_t cnt = min(sizeof(buf), nbytes);
 
 	if (cnt > 0) {
 		memset(buf, 0xfe, cnt);
@@ -288,7 +277,7 @@ void voluta_getentropy(void *buf, size_t len)
 	const uint8_t *end = ptr + len;
 
 	while (ptr < end) {
-		cnt = voluta_min((size_t)(end - ptr), 256);
+		cnt = min((size_t)(end - ptr), 256);
 		err = getentropy(ptr, cnt);
 		if (err) {
 			voluta_panic("getentropy failed err=%d", errno);
@@ -359,11 +348,11 @@ void voluta_memzero(void *s, size_t n)
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-/* traces */
-int voluta_g_trace_flags =
-	(VOLUTA_TRACE_ERROR | VOLUTA_TRACE_CRIT | VOLUTA_TRACE_STDOUT);
+/* logging */
+int voluta_g_log_mask =
+	(VOLUTA_LOG_ERROR | VOLUTA_LOG_CRIT | VOLUTA_LOG_STDOUT);
 
-static void trace_stdout(const char *msg)
+static void log_to_stdout(const char *msg)
 {
 	FILE *fp = stdout;
 	const char *prog = program_invocation_short_name;
@@ -376,19 +365,19 @@ static void trace_stdout(const char *msg)
 	funlockfile(fp);
 }
 
-static int syslog_level(int tr_mask)
+static int syslog_level(int log_mask)
 {
 	int sl_level;
 
-	if (tr_mask & VOLUTA_TRACE_CRIT) {
+	if (log_mask & VOLUTA_LOG_CRIT) {
 		sl_level = LOG_CRIT;
-	} else if (tr_mask & VOLUTA_TRACE_ERROR) {
+	} else if (log_mask & VOLUTA_LOG_ERROR) {
 		sl_level = LOG_ERR;
-	} else if (tr_mask & VOLUTA_TRACE_WARN) {
+	} else if (log_mask & VOLUTA_LOG_WARN) {
 		sl_level = LOG_WARNING;
-	} else if (tr_mask & VOLUTA_TRACE_INFO) {
+	} else if (log_mask & VOLUTA_LOG_INFO) {
 		sl_level = LOG_INFO;
-	} else if (tr_mask & VOLUTA_TRACE_DEBUG) {
+	} else if (log_mask & VOLUTA_LOG_DEBUG) {
 		sl_level = LOG_DEBUG;
 	} else {
 		sl_level = 0;
@@ -396,38 +385,38 @@ static int syslog_level(int tr_mask)
 	return sl_level;
 }
 
-static void trace_syslog(int tr_mask, const char *msg)
+static void log_to_syslog(int log_mask, const char *msg)
 {
-	syslog(syslog_level(tr_mask), "%s", msg);
+	syslog(syslog_level(log_mask), "%s", msg);
 }
 
-static void trace_msg(int tr_mask, const char *msg)
+static void log_msg(int log_mask, const char *msg)
 {
-	const int tr_flags = (tr_mask | voluta_g_trace_flags);
+	const int flags = (log_mask | voluta_g_log_mask);
 
-	if (tr_flags & VOLUTA_TRACE_STDOUT) {
-		trace_stdout(msg);
+	if (flags & VOLUTA_LOG_STDOUT) {
+		log_to_stdout(msg);
 	}
-	if (tr_flags & VOLUTA_TRACE_SYSLOG) {
-		trace_syslog(tr_mask, msg);
+	if (flags & VOLUTA_LOG_SYSLOG) {
+		log_to_syslog(log_mask, msg);
 	}
 }
 
-void voluta_tracef(int tr_mask, const char *fmt, ...)
+void voluta_logf(int log_mask, const char *fmt, ...)
 {
 	va_list ap;
 	size_t len;
 	int saved_errno;
 	char msg[512];
 
-	if (tr_mask & voluta_g_trace_flags) {
+	if (log_mask & voluta_g_log_mask) {
 		saved_errno = errno;
 		va_start(ap, fmt);
 		len = (size_t)vsnprintf(msg, sizeof(msg), fmt, ap);
 		va_end(ap);
-		len = voluta_min(len, sizeof(msg) - 1);
+		len = min(len, sizeof(msg) - 1);
 		msg[len] = '\0';
-		trace_msg(tr_mask, msg);
+		log_msg(log_mask, msg);
 		errno = saved_errno;
 	}
 }
@@ -445,7 +434,7 @@ size_t voluta_buf_append(struct voluta_buf *buf, const void *ptr, size_t len)
 {
 	size_t cnt;
 
-	cnt = voluta_min(len, buf->bsz - buf->len);
+	cnt = min(len, buf->bsz - buf->len);
 	memcpy((char *)buf->buf + buf->len, ptr, cnt);
 	buf->len += cnt;
 

@@ -137,7 +137,8 @@ int voluta_sys_fchmod(int fd, mode_t mode)
 	return ok_or_errno(fchmod(fd, mode));
 }
 
-int voluta_sys_fchmodat(int dirfd, const char *pathname, mode_t mode, int flags)
+int voluta_sys_fchmodat(int dirfd, const char *pathname,
+			mode_t mode, int flags)
 {
 	return ok_or_errno(fchmodat(dirfd, pathname, mode, flags));
 }
@@ -496,20 +497,21 @@ int voluta_sys_fremovexattr(int fd, const char *name)
 }
 
 
-int voluta_sys_listxattr(const char *path, char *list, size_t size, size_t *out)
+int voluta_sys_listxattr(const char *path, char *list, size_t size,
+			 size_t *out_size)
 {
-	return size_or_errno(listxattr(path, list, size), out);
+	return size_or_errno(listxattr(path, list, size), out_size);
 }
 
 int voluta_sys_llistxattr(const char *path, char *list, size_t size,
-			  size_t *out)
+			  size_t *out_size)
 {
-	return size_or_errno(llistxattr(path, list, size), out);
+	return size_or_errno(llistxattr(path, list, size), out_size);
 }
 
-int voluta_sys_flistxattr(int fd, char *list, size_t size, size_t *out)
+int voluta_sys_flistxattr(int fd, char *list, size_t size, size_t *out_size)
 {
-	return size_or_errno(flistxattr(fd, list, size), out);
+	return size_or_errno(flistxattr(fd, list, size), out_size);
 }
 
 /* MMAP */

@@ -287,7 +287,8 @@ out:
 	return err;
 }
 
-int voluta_fs_readlink(struct voluta_env *env, ino_t ino, char *ptr, size_t lim)
+int voluta_fs_readlink(struct voluta_env *env, ino_t ino,
+		       char *ptr, size_t lim)
 {
 	int err;
 	struct voluta_buf buf;
@@ -309,7 +310,8 @@ out:
 	return err;
 }
 
-int voluta_fs_unlink(struct voluta_env *env, ino_t parent_ino, const char *name)
+int voluta_fs_unlink(struct voluta_env *env, ino_t parent_ino,
+		     const char *name)
 {
 	int err;
 	struct voluta_qstr qstr;

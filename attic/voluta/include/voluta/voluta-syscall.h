@@ -53,11 +53,12 @@ int voluta_sys_stat(const char *path, struct stat *st);
 int voluta_sys_lstat(const char *path, struct stat *st);
 int voluta_sys_chmod(const char *path, mode_t mode);
 int voluta_sys_fchmod(int fd, mode_t mode);
-int voluta_sys_fchmodat(int dirfd, const char *pathname, mode_t mode,
-			int flags);
+int voluta_sys_fchmodat(int dirfd, const char *pathname,
+			mode_t mode, int flags);
 int voluta_sys_chown(const char *path, uid_t uid, gid_t gid);
 int voluta_sys_fchown(int fd, uid_t uid, gid_t gid);
-int voluta_sys_fchownat(int dirfd, const char *path, uid_t uid, gid_t gid, int);
+int voluta_sys_fchownat(int dirfd, const char *path, uid_t uid, gid_t gid,
+			int);
 int voluta_sys_utime(const char *filename, const struct utimbuf *times);
 int voluta_sys_utimes(const char *filename, const struct timeval times[2]);
 int voluta_sys_utimensat(int dirfd, const char *pathname,
@@ -72,7 +73,8 @@ int voluta_sys_getdents(int fd, void *buf, size_t bsz, struct dirent64 *dents,
 int voluta_sys_creat(const char *path, mode_t mode, int *fd);
 int voluta_sys_memfd_create(const char *name, unsigned int flags, int *fd);
 int voluta_sys_open(const char *path, int flags, mode_t mode, int *fd);
-int voluta_sys_openat(int dirfd, const char *, int flags, mode_t mode, int *fd);
+int voluta_sys_openat(int dirfd, const char *, int flags, mode_t mode,
+		      int *fd);
 int voluta_sys_close(int fd);
 int voluta_sys_llseek(int fd, loff_t off, int whence, loff_t *pos);
 int voluta_sys_syncfs(int fd);
@@ -89,7 +91,8 @@ int voluta_sys_symlinkat(const char *target, int dirfd, const char *linkpath);
 int voluta_sys_mkfifo(const char *path, mode_t mode);
 int voluta_sys_mkfifoat(int dirfd, const char *pathname, mode_t mode);
 int voluta_sys_mknod(const char *pathname, mode_t mode, dev_t dev);
-int voluta_sys_mknodat(int dirfd, const char *pathname, mode_t mode, dev_t dev);
+int voluta_sys_mknodat(int dirfd, const char *pathname, mode_t mode,
+		       dev_t dev);
 int voluta_sys_mmap(void *addr, size_t length, int prot, int flags,
 		    int fd, off_t offset, void **out_addr);
 int voluta_sys_mmap_anon(size_t length, int flags, void **out_addr);
@@ -137,9 +140,12 @@ int voluta_sys_fgetxattr(int fd, const char *name,
 int voluta_sys_removexattr(const char *path, const char *name);
 int voluta_sys_lremovexattr(const char *path, const char *name);
 int voluta_sys_fremovexattr(int fd, const char *name);
-int voluta_sys_listxattr(const char *path, char *list, size_t size, size_t *);
-int voluta_sys_llistxattr(const char *path, char *list, size_t size, size_t *);
-int voluta_sys_flistxattr(int fd, char *list, size_t size, size_t *out);
+
+int voluta_sys_listxattr(const char *path, char *list,
+			 size_t size, size_t *out_size);
+int voluta_sys_llistxattr(const char *path, char *list,
+			  size_t size, size_t *out_size);
+int voluta_sys_flistxattr(int fd, char *list, size_t size, size_t *out_size);
 
 int voluta_sys_sigaction(int, const struct sigaction *, struct sigaction *);
 

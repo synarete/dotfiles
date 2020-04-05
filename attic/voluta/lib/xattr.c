@@ -60,11 +60,6 @@ static const struct voluta_xattr_prefix s_xattr_prefix[] = {
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static size_t div_round_up(size_t n, size_t d)
-{
-	return (n + d - 1) / d;
-}
-
 static size_t xe_aligned_size(size_t size)
 {
 	const size_t align = sizeof(struct voluta_xattr_entry);
@@ -94,8 +89,6 @@ static size_t xe_calc_nents_of(const struct voluta_str *name,
 static size_t xe_diff(const struct voluta_xattr_entry *beg,
 		      const struct voluta_xattr_entry *end)
 {
-	voluta_assert(end >= beg);
-
 	return (size_t)(end - beg);
 }
 
@@ -159,10 +152,7 @@ static size_t xe_nents(const struct voluta_xattr_entry *xe)
 
 static struct voluta_xattr_entry *xe_next(const struct voluta_xattr_entry *xe)
 {
-	const struct voluta_xattr_entry *next = xe + xe_nents(xe);
-
-	voluta_assert(xe != next);
-	return xe_unconst(next);
+	return xe_unconst(xe + xe_nents(xe));
 }
 
 static void xe_assign(struct voluta_xattr_entry *xe,
@@ -387,7 +377,8 @@ static loff_t ixa_off(const struct voluta_inode_xattr *ixa, size_t slot)
 	return off_to_cpu(ixa->xa_off[slot]);
 }
 
-static void ixa_set_off(struct voluta_inode_xattr *ixa, size_t slot, loff_t off)
+static void ixa_set_off(struct voluta_inode_xattr *ixa,
+			size_t slot, loff_t off)
 {
 	ixa->xa_off[slot] = cpu_to_off(off);
 }
@@ -507,7 +498,7 @@ static void xa_get_at(const struct voluta_inode_info *ii, size_t sloti,
 {
 	const loff_t off = ixa_off(ixa_of(ii), sloti);
 
-	voluta_vaddr_by_off(out_vaddr, VOLUTA_VTYPE_XANODE, off);
+	vaddr_by_off(out_vaddr, VOLUTA_VTYPE_XANODE, off);
 }
 
 static void xa_set_at(const struct voluta_inode_info *ii, size_t sloti,
@@ -516,13 +507,11 @@ static void xa_set_at(const struct voluta_inode_info *ii, size_t sloti,
 	ixa_set_off(ixa_of(ii), sloti, vaddr->off);
 }
 
-/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 void voluta_setup_inode_xattr(struct voluta_inode_info *ii)
 {
 	ixa_setup(ixa_of(ii));
 }
-
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
@@ -563,7 +552,6 @@ static int stage_xattr_node(const struct voluta_xattr_ctx *xa_ctx,
 	}
 	ino = i_ino_of(xa_ctx->ii);
 	xattr_ino = xa_ino_of(vi);
-	voluta_assert_eq(ino, xattr_ino);
 	if (ino != xattr_ino) {
 		return -EFSCORRUPTED;
 	}

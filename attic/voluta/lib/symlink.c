@@ -49,7 +49,7 @@ static int setup_symval_info(struct voluta_symval_info *svi, size_t len)
 		if (svi->nparts == ARRAY_SIZE(svi->part_len)) {
 			return -ENAMETOOLONG;
 		}
-		psz = voluta_min(rem, part_max);
+		psz = min(rem, part_max);
 		svi->part_len[svi->nparts++] = psz;
 		rem -= psz;
 	}
@@ -58,7 +58,7 @@ static int setup_symval_info(struct voluta_symval_info *svi, size_t len)
 
 static void vaddr_of_symval(struct voluta_vaddr *vaddr, loff_t off)
 {
-	voluta_vaddr_by_off(vaddr, VOLUTA_VTYPE_SYMVAL, off);
+	vaddr_by_off(vaddr, VOLUTA_VTYPE_SYMVAL, off);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -145,7 +145,8 @@ static void lis_init(struct voluta_lnk_ispec *lis)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static struct voluta_lnk_ispec *lnk_ispec_of(const struct voluta_inode_info *ii)
+static struct voluta_lnk_ispec *
+lnk_ispec_of(const struct voluta_inode_info *ii)
 {
 	struct voluta_inode *inode = ii->inode;
 

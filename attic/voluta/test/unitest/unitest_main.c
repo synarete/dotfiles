@@ -87,8 +87,8 @@ static void voluta_ut_setup_globals(int argc, char *argv[])
 
 static void voluta_ut_setup_tracing(void)
 {
-	voluta_g_trace_flags =
-		(VOLUTA_TRACE_ERROR | VOLUTA_TRACE_CRIT | VOLUTA_TRACE_STDOUT);
+	voluta_g_log_mask =
+		(VOLUTA_LOG_ERROR | VOLUTA_LOG_CRIT | VOLUTA_LOG_STDOUT);
 }
 
 static void voluta_ut_show_version(void)

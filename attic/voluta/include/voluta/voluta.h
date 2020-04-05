@@ -136,11 +136,13 @@ int voluta_fs_lookup(struct voluta_env *env, ino_t parent_ino,
 int voluta_fs_mkdir(struct voluta_env *env, ino_t parent_ino,
 		    const char *name, mode_t mode, struct stat *out_stat);
 
-int voluta_fs_rmdir(struct voluta_env *env, ino_t parent_ino, const char *name);
+int voluta_fs_rmdir(struct voluta_env *env, ino_t parent_ino,
+		    const char *name);
 
 int voluta_fs_access(struct voluta_env *env, ino_t ino, int mode);
 
-int voluta_fs_getattr(struct voluta_env *env, ino_t ino, struct stat *out_stat);
+int voluta_fs_getattr(struct voluta_env *env, ino_t ino,
+		      struct stat *out_stat);
 
 int voluta_fs_chmod(struct voluta_env *env, ino_t ino, mode_t mode,
 		    const struct stat *times, struct stat *out_stat);
@@ -158,8 +160,8 @@ int voluta_fs_symlink(struct voluta_env *env, ino_t parent_ino,
 		      const char *name,
 		      const char *val, struct stat *out_stat);
 
-int voluta_fs_readlink(struct voluta_env *env, ino_t ino, char *ptr,
-		       size_t len);
+int voluta_fs_readlink(struct voluta_env *env, ino_t ino,
+		       char *ptr, size_t lim);
 
 int voluta_fs_link(struct voluta_env *env, ino_t ino, ino_t parent_ino,
 		   const char *name, struct stat *out_stat);
@@ -220,7 +222,8 @@ int voluta_fs_write(struct voluta_env *env, ino_t ino, const void *buf,
 int voluta_fs_write_iter(struct voluta_env *env, ino_t ino,
 			 struct voluta_rw_iter *rwi);
 
-int voluta_fs_statx(struct voluta_env *env, ino_t ino, struct statx *out_statx);
+int voluta_fs_statx(struct voluta_env *env, ino_t ino,
+		    struct statx *out_statx);
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 

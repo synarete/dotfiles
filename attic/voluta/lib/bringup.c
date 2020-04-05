@@ -259,6 +259,10 @@ static int reload_meta_data(struct voluta_env *env)
 	if (err) {
 		return err;
 	}
+	err = voluta_load_usmaps(sbi);
+	if (err) {
+		return err;
+	}
 	err = voluta_load_agmaps(sbi);
 	if (err) {
 		return err;
@@ -482,6 +486,10 @@ int voluta_fs_format(struct voluta_env *env, const char *path, loff_t size)
 		return err;
 	}
 	err = voluta_format_sb(sbi);
+	if (err) {
+		return err;
+	}
+	err = voluta_format_usmaps(sbi);
 	if (err) {
 		return err;
 	}

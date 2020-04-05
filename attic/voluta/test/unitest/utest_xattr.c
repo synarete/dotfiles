@@ -38,7 +38,8 @@ kv_new(struct voluta_ut_ctx *ut_ctx, size_t nlen, size_t size)
 	return kv;
 }
 
-static struct voluta_ut_kvl *kvl_new(struct voluta_ut_ctx *ut_ctx, size_t limit)
+static struct voluta_ut_kvl *kvl_new(struct voluta_ut_ctx *ut_ctx,
+				     size_t limit)
 {
 	struct voluta_ut_kvl *kvl;
 	const size_t list_sz = limit * sizeof(struct voluta_ut_keyval *);
