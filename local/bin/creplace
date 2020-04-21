@@ -1,0 +1,38 @@
+#!/bin/sh -e
+export LC_ALL=C
+unset CDPATH
+
+stoken="$1"
+rtoken="$2"
+dirpath="$3"
+
+_die() {
+  echo "$*" && exit 1;
+}
+
+if [ -z "${stoken}" ]; then
+  _die "missing search-token"
+fi
+
+if [ -z "${rtoken}" ]; then
+  _die "missing replace-toekn"
+fi
+
+if [ ! -d ${dirpath} ]; then
+  _die "not a directory: "${dirpath}
+fi
+
+
+_find_cfiles() {
+  find $(realpath "$dirpath") -type f -name '*.[ch]'
+}
+
+_sed_ireplace() {
+  for f in "$@"; do
+    sed -i "s,${stoken},${rtoken},g" "$f"
+  done
+}
+
+_sed_ireplace $(_find_cfiles)
+
+

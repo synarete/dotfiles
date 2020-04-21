@@ -2,5 +2,4 @@
 base=${1:-$(pwd)}
 sys_include="/usr/include"
 gcc_include=$(gcc -print-file-name=include/)
-ctags -R --extra=+q ${base} ${sys_include} ${gcc_include}
-exit $?
+ctags -R ${base} ${sys_include} ${gcc_include}

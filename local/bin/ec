@@ -1,3 +1,4 @@
 #!/bin/sh
 cd ${HOME}
+export GTK_IM_MODULE="ibus"
 exec eclipse "$@" > /dev/null 2>&1 &
