@@ -1,0 +1,79 @@
+Summary: Voluta
+Name: voluta
+Version: @VERSION@
+Release: @RELEASE@.@REVISION@%{?dist}
+License: GPLv3
+Group: Development/Tools
+URL: https://voluta.org
+Source: %{name}-%{version}.tar.gz
+Prefix: /
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}.%{_arch}
+
+Requires: libcap
+Requires: libuuid
+Requires: libunwind
+Requires: libgcrypt
+Requires: haveged
+
+# Not working properly on F31 (TODO: FIXME)
+# BuildRequires: autoconf
+# BuildRequires: automake
+# BuildRequires: libtool
+# BuildRequires: binutils
+# BuildRequires: coreutils
+# BuildRequires: make
+# BuildRequires: libcap-devel
+# BuildRequires: libuuid-devel
+# BuildRequires: libgcrypt-devel
+# BuildRequires: libunwind-devel
+# BuildRequires: python3-docutils
+
+%{?systemd_requires}
+
+%define docrootdir %{_docdir}/%{name}-%{version}
+
+%description
+Voluta secure archiver
+
+%prep
+%setup -q
+
+%build
+%configure --docdir=%{docrootdir}
+%{__make}
+
+%check
+%{__make} check
+
+%install
+%make_install
+
+%clean
+%{__rm} -rf %{buildroot}
+
+%files
+%defattr(-, root, root)
+%{_bindir}/%{name}
+%{_bindir}/%{name}-fsstest
+%{_sbindir}/mkfs.%{name}
+%{_sbindir}/mount.%{name}
+%{_sbindir}/fsck.%{name}
+%exclude %{_bindir}/%{name}-unitest
+%{_includedir}/%{name}/*.h
+%exclude %{_libdir}/lib%{name}*.so*
+%exclude %{_libdir}/lib%{name}*.a
+%exclude %{_libdir}/lib%{name}*.la
+%{_datarootdir}/bash-completion/completions/%{name}
+
+%post
+
+%preun
+
+%postun
+# %systemd_postun requires service name
+
+%changelog
+* @RPMDATE@ Voluta <synarete@xxxxxxxx> @VERSION@-@RELEASE@
+- Release @REVISION@
+
+

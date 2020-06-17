@@ -34,7 +34,7 @@ Manual installation::
 
 On RedHat/CentOS/Fedora machine you can build rpm package::
 
-  $ ./packaging/packagize-rpm
+  $ ./misc/pkg/packagize-rpm
 
 
 

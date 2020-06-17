@@ -34,7 +34,7 @@ import curses.ascii
 # Globals:
 PROGNAME = os.path.basename(sys.argv[0])
 TOKENLEN_MAX = 40
-LINELEN_MAX = 80
+LINELEN_MAX = 79
 BLOCKSIZE_MAX = 90
 TAB_WIDTH = 8
 LINECNT_MAX = 8000

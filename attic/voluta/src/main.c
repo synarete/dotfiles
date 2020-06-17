@@ -84,6 +84,7 @@ static const char *g_main_usage =
 	"main commands: \n" \
 	"  mkfs\n"\
 	"  mount\n" \
+	"  inquiry\n" \
 	"";
 
 
@@ -98,15 +99,21 @@ static void show_main_help_and_exit(int exit_code)
 	show_help_and_exit(exit_code, g_main_usage);
 }
 
-static bool issubcmd(const char *str, const char *s1)
+static bool issubcmd(const char *cmd, const char *s1)
 {
-	return (str && s1 && !strcmp(str, s1));
+	return (cmd && s1 && !strcmp(cmd, s1));
 }
 
-static bool issubcmd2(const char *str, const char *s1, const char *s2)
+static bool voluta_issubcmd(const char *s)
 {
-	return issubcmd(str, s1) || issubcmd(str, s2);
+	return issubcmd(voluta_globals.subcmd, s);
 }
+
+static bool voluta_issubcmd2(const char *s1, const char *s2)
+{
+	return voluta_issubcmd(s1) || voluta_issubcmd(s2);
+}
+
 
 static void voluta_parse_args(void)
 {
@@ -114,16 +121,22 @@ static void voluta_parse_args(void)
 		show_main_help_and_exit(1);
 	}
 	voluta_globals.subcmd = voluta_globals.argv[1];
-	if (issubcmd2(voluta_globals.subcmd, "-v", "--version")) {
+	voluta_globals.cmd_argc = voluta_globals.argc - 1;
+	voluta_globals.cmd_argv = voluta_globals.argv + 1;
+
+	if (voluta_issubcmd2("-v", "--version")) {
 		voluta_show_version_and_exit(0);
-	} else if (issubcmd2(voluta_globals.subcmd, "-h", "--help")) {
+	} else if (voluta_issubcmd2("-h", "--help")) {
 		show_main_help_and_exit(0);
-	} else if (issubcmd(voluta_globals.subcmd, "mount")) {
-		voluta_mount_parse_args(1);
-		voluta_globals.exec_hook = voluta_mount_exec;
-	} else if (issubcmd(voluta_globals.subcmd, "mkfs")) {
-		voluta_mkfs_parse_args(1);
-		voluta_globals.exec_hook = voluta_mkfs_exec;
+	} else if (voluta_issubcmd("mount")) {
+		voluta_getopt_mount();
+		voluta_globals.exec_hook = voluta_execute_mount;
+	} else if (voluta_issubcmd("mkfs")) {
+		voluta_getopt_mkfs();
+		voluta_globals.exec_hook = voluta_execute_mkfs;
+	} else if (voluta_issubcmd("inquiry")) {
+		voluta_getopt_inquiry();
+		voluta_globals.exec_hook = voluta_execute_inquiry;
 	} else {
 		show_main_help_and_exit(1);
 	}

@@ -21,10 +21,26 @@
 #include <string.h>
 #include <stdbool.h>
 #include <dirent.h>
-#include "voluta-lib.h"
+#include "libvoluta.h"
 
 #define ITNODE_ROOT_DEPTH 1
 
+/* Local functions forward declarations */
+static int lookup_iref(struct voluta_sb_info *sbi,
+		       struct voluta_vnode_info *itn_vi, ino_t ino,
+		       struct voluta_iaddr *out_iaddr);
+
+static int insert_iref(struct voluta_sb_info *sbi,
+		       struct voluta_vnode_info *itn_vi,
+		       const struct voluta_iaddr *iaddr);
+
+static int remove_iref(struct voluta_sb_info *sbi,
+		       struct voluta_vnode_info *itn_vi, ino_t ino);
+
+static int scan_subtree(struct voluta_sb_info *sbi,
+			struct voluta_vnode_info *itn_vi);
+
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 static void iaddr_setup(struct voluta_iaddr *iaddr, ino_t ino, loff_t off)
 {
@@ -61,7 +77,7 @@ static void ite_set_off(struct voluta_itable_entry *ite, loff_t off)
 
 static bool ite_isfree(const struct voluta_itable_entry *ite)
 {
-	return (ite_ino(ite) == VOLUTA_INO_NULL);
+	return ino_isnull(ite_ino(ite));
 }
 
 static bool ite_has_ino(const struct voluta_itable_entry *ite, ino_t ino)
@@ -69,17 +85,10 @@ static bool ite_has_ino(const struct voluta_itable_entry *ite, ino_t ino)
 	return (ite_ino(ite) == ino);
 }
 
-static void ite_to_iaddr(const struct voluta_itable_entry *ite,
-			 struct voluta_iaddr *iaddr)
+static void ite_setup(struct voluta_itable_entry *ite, ino_t ino, loff_t off)
 {
-	iaddr_setup(iaddr, ite_ino(ite), ite_off(ite));
-}
-
-static void ite_setup(struct voluta_itable_entry *ite,
-		      const struct voluta_iaddr *iaddr)
-{
-	ite_set_ino(ite, iaddr->ino);
-	ite_set_off(ite, iaddr->vaddr.off);
+	ite_set_ino(ite, ino);
+	ite_set_off(ite, off);
 }
 
 static void ite_reset(struct voluta_itable_entry *ite)
@@ -189,13 +198,13 @@ static size_t itn_child_slot(const struct voluta_itable_tnode *itn, ino_t ino)
 
 static size_t itn_nents_max(const struct voluta_itable_tnode *itn)
 {
-	return ARRAY_SIZE(itn->ent);
+	return ARRAY_SIZE(itn->ite);
 }
 
 static struct voluta_itable_entry *
 itn_entry_at(const struct voluta_itable_tnode *itn, size_t slot)
 {
-	const struct voluta_itable_entry *ite = &itn->ent[slot];
+	const struct voluta_itable_entry *ite = &itn->ite[slot];
 
 	return (struct voluta_itable_entry *)ite;
 }
@@ -230,15 +239,18 @@ static bool itn_isempty(const struct voluta_itable_tnode *itn)
 }
 
 static const struct voluta_itable_entry *
-itn_find_first(const struct voluta_itable_tnode *itn)
+itn_find_next(const struct voluta_itable_tnode *itn,
+	      const struct voluta_itable_entry *from)
 {
+	size_t slot_beg;
 	const struct voluta_itable_entry *ite;
 	const size_t nents_max = itn_nents_max(itn);
 
 	if (itn_isempty(itn)) {
 		return NULL;
 	}
-	for (size_t i = 0; i < nents_max; ++i) {
+	slot_beg = (from != NULL) ? (size_t)(from - itn->ite) : 0;
+	for (size_t i = slot_beg; i < nents_max; ++i) {
 		ite = itn_entry_at(itn, i);
 		if (!ite_isfree(ite)) {
 			return ite;
@@ -247,17 +259,20 @@ itn_find_first(const struct voluta_itable_tnode *itn)
 	return NULL;
 }
 
+static size_t itn_slot_by_ino(const struct voluta_itable_tnode *itn, ino_t ino)
+{
+	return ino % itn_nents_max(itn);
+}
+
 static struct voluta_itable_entry *
 itn_lookup(const struct voluta_itable_tnode *itn, ino_t ino)
 {
+	size_t slot;
 	const struct voluta_itable_entry *ite;
-	const size_t nents_max = itn_nents_max(itn);
 
-	if (itn_isempty(itn)) {
-		return NULL;
-	}
-	for (size_t i = 0; i < nents_max; ++i) {
-		ite = itn_entry_at(itn, (ino + i) % nents_max);
+	if (!itn_isempty(itn)) {
+		slot = itn_slot_by_ino(itn, ino);
+		ite = itn_entry_at(itn, slot);
 		if (ite_has_ino(ite, ino)) {
 			return (struct voluta_itable_entry *)ite;
 		}
@@ -266,18 +281,16 @@ itn_lookup(const struct voluta_itable_tnode *itn, ino_t ino)
 }
 
 static struct voluta_itable_entry *
-itn_insert(struct voluta_itable_tnode *itn, const struct voluta_iaddr *iaddr)
+itn_insert(struct voluta_itable_tnode *itn, ino_t ino, loff_t off)
 {
+	size_t slot;
 	struct voluta_itable_entry *ite;
-	const size_t nents_max = itn_nents_max(itn);
 
-	if (itn_isfull(itn)) {
-		return NULL;
-	}
-	for (size_t i = 0; i < nents_max; ++i) {
-		ite = itn_entry_at(itn, (iaddr->ino + i) % nents_max);
+	if (!itn_isfull(itn)) {
+		slot = itn_slot_by_ino(itn, ino);
+		ite = itn_entry_at(itn, slot);
 		if (ite_isfree(ite)) {
-			ite_setup(ite, iaddr);
+			ite_setup(ite, ino, off);
 			itn_inc_nents(itn);
 			return ite;
 		}
@@ -296,13 +309,6 @@ itn_remove(struct voluta_itable_tnode *itn, ino_t ino)
 		itn_dec_nents(itn);
 	}
 	return ite;
-}
-
-static loff_t itn_child(const struct voluta_itable_tnode *itn, ino_t ino)
-{
-	const size_t slot = itn_child_slot(itn, ino);
-
-	return itn_child_at(itn, slot);
 }
 
 static void itn_set_child(struct voluta_itable_tnode *itn,
@@ -336,16 +342,16 @@ static bool itn_isroot(const struct voluta_itable_tnode *itn)
 
 static void itable_init(struct voluta_itable *itable)
 {
-	voluta_vaddr_reset(&itable->it_tree_vaddr);
+	vaddr_reset(&itable->it_root_vaddr);
 	itable->it_ino_rootd = VOLUTA_INO_NULL;
 	itable->it_ino_apex = VOLUTA_INO_ROOT + 1;
 	itable->it_ninodes = 0;
-	itable->it_ninodes_max = 1UL << 31; /* XXX */
+	itable->it_ninodes_max = ULONG_MAX / 2;
 }
 
 static void itable_fini(struct voluta_itable *itable)
 {
-	voluta_vaddr_reset(&itable->it_tree_vaddr);
+	vaddr_reset(&itable->it_root_vaddr);
 	itable->it_ino_rootd = VOLUTA_INO_NULL;
 	itable->it_ino_apex = VOLUTA_INO_NULL;
 	itable->it_ninodes = 0;
@@ -378,6 +384,20 @@ static void itable_remove_ino(struct voluta_itable *itable, ino_t ino)
 	itable->it_ninodes--;
 }
 
+static void itable_parse_itn(struct voluta_itable *itable,
+			     const struct voluta_itable_tnode *itn)
+{
+	ino_t ino;
+	const struct voluta_itable_entry *ite;
+
+	ite = itn_find_next(itn, NULL);
+	while (ite != NULL) {
+		ino = ite_ino(ite);
+		itable_add_ino(itable, ino);
+		ite = itn_find_next(itn, ite + 1);
+	}
+}
+
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 static struct voluta_itable *itable_of(const struct voluta_sb_info *sbi)
@@ -392,34 +412,42 @@ static int stage_itnode(struct voluta_sb_info *sbi,
 			struct voluta_vnode_info **out_vi)
 {
 	int err;
-	struct voluta_vnode_info *itnode_vi;
+	struct voluta_vnode_info *itn_vi;
 
 	if (vaddr_isnull(vaddr)) {
 		return -ENOENT;
 	}
-	err = voluta_stage_vnode(sbi, vaddr, &itnode_vi);
+	err = voluta_stage_vnode(sbi, vaddr, NULL, &itn_vi);
 	if (err) {
 		return err;
 	}
-	*out_vi = itnode_vi;
+	*out_vi = itn_vi;
 	return 0;
+}
+
+static void resolve_child_at(const struct voluta_vnode_info *vi, size_t slot,
+			     struct voluta_vaddr *out_vaddr)
+{
+	const loff_t off = itn_child_at(vi->u.itn, slot);
+
+	vaddr_of_itnode(out_vaddr, off);
 }
 
 static void resolve_child(const struct voluta_vnode_info *vi, ino_t ino,
 			  struct voluta_vaddr *out_vaddr)
 {
-	const loff_t off = itn_child(vi->u.itn, ino);
+	const size_t slot = itn_child_slot(vi->u.itn, ino);
 
-	vaddr_of_itnode(out_vaddr, off);
+	resolve_child_at(vi, slot, out_vaddr);
 }
 
 static int stage_child(struct voluta_sb_info *sbi,
-		       const struct voluta_vnode_info *vi, ino_t ino,
+		       const struct voluta_vnode_info *itn_vi, ino_t ino,
 		       struct voluta_vnode_info **out_child_vi)
 {
 	struct voluta_vaddr child_vaddr;
 
-	resolve_child(vi, ino, &child_vaddr);
+	resolve_child(itn_vi, ino, &child_vaddr);
 	return stage_itnode(sbi, &child_vaddr, out_child_vi);
 }
 
@@ -427,83 +455,89 @@ static int stage_itroot(struct voluta_sb_info *sbi,
 			struct voluta_vnode_info **out_vi)
 {
 	int err;
-	struct voluta_vnode_info *vi;
-	const struct voluta_itable *it = itable_of(sbi);
+	struct voluta_vnode_info *itroot_vi;
+	const struct voluta_itable *itable = itable_of(sbi);
 
-	err = stage_itnode(sbi, &it->it_tree_vaddr, &vi);
+	err = stage_itnode(sbi, &itable->it_root_vaddr, &itroot_vi);
 	if (err) {
 		return err;
 	}
-	voluta_assert_eq(itn_depth(vi->u.itn), ITNODE_ROOT_DEPTH);
-	*out_vi = vi;
-	return 0;
-}
-
-static int resolve_iaddr(const struct voluta_itable_entry *ite,
-			 struct voluta_iaddr *out_iaddr)
-{
-	if (ite == NULL) {
-		return -ENOENT;
+	if (!itn_isroot(itroot_vi->u.itn)) {
+		return -EFSCORRUPTED;
 	}
-	ite_to_iaddr(ite, out_iaddr);
+	*out_vi = itroot_vi;
 	return 0;
 }
 
-static int lookup_at(const struct voluta_vnode_info *vi,
+static void iaddr_by_ite(struct voluta_iaddr *iaddr,
+			 const struct voluta_itable_entry *ite)
+{
+	iaddr_setup(iaddr, ite_ino(ite), ite_off(ite));
+}
+
+static int lookup_at(const struct voluta_vnode_info *itn_vi,
 		     ino_t ino, struct voluta_iaddr *out_iaddr)
 {
 	const struct voluta_itable_entry *ite;
 
-	ite = itn_lookup(vi->u.itn, ino);
-	return resolve_iaddr(ite, out_iaddr);
+	ite = itn_lookup(itn_vi->u.itn, ino);
+	if (ite == NULL) {
+		return -ENOENT;
+	}
+	iaddr_by_ite(out_iaddr, ite);
+	return 0;
 }
 
-static int lookup_recursively(struct voluta_sb_info *sbi,
-			      const struct voluta_vnode_info *vi,
-			      ino_t ino, struct voluta_iaddr *out_iaddr)
+static int do_lookup_iref(struct voluta_sb_info *sbi,
+			  struct voluta_vnode_info *itn_vi, ino_t ino,
+			  struct voluta_iaddr *out_iaddr)
 {
 	int err;
 	struct voluta_vnode_info *child_vi;
 
-	err = lookup_at(vi, ino, out_iaddr);
+	err = lookup_at(itn_vi, ino, out_iaddr);
 	if (!err) {
 		return 0;
 	}
-	err = stage_child(sbi, vi, ino, &child_vi);
+	err = stage_child(sbi, itn_vi, ino, &child_vi);
 	if (err) {
 		return err;
 	}
-	err = lookup_recursively(sbi, child_vi, ino, out_iaddr);
+	err = lookup_iref(sbi, child_vi, ino, out_iaddr);
 	if (err) {
 		return err;
 	}
 	return 0;
+}
+
+static int lookup_iref(struct voluta_sb_info *sbi,
+		       struct voluta_vnode_info *itn_vi, ino_t ino,
+		       struct voluta_iaddr *out_iaddr)
+{
+	int err;
+
+	v_incref(itn_vi);
+	err = do_lookup_iref(sbi, itn_vi, ino, out_iaddr);
+	v_decref(itn_vi);
+
+	return err;
 }
 
 static int lookup_iaddr_of(struct voluta_sb_info *sbi, ino_t ino,
 			   struct voluta_iaddr *out_iaddr)
 {
 	int err;
-	struct voluta_vnode_info *vi = NULL;
+	struct voluta_vnode_info *itroot_vi = NULL;
 
-	err = stage_itroot(sbi, &vi);
+	err = stage_itroot(sbi, &itroot_vi);
 	if (err) {
 		return err;
 	}
-	err = lookup_recursively(sbi, vi, ino, out_iaddr);
+	err = lookup_iref(sbi, itroot_vi, ino, out_iaddr);
 	if (err) {
 		return err;
 	}
 	return 0;
-}
-
-static int find_first_at(const struct voluta_vnode_info *vi,
-			 struct voluta_iaddr *out_iaddr)
-{
-	const struct voluta_itable_entry *ite;
-
-	ite = itn_find_first(vi->u.itn);
-	return resolve_iaddr(ite, out_iaddr);
 }
 
 static int new_itnode(struct voluta_sb_info *sbi,
@@ -511,41 +545,31 @@ static int new_itnode(struct voluta_sb_info *sbi,
 		      size_t depth, struct voluta_vnode_info **out_vi)
 {
 	int err;
-	struct voluta_vnode_info *vi;
+	struct voluta_vnode_info *itn_vi;
 
-	err = voluta_new_vnode(sbi, VOLUTA_VTYPE_ITNODE, &vi);
+	err = voluta_new_vnode(sbi, NULL, VOLUTA_VTYPE_ITNODE, &itn_vi);
 	if (err) {
 		return err;
 	}
-	itn_init(vi->u.itn, parent_vaddr->off, depth);
-	v_dirtify(vi);
-	*out_vi = vi;
+	itn_init(itn_vi->u.itn, parent_vaddr->off, depth);
+	v_dirtify(itn_vi);
+	*out_vi = itn_vi;
 	return 0;
 }
 
 static int del_itnode(struct voluta_sb_info *sbi,
-		      struct voluta_vnode_info *itnode_vi)
+		      struct voluta_vnode_info *itn_vi)
 {
-	voluta_undirtify_vi(itnode_vi);
-	return voluta_del_vnode(sbi, itnode_vi);
+	return voluta_del_vnode(sbi, itn_vi);
 }
 
 static int create_itroot(struct voluta_sb_info *sbi,
 			 struct voluta_vnode_info **out_vi)
 {
-	int err;
 	struct voluta_vaddr vaddr;
-	struct voluta_vnode_info *itnode_vi;
-	struct voluta_itable *itable = itable_of(sbi);
 
 	vaddr_of_itnode(&vaddr, VOLUTA_OFF_NULL);
-	err = new_itnode(sbi, &vaddr, ITNODE_ROOT_DEPTH, &itnode_vi);
-	if (err) {
-		return err;
-	}
-	vaddr_clone(v_vaddr_of(itnode_vi), &itable->it_tree_vaddr);
-	*out_vi = itnode_vi;
-	return 0;
+	return new_itnode(sbi, &vaddr, ITNODE_ROOT_DEPTH, out_vi);
 }
 
 static void bind_child(struct voluta_vnode_info *vi, ino_t ino,
@@ -578,27 +602,6 @@ static int create_itchild(struct voluta_sb_info *sbi,
 	return 0;
 }
 
-static int stage_or_create_root(struct voluta_sb_info *sbi,
-				struct voluta_vnode_info **out_vi)
-{
-	int err;
-	struct voluta_vnode_info *it_root_vi = NULL;
-	const struct voluta_itable *itable = itable_of(sbi);
-
-	if (!vaddr_isnull(&itable->it_tree_vaddr)) {
-		err = stage_itroot(sbi, &it_root_vi);
-	} else {
-		err = create_itroot(sbi, &it_root_vi);
-	}
-	if (err) {
-		return err;
-	}
-
-	voluta_assert_eq(it_root_vi->vaddr.ag_index, 2);
-	*out_vi = it_root_vi;
-	return 0;
-}
-
 static int require_child(struct voluta_sb_info *sbi,
 			 struct voluta_vnode_info *vi, ino_t ino,
 			 struct voluta_vnode_info **out_child_vi)
@@ -616,37 +619,37 @@ static int require_child(struct voluta_sb_info *sbi,
 }
 
 static int try_insert_at(struct voluta_sb_info *sbi,
-			 struct voluta_vnode_info *vi,
+			 struct voluta_vnode_info *itn_vi,
 			 const struct voluta_iaddr *iaddr)
 {
 	struct voluta_itable_entry *ite;
 	struct voluta_itable *itable = itable_of(sbi);
 
-	ite = itn_insert(vi->u.itn, iaddr);
+	ite = itn_insert(itn_vi->u.itn, iaddr->ino, iaddr->vaddr.off);
 	if (ite == NULL) {
 		return -ENOSPC;
 	}
 	itable_add_ino(itable, iaddr->ino);
-	v_dirtify(vi);
+	v_dirtify(itn_vi);
 	return 0;
 }
 
-static int insert_recursive(struct voluta_sb_info *sbi,
-			    struct voluta_vnode_info *itnode_vi,
-			    const struct voluta_iaddr *iaddr)
+static int do_insert_iref(struct voluta_sb_info *sbi,
+			  struct voluta_vnode_info *itn_vi,
+			  const struct voluta_iaddr *iaddr)
 {
 	int err;
 	struct voluta_vnode_info *child_vi = NULL;
 
-	err = try_insert_at(sbi, itnode_vi, iaddr);
+	err = try_insert_at(sbi, itn_vi, iaddr);
 	if (!err) {
 		return 0;
 	}
-	err = require_child(sbi, itnode_vi, iaddr->ino, &child_vi);
+	err = require_child(sbi, itn_vi, iaddr->ino, &child_vi);
 	if (err) {
 		return err;
 	}
-	err = insert_recursive(sbi, child_vi, iaddr);
+	err = insert_iref(sbi, child_vi, iaddr);
 	if (err) {
 		return err;
 	}
@@ -654,20 +657,16 @@ static int insert_recursive(struct voluta_sb_info *sbi,
 }
 
 static int insert_iref(struct voluta_sb_info *sbi,
+		       struct voluta_vnode_info *itn_vi,
 		       const struct voluta_iaddr *iaddr)
 {
 	int err;
-	struct voluta_vnode_info *root_itnode_vi;
 
-	err = stage_or_create_root(sbi, &root_itnode_vi);
-	if (err) {
-		return err;
-	}
-	err = insert_recursive(sbi, root_itnode_vi, iaddr);
-	if (err) {
-		return err;
-	}
-	return 0;
+	v_incref(itn_vi);
+	err = do_insert_iref(sbi, itn_vi, iaddr);
+	v_decref(itn_vi);
+
+	return err;
 }
 
 static int try_remove_at(struct voluta_sb_info *sbi,
@@ -696,6 +695,9 @@ static int prune_if_empty_leaf(struct voluta_sb_info *sbi,
 	if (!itn_isleaf(child_vi->u.itn)) {
 		return 0;
 	}
+	if (itn_isroot(child_vi->u.itn)) {
+		return 0;
+	}
 	err = del_itnode(sbi, child_vi);
 	if (err) {
 		return err;
@@ -705,41 +707,53 @@ static int prune_if_empty_leaf(struct voluta_sb_info *sbi,
 	return 0;
 }
 
-static int remove_recursively(struct voluta_sb_info *sbi,
-			      struct voluta_vnode_info *vi, ino_t ino)
+static int do_remove_iref(struct voluta_sb_info *sbi,
+			  struct voluta_vnode_info *itn_vi, ino_t ino)
 {
 	int err;
 	struct voluta_vnode_info *child_vi = NULL;
 
-	err = try_remove_at(sbi, vi, ino);
+	err = try_remove_at(sbi, itn_vi, ino);
 	if (!err) {
 		return 0;
 	}
-	err = stage_child(sbi, vi, ino, &child_vi);
+	err = stage_child(sbi, itn_vi, ino, &child_vi);
 	if (err) {
 		return err;
 	}
-	err = remove_recursively(sbi, child_vi, ino);
+	err = remove_iref(sbi, child_vi, ino);
 	if (err) {
 		return err;
 	}
-	err = prune_if_empty_leaf(sbi, vi, child_vi, ino);
+	err = prune_if_empty_leaf(sbi, itn_vi, child_vi, ino);
 	if (err) {
 		return err;
 	}
 	return 0;
 }
 
-static int remove_itable_entry(struct voluta_sb_info *sbi, ino_t ino)
+static int remove_iref(struct voluta_sb_info *sbi,
+		       struct voluta_vnode_info *itn_vi, ino_t ino)
 {
 	int err;
-	struct voluta_vnode_info *root_itnode_vi;
 
-	err = stage_itroot(sbi, &root_itnode_vi);
+	v_incref(itn_vi);
+	err = do_remove_iref(sbi, itn_vi, ino);
+	v_decref(itn_vi);
+
+	return err;
+}
+
+static int remove_itentry(struct voluta_sb_info *sbi, ino_t ino)
+{
+	int err;
+	struct voluta_vnode_info *itroot_vi;
+
+	err = stage_itroot(sbi, &itroot_vi);
 	if (err) {
 		return err;
 	}
-	err = remove_recursively(sbi, root_itnode_vi, ino);
+	err = remove_iref(sbi, itroot_vi, ino);
 	if (err) {
 		return err;
 	}
@@ -749,21 +763,26 @@ static int remove_itable_entry(struct voluta_sb_info *sbi, ino_t ino)
 int voluta_acquire_ino(struct voluta_sb_info *sbi, struct voluta_iaddr *iaddr)
 {
 	int err;
+	struct voluta_vnode_info *itroot_vi;
 	struct voluta_itable *itable = itable_of(sbi);
 
 	err = itable_next_ino(itable, &iaddr->ino);
 	if (err) {
 		return err;
 	}
-	err = insert_iref(sbi, iaddr);
+	err = stage_itroot(sbi, &itroot_vi);
+	if (err) {
+		return err;
+	}
+	err = insert_iref(sbi, itroot_vi, iaddr);
 	if (err) {
 		return err;
 	}
 	return 0;
 }
 
-int voluta_real_ino(const struct voluta_sb_info *sbi, ino_t ino,
-		    ino_t *out_ino)
+int voluta_real_ino(const struct voluta_sb_info *sbi,
+		    ino_t ino, ino_t *out_ino)
 {
 	const struct voluta_itable *itable = itable_of(sbi);
 
@@ -771,7 +790,7 @@ int voluta_real_ino(const struct voluta_sb_info *sbi, ino_t ino,
 		return -EINVAL;
 	}
 	if (ino == VOLUTA_INO_ROOT) {
-		if (itable->it_ino_rootd == VOLUTA_INO_NULL) {
+		if (ino_isnull(itable->it_ino_rootd)) {
 			return -ENOENT;
 		}
 		*out_ino = itable->it_ino_rootd;
@@ -790,7 +809,7 @@ int voluta_discard_ino(struct voluta_sb_info *sbi, ino_t xino)
 	if (err) {
 		return err;
 	}
-	err = remove_itable_entry(sbi, ino);
+	err = remove_itentry(sbi, ino);
 	if (err) {
 		return err;
 	}
@@ -816,8 +835,25 @@ int voluta_resolve_ino(struct voluta_sb_info *sbi, ino_t xino,
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-int voluta_reload_itable(struct voluta_sb_info *sbi,
-			 const struct voluta_vaddr *vaddr)
+int voluta_create_itable(struct voluta_sb_info *sbi)
+{
+	int err;
+	struct voluta_vnode_info *itroot_vi;
+	struct voluta_itable *itable = itable_of(sbi);
+
+	voluta_assert(vaddr_isnull(&itable->it_root_vaddr));
+	voluta_assert_eq(itable->it_ino_rootd, VOLUTA_INO_NULL);
+
+	err = create_itroot(sbi, &itroot_vi);
+	if (err) {
+		return err;
+	}
+	vaddr_clone(v_vaddr_of(itroot_vi), &itable->it_root_vaddr);
+	return 0;
+}
+
+static int reload_itable_root(struct voluta_sb_info *sbi,
+			      const struct voluta_vaddr *vaddr)
 {
 	int err;
 	struct voluta_vnode_info *root_vi;
@@ -830,12 +866,125 @@ int voluta_reload_itable(struct voluta_sb_info *sbi,
 	if (!itn_isroot(root_vi->u.itn)) {
 		return -ENOENT;
 	}
-	voluta_vaddr_clone(vaddr, &itable->it_tree_vaddr);
+	vaddr_clone(vaddr, &itable->it_root_vaddr);
+	return 0;
+}
 
-	/* XXX: Hack, FIXME */
-	voluta_assert_eq(itable->it_ninodes, 0);
-	itable->it_ninodes = 1;
+static void scan_entries_of(struct voluta_sb_info *sbi,
+			    const struct voluta_vnode_info *itn_vi)
+{
+	struct voluta_itable *itable = itable_of(sbi);
 
+	itable_parse_itn(itable, itn_vi->u.itn);
+}
+
+static int scan_subtree_at(struct voluta_sb_info *sbi,
+			   const struct voluta_vaddr *vaddr)
+{
+	int err;
+	struct voluta_vnode_info *itn_vi;
+
+	if (vaddr_isnull(vaddr)) {
+		return 0;
+	}
+	err = stage_itnode(sbi, vaddr, &itn_vi);
+	if (err) {
+		return err;
+	}
+	err = scan_subtree(sbi, itn_vi);
+	if (err) {
+		return err;
+	}
+	return 0;
+}
+
+static int do_scan_subtree(struct voluta_sb_info *sbi,
+			   const struct voluta_vnode_info *itn_vi)
+{
+	int err = 0;
+	struct voluta_vaddr vaddr;
+	const size_t nchilds_max = itn_nchilds_max(itn_vi->u.itn);
+
+	scan_entries_of(sbi, itn_vi);
+	for (size_t i = 0; (i < nchilds_max) && !err; ++i) {
+		resolve_child_at(itn_vi, i, &vaddr);
+		err = scan_subtree_at(sbi, &vaddr);
+	}
+	return err;
+}
+
+static int scan_subtree(struct voluta_sb_info *sbi,
+			struct voluta_vnode_info *itn_vi)
+{
+	int err;
+
+	v_incref(itn_vi);
+	err = do_scan_subtree(sbi, itn_vi);
+	v_decref(itn_vi);
+
+	return err;
+}
+
+int voluta_reload_itable(struct voluta_sb_info *sbi,
+			 const struct voluta_vaddr *vaddr)
+{
+	int err;
+	struct voluta_vnode_info *itroot_vi;
+
+	err = reload_itable_root(sbi, vaddr);
+	if (err) {
+		return err;
+	}
+	err = stage_itroot(sbi, &itroot_vi);
+	if (err) {
+		return err;
+	}
+	err = scan_subtree(sbi, itroot_vi);
+	if (err) {
+		return err;
+	}
+	return 0;
+}
+
+static bool ino_set_isfull(const struct voluta_ino_set *ino_set)
+{
+	return (ino_set->cnt >= ARRAY_SIZE(ino_set->ino));
+}
+
+static void ino_set_append(struct voluta_ino_set *ino_set, ino_t ino)
+{
+	ino_set->ino[ino_set->cnt++] = ino;
+}
+
+static void fill_ino_set(const struct voluta_vnode_info *itn_vi,
+			 struct voluta_ino_set *ino_set)
+{
+	const struct voluta_itable_entry *ite;
+	const struct voluta_itable_tnode *itn = itn_vi->u.itn;
+
+	ino_set->cnt = 0;
+	ite = itn_find_next(itn, NULL);
+	while (ite != NULL) {
+		if (ino_set_isfull(ino_set)) {
+			break;
+		}
+		ino_set_append(ino_set, ite_ino(ite));
+		ite = itn_find_next(itn, ite + 1);
+	}
+}
+
+int voluta_parse_itable_top(struct voluta_sb_info *sbi,
+			    struct voluta_ino_set *ino_set)
+{
+	int err;
+	struct voluta_vnode_info *vi;
+	struct voluta_itable *itable = itable_of(sbi);
+
+	err = stage_itnode(sbi, &itable->it_root_vaddr, &vi);
+	if (err) {
+		return err;
+	}
+	fill_ino_set(vi, ino_set);
 	return 0;
 }
 
@@ -847,44 +996,6 @@ void voluta_bind_root_ino(struct voluta_sb_info *sbi, ino_t ino)
 	if (itable->it_ino_apex < itable->it_ino_rootd) {
 		itable->it_ino_apex = itable->it_ino_rootd;
 	}
-}
-
-int voluta_find_root_ino(struct voluta_sb_info *sbi,
-			 struct voluta_iaddr *out_iaddr)
-{
-	int err;
-	struct voluta_vnode_info *vi;
-	struct voluta_itable *itable = itable_of(sbi);
-
-	voluta_assert(!vaddr_isnull(&itable->it_tree_vaddr));
-	voluta_assert_eq(itable->it_ino_rootd, VOLUTA_INO_NULL);
-
-	err = stage_itroot(sbi, &vi);
-	if (err) {
-		return err;
-	}
-	/* TODO: Find root ino by explicit flag */
-	err = find_first_at(vi, out_iaddr);
-	if (err) {
-		return err;
-	}
-	voluta_assert_ne(out_iaddr->ino, VOLUTA_INO_NULL);
-	return 0;
-}
-
-int voluta_format_itable(struct voluta_sb_info *sbi)
-{
-	int err;
-	struct voluta_vnode_info *vi;
-	struct voluta_itable *itable = itable_of(sbi);
-
-	voluta_assert(vaddr_isnull(&itable->it_tree_vaddr));
-
-	err = stage_or_create_root(sbi, &vi);
-	if (err) {
-		return err;
-	}
-	return 0;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -904,7 +1015,7 @@ void voluta_fini_itable(struct voluta_sb_info *sbi)
 
 static int verify_ino(ino_t ino)
 {
-	return (ino != VOLUTA_INO_NULL) ? voluta_verify_ino(ino) : 0;
+	return ino_isnull(ino) ? 0 : voluta_verify_ino(ino);
 }
 
 static int verify_itable_entry(const struct voluta_itable_entry *ite)
@@ -967,15 +1078,12 @@ static int verify_itnode_childs(const struct voluta_itable_tnode *itn)
 	return verify_count(nchilds, itn_nchilds(itn));
 }
 
-
-/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-
-int voluta_verify_itnode(const struct voluta_itable_tnode *itn)
+int voluta_verify_itnode(const struct voluta_itable_tnode *itn, bool full)
 {
 	int err;
 
 	err = voluta_verify_off(itn_parent_off(itn));
-	if (err) {
+	if (err || !full) {
 		return err;
 	}
 	err = verify_itnode_entries(itn);

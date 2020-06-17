@@ -17,6 +17,7 @@
 #define _GNU_SOURCE 1
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/xattr.h>
 #include <linux/falloc.h>
 #include <unistd.h>
@@ -26,8 +27,8 @@
 #include "unitest.h"
 
 
-void voluta_ut_statfs_ok(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			 struct statvfs *st)
+void voluta_ut_statfs_ok(struct voluta_ut_ctx *ut_ctx,
+			 ino_t ino, struct statvfs *st)
 {
 	int err;
 
@@ -65,6 +66,16 @@ void voluta_ut_getattr_exists(struct voluta_ut_ctx *ut_ctx,
 
 	err = voluta_ut_getattr(ut_ctx, ino, st);
 	ut_assert_ok(err);
+	ut_assert_eq(ino, st->st_ino);
+}
+
+void voluta_ut_getattr_noent(struct voluta_ut_ctx *ut_ctx, ino_t ino)
+{
+	int err;
+	struct stat st;
+
+	err = voluta_ut_getattr(ut_ctx, ino, &st);
+	ut_assert_err(err, -ENOENT);
 }
 
 void voluta_ut_getattr_file(struct voluta_ut_ctx *ut_ctx,
@@ -74,23 +85,34 @@ void voluta_ut_getattr_file(struct voluta_ut_ctx *ut_ctx,
 	ut_assert(S_ISREG(st->st_mode));
 }
 
+void voluta_ut_getattr_lnk(struct voluta_ut_ctx *ut_ctx,
+			   ino_t ino, struct stat *st)
+{
+	voluta_ut_getattr_exists(ut_ctx, ino, st);
+	ut_assert(S_ISLNK(st->st_mode));
+}
+
+void voluta_ut_getattr_dir(struct voluta_ut_ctx *ut_ctx,
+			   ino_t ino, struct stat *st)
+{
+	voluta_ut_getattr_exists(ut_ctx, ino, st);
+	ut_assert(S_ISDIR(st->st_mode));
+}
+
 void voluta_ut_getattr_dirsize(struct voluta_ut_ctx *ut_ctx,
 			       ino_t ino, loff_t size)
 {
-	int err;
 	struct stat st;
 
-	err = voluta_ut_getattr(ut_ctx, ino, &st);
-	ut_assert_ok(err);
-	ut_assert(S_ISDIR(st.st_mode));
+	voluta_ut_getattr_dir(ut_ctx, ino, &st);
 	ut_assert_ge(st.st_size, size);
 	if (!size) {
 		ut_assert_eq(st.st_size, VOLUTA_DIR_EMPTY_SIZE);
 	}
 }
 
-void voluta_ut_utimens_atime(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			     const struct timespec *atime)
+void voluta_ut_utimens_atime(struct voluta_ut_ctx *ut_ctx,
+			     ino_t ino, const struct timespec *atime)
 {
 	int err;
 	struct stat st, uts;
@@ -109,8 +131,8 @@ void voluta_ut_utimens_atime(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 	ut_assert_eq(st.st_atim.tv_nsec, atime->tv_nsec);
 }
 
-void voluta_ut_utimens_mtime(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			     const struct timespec *mtime)
+void voluta_ut_utimens_mtime(struct voluta_ut_ctx *ut_ctx,
+			     ino_t ino, const struct timespec *mtime)
 {
 	int err;
 	struct stat st, uts;
@@ -193,20 +215,15 @@ void voluta_ut_rmdir_ok(struct voluta_ut_ctx *ut_ctx,
 			ino_t parent_ino, const char *name)
 {
 	int err;
-	ino_t child_ino;
 	struct stat st;
 
 	err = voluta_ut_lookup(ut_ctx, parent_ino, name, &st);
 	ut_assert_ok(err);
-	child_ino = st.st_ino;
 
 	err = voluta_ut_rmdir(ut_ctx, parent_ino, name);
 	ut_assert_ok(err);
 
 	err = voluta_ut_lookup(ut_ctx, parent_ino, name, &st);
-	ut_assert_err(err, -ENOENT);
-
-	err = voluta_ut_getattr(ut_ctx, child_ino, &st);
 	ut_assert_err(err, -ENOENT);
 
 	err = voluta_ut_getattr(ut_ctx, parent_ino, &st);
@@ -285,8 +302,8 @@ void voluta_ut_lookup_dir(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
 	voluta_ut_lookup_exists(ut_ctx, parent_ino, name, dino, S_IFDIR);
 }
 
-void voluta_ut_lookup_reg(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
-			  const char *name, ino_t ino)
+void voluta_ut_lookup_file(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
+			   const char *name, ino_t ino)
 {
 	voluta_ut_lookup_exists(ut_ctx, parent_ino, name, ino, S_IFREG);
 }
@@ -334,6 +351,17 @@ void voluta_ut_unlink_exists(struct voluta_ut_ctx *ut_ctx,
 
 	err = voluta_ut_lookup(ut_ctx, parent_ino, name, &st);
 	ut_assert_err(err, -ENOENT);
+}
+
+void voluta_ut_unlink_file(struct voluta_ut_ctx *ut_ctx,
+			   ino_t parent_ino, const char *name)
+{
+	ino_t ino;
+	struct stat st;
+
+	voluta_ut_lookup_ok(ut_ctx, parent_ino, name, &ino);
+	voluta_ut_getattr_file(ut_ctx, ino, &st);
+	voluta_ut_unlink_exists(ut_ctx, parent_ino, name);
 }
 
 void voluta_ut_rename_move(struct voluta_ut_ctx *ut_ctx,
@@ -413,8 +441,10 @@ void voluta_ut_rename_exchange(struct voluta_ut_ctx *ut_ctx,
 	ut_assert_ok(err);
 
 	ut_assert_eq(st1.st_ino, st4.st_ino);
+	ut_assert_eq(st1.st_mode, st4.st_mode);
 	ut_assert_eq(st1.st_nlink, st4.st_nlink);
 	ut_assert_eq(st2.st_ino, st3.st_ino);
+	ut_assert_eq(st2.st_mode, st3.st_mode);
 	ut_assert_eq(st2.st_nlink, st3.st_nlink);
 }
 
@@ -462,7 +492,9 @@ static void ut_create(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
 	int err;
 	ino_t ino;
 	struct stat st;
+	struct statvfs stv[2];
 
+	voluta_ut_statfs_ok(ut_ctx, parent_ino, &stv[0]);
 	err = voluta_ut_create(ut_ctx, parent_ino, name, mode, &st);
 	ut_assert_ok(err);
 
@@ -474,6 +506,10 @@ static void ut_create(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
 	ut_assert_ok(err);
 	ut_assert_eq(st.st_ino, parent_ino);
 	ut_assert_gt(st.st_size, 0);
+
+	voluta_ut_statfs_ok(ut_ctx, ino, &stv[1]);
+	ut_assert_eq(stv[1].f_ffree + 1, stv[0].f_ffree);
+	ut_assert_le(stv[1].f_bfree, stv[0].f_bfree);
 
 	*out_ino = ino;
 }
@@ -491,16 +527,31 @@ void voluta_ut_create_special(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
 	ut_create(ut_ctx, parent_ino, name, mode, out_ino);
 }
 
-void voluta_ut_release_file(struct voluta_ut_ctx *ut_ctx, ino_t ino)
+void voluta_ut_create_noent(struct voluta_ut_ctx *ut_ctx,
+			    ino_t parent_ino, const char *name)
 {
 	int err;
 	struct stat st;
+	mode_t mode = S_IFREG | 0600;
 
-	err = voluta_ut_getattr(ut_ctx, ino, &st);
-	ut_assert_ok(err);
+	err = voluta_ut_create(ut_ctx, parent_ino, name, mode, &st);
+	ut_assert_err(err, -ENOENT);
+}
+
+void voluta_ut_release_ok(struct voluta_ut_ctx *ut_ctx, ino_t ino)
+{
+	int err;
 
 	err = voluta_ut_release(ut_ctx, ino);
 	ut_assert_ok(err);
+}
+
+void voluta_ut_release_file(struct voluta_ut_ctx *ut_ctx, ino_t ino)
+{
+	struct stat st;
+
+	voluta_ut_getattr_file(ut_ctx, ino, &st);
+	voluta_ut_release_ok(ut_ctx, ino);
 }
 
 void voluta_ut_fsync_file(struct voluta_ut_ctx *ut_ctx, ino_t ino,
@@ -556,6 +607,9 @@ void voluta_ut_remove_file(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
 			   const char *name, ino_t ino)
 {
 	int err;
+	struct statvfs stv[2];
+
+	voluta_ut_statfs_ok(ut_ctx, ino, &stv[0]);
 
 	err = voluta_ut_release(ut_ctx, ino);
 	ut_assert_ok(err);
@@ -565,6 +619,9 @@ void voluta_ut_remove_file(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
 
 	err = voluta_ut_unlink(ut_ctx, parent_ino, name);
 	ut_assert_err(err, -ENOENT);
+
+	voluta_ut_statfs_ok(ut_ctx, parent_ino, &stv[1]);
+	ut_assert_eq(stv[0].f_ffree + 1, stv[1].f_ffree);
 }
 
 void voluta_ut_remove_link(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
@@ -594,6 +651,13 @@ void voluta_ut_write_read(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 	ut_assert_eq(nwr, bsz);
 
 	voluta_ut_read_verify(ut_ctx, ino, buf, bsz, off);
+}
+
+void voluta_ut_write_read1(struct voluta_ut_ctx *ut_ctx, ino_t ino, loff_t off)
+{
+	const uint8_t dat[] = { 1 };
+
+	voluta_ut_write_read(ut_ctx, ino, dat, 1, off);
 }
 
 void voluta_ut_write_read_str(struct voluta_ut_ctx *ut_ctx, ino_t ino,
@@ -836,6 +900,49 @@ void voluta_ut_removexattr_all(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 	}
 }
 
+void voluta_ut_inquiry_ok(struct voluta_ut_ctx *ut_ctx, ino_t ino,
+			  struct voluta_inquiry *out_inq)
+{
+	int err;
+
+	err = voluta_ut_inquiry(ut_ctx, ino, out_inq);
+	ut_assert_ok(err);
+}
+
+void voluta_ut_fiemap_ok(struct voluta_ut_ctx *ut_ctx,
+			 ino_t ino, struct fiemap *fm)
+{
+	int err;
+
+	err = voluta_ut_fiemap(ut_ctx, ino, fm);
+	ut_assert_ok(err);
+	ut_assert_lt(fm->fm_mapped_extents, UINT_MAX / 2);
+	if (fm->fm_extent_count) {
+		ut_assert_le(fm->fm_mapped_extents, fm->fm_extent_count);
+	}
+}
+
+static void ut_lseek_ok(struct voluta_ut_ctx *ut_ctx, ino_t ino,
+			loff_t off, int whence, loff_t *out_off)
+{
+	int err;
+	struct stat st;
+
+	voluta_ut_getattr_exists(ut_ctx, ino, &st);
+
+	*out_off = -1;
+	err = voluta_ut_lseek(ut_ctx, ino, off, whence, out_off);
+	ut_assert_ok(err);
+	ut_assert_ge(*out_off, 0);
+	ut_assert_le(*out_off, st.st_size);
+}
+
+void voluta_ut_lseek_data(struct voluta_ut_ctx *ut_ctx,
+			  ino_t ino, loff_t off, loff_t *out_off)
+{
+	ut_lseek_ok(ut_ctx, ino, off, SEEK_DATA, out_off);
+}
+
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 void voluta_ut_write_iobuf(struct voluta_ut_ctx *ut_ctx, ino_t ino,
@@ -856,18 +963,75 @@ void voluta_ut_read_iobuf(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-void voluta_ut_drop_caches(struct voluta_ut_ctx *ut_ctx)
+void voluta_ut_sync_drop(struct voluta_ut_ctx *ut_ctx)
 {
-	voluta_env_drop_caches(ut_ctx->env);
+	int err;
+
+	err = voluta_env_sync_drop(ut_ctx->env);
+	ut_assert_ok(err);
 }
 
 void voluta_ut_drop_caches_fully(struct voluta_ut_ctx *ut_ctx)
 {
-	struct voluta_cache_stat cst;
+	struct voluta_stats st;
 
-	voluta_ut_drop_caches(ut_ctx);
-	voluta_env_cache_stats(ut_ctx->env, &cst);
-	ut_assert_eq(cst.nblocks, 0);
-	ut_assert_eq(cst.nvnodes, 0);
-	ut_assert_eq(cst.ninodes, 0);
+	voluta_ut_sync_drop(ut_ctx);
+
+	/* Expects only super-block */
+	voluta_env_stats(ut_ctx->env, &st);
+	ut_assert_eq(st.ncache_blocks, 1);
+	ut_assert_eq(st.ncache_vnodes, 1);
+	ut_assert_eq(st.ncache_inodes, 0);
+}
+
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
+
+static void ut_assert_eq_stat_(const struct stat *st1, const struct stat *st2)
+{
+	ut_assert_eqm(st1, st2, sizeof(*st1));
+}
+
+static void ut_assert_eq_stats_(const struct stat *arr, size_t n)
+{
+	for (size_t i = 1; i < n; ++i) {
+		ut_assert_eq_stat_(arr, arr + i);
+	}
+}
+
+static void ut_assert_eq_statvfs_(const struct statvfs *fs_st1,
+				  const struct statvfs *fs_st2)
+{
+	ut_assert_eqm(fs_st1, fs_st2, sizeof(*fs_st1));
+}
+
+static void ut_assert_eq_statvfss_(const struct statvfs *arr, size_t n)
+{
+	for (size_t i = 1; i < n; ++i) {
+		ut_assert_eq_statvfs_(arr, arr + i);
+	}
+}
+
+#define ut_assert_eq_stats(arr) \
+	ut_assert_eq_stats_(arr, VOLUTA_ARRAY_SIZE(arr))
+
+#define ut_assert_eq_statvfs(arr) \
+	ut_assert_eq_statvfss_(arr, VOLUTA_ARRAY_SIZE(arr))
+
+
+
+void voluta_ut_reload_ok(struct voluta_ut_ctx *ut_ctx, ino_t ino)
+{
+	int err;
+	struct stat st[2];
+	struct statvfs fsst[2];
+
+	voluta_ut_statfs_ok(ut_ctx, ino, &fsst[0]);
+	voluta_ut_getattr_exists(ut_ctx, ino, &st[0]);
+	err = voluta_ut_reload(ut_ctx);
+	ut_assert_ok(err);
+	voluta_ut_statfs_ok(ut_ctx, ino, &fsst[1]);
+	voluta_ut_getattr_exists(ut_ctx, ino, &st[1]);
+
+	ut_assert_eq_statvfs(fsst);
+	ut_assert_eq_stats(st);
 }

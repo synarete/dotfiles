@@ -17,76 +17,80 @@
 #define _GNU_SOURCE 1
 #include "unitest.h"
 
-static struct voluta_env *ctx_of(struct voluta_ut_ctx *ut_ctx)
+static struct voluta_env *env_of(struct voluta_ut_ctx *ut_ctx)
 {
 	return ut_ctx->env;
 }
 
 int voluta_ut_load(struct voluta_ut_ctx *ut_ctx)
 {
-	voluta_env_setparams(ut_ctx->env, "/", NULL,  ut_ctx->volume_size);
 	return voluta_env_load(ut_ctx->env);
+}
+
+int voluta_ut_reload(struct voluta_ut_ctx *ut_ctx)
+{
+	return voluta_env_reload(ut_ctx->env);
 }
 
 int voluta_ut_statfs(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 		     struct statvfs *st)
 {
-	return voluta_fs_statfs(ctx_of(ut_ctx), ino, st);
+	return voluta_fs_statfs(env_of(ut_ctx), ino, st);
 }
 
 int voluta_ut_getattr(struct voluta_ut_ctx *ut_ctx, ino_t ino, struct stat *st)
 {
-	return voluta_fs_getattr(ctx_of(ut_ctx), ino, st);
+	return voluta_fs_getattr(env_of(ut_ctx), ino, st);
 }
 
 int voluta_ut_statx(struct voluta_ut_ctx *ut_ctx, ino_t ino, struct statx *stx)
 {
-	return voluta_fs_statx(ctx_of(ut_ctx), ino, stx);
+	return voluta_fs_statx(env_of(ut_ctx), ino, stx);
 }
 
 int voluta_ut_utimens(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 		      const struct stat *utimes, struct stat *st)
 {
-	return voluta_fs_utimens(ctx_of(ut_ctx), ino, utimes, st);
+	return voluta_fs_utimens(env_of(ut_ctx), ino, utimes, st);
 }
 
 int voluta_ut_access(struct voluta_ut_ctx *ut_ctx, ino_t ino, int mode)
 {
-	return voluta_fs_access(ctx_of(ut_ctx), ino, mode);
+	return voluta_fs_access(env_of(ut_ctx), ino, mode);
 }
 
 int voluta_ut_lookup(struct voluta_ut_ctx *ut_ctx, ino_t parent,
 		     const char *name, struct stat *out_stat)
 {
-	return voluta_fs_lookup(ctx_of(ut_ctx), parent, name, out_stat);
+	return voluta_fs_lookup(env_of(ut_ctx), parent, name, out_stat);
 }
 
 int voluta_ut_mkdir(struct voluta_ut_ctx *ut_ctx, ino_t parent,
 		    const char *name, mode_t mode, struct stat *out)
 {
-	return voluta_fs_mkdir(ctx_of(ut_ctx), parent,
+	return voluta_fs_mkdir(env_of(ut_ctx), parent,
 			       name, mode | S_IFDIR, out);
 }
 
 int voluta_ut_rmdir(struct voluta_ut_ctx *ut_ctx, ino_t parent,
 		    const char *name)
 {
-	return voluta_fs_rmdir(ctx_of(ut_ctx), parent, name);
+	return voluta_fs_rmdir(env_of(ut_ctx), parent, name);
 }
 
 int voluta_ut_opendir(struct voluta_ut_ctx *ut_ctx, ino_t ino)
 {
-	return voluta_fs_opendir(ctx_of(ut_ctx), ino);
+	return voluta_fs_opendir(env_of(ut_ctx), ino);
 }
 
 int voluta_ut_releasedir(struct voluta_ut_ctx *ut_ctx, ino_t ino)
 {
-	return voluta_fs_releasedir(ctx_of(ut_ctx), ino);
+	return voluta_fs_releasedir(env_of(ut_ctx), ino);
 }
 
 int voluta_ut_fsyncdir(struct voluta_ut_ctx *ut_ctx, ino_t ino, bool datasync)
 {
-	return voluta_fs_fsyncdir(ctx_of(ut_ctx), ino, datasync);
+	return voluta_fs_fsyncdir(env_of(ut_ctx), ino, datasync);
 }
 
 static struct voluta_ut_readdir_ctx *
@@ -124,46 +128,46 @@ static int filldir(struct voluta_readdir_ctx *readdir_ctx,
 	return 0;
 }
 
-int voluta_ut_readdir(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-		      loff_t doff, struct voluta_ut_readdir_ctx *ut_readdir_ctx)
+int voluta_ut_readdir(struct voluta_ut_ctx *ut_ctx, ino_t ino, loff_t doff,
+		      struct voluta_ut_readdir_ctx *ut_readdir_ctx)
 {
 	struct voluta_readdir_ctx *readdir_ctx = &ut_readdir_ctx->readdir_ctx;
 
 	ut_readdir_ctx->ndents = 0;
 	readdir_ctx->pos = doff;
 	readdir_ctx->actor = filldir;
-	return voluta_fs_readdir(ctx_of(ut_ctx), ino, readdir_ctx);
+	return voluta_fs_readdir(env_of(ut_ctx), ino, readdir_ctx);
 }
 
 int voluta_ut_symlink(struct voluta_ut_ctx *ut_ctx, ino_t parent,
 		      const char *name, const char *symval, struct stat *out)
 {
-	return voluta_fs_symlink(ctx_of(ut_ctx), parent, name, symval, out);
+	return voluta_fs_symlink(env_of(ut_ctx), parent, name, symval, out);
 }
 
 int voluta_ut_readlink(struct voluta_ut_ctx *ut_ctx,
 		       ino_t ino, char *ptr, size_t len)
 {
-	return voluta_fs_readlink(ctx_of(ut_ctx), ino, ptr, len);
+	return voluta_fs_readlink(env_of(ut_ctx), ino, ptr, len);
 }
 
 int voluta_ut_link(struct voluta_ut_ctx *ut_ctx, ino_t ino, ino_t parent,
 		   const char *name, struct stat *out)
 {
-	return voluta_fs_link(ctx_of(ut_ctx), ino, parent, name, out);
+	return voluta_fs_link(env_of(ut_ctx), ino, parent, name, out);
 }
 
 int voluta_ut_unlink(struct voluta_ut_ctx *ut_ctx, ino_t parent,
 		     const char *name)
 {
-	return voluta_fs_unlink(ctx_of(ut_ctx), parent, name);
+	return voluta_fs_unlink(env_of(ut_ctx), parent, name);
 }
 
 int voluta_ut_rename(struct voluta_ut_ctx *ut_ctx, ino_t parent,
 		     const char *name,
 		     ino_t newparent, const char *newname, int flags)
 {
-	return voluta_fs_rename(ctx_of(ut_ctx), parent, name,
+	return voluta_fs_rename(env_of(ut_ctx), parent, name,
 				newparent, newname, flags);
 }
 
@@ -171,73 +175,73 @@ int voluta_ut_create(struct voluta_ut_ctx *ut_ctx, ino_t parent,
 		     const char *name,
 		     mode_t mode, struct stat *out_stat)
 {
-	return voluta_fs_create(ctx_of(ut_ctx), parent, name, mode, out_stat);
+	return voluta_fs_create(env_of(ut_ctx), parent, name, mode, out_stat);
 }
 
 int voluta_ut_mknod(struct voluta_ut_ctx *ut_ctx, ino_t parent,
 		    const char *name,
 		    mode_t mode, dev_t rdev, struct stat *out_stat)
 {
-	return voluta_fs_mknod(ctx_of(ut_ctx), parent,
+	return voluta_fs_mknod(env_of(ut_ctx), parent,
 			       name, mode, rdev, out_stat);
 }
 
 int voluta_ut_open(struct voluta_ut_ctx *ut_ctx, ino_t ino, int flags)
 {
-	return voluta_fs_open(ctx_of(ut_ctx), ino, flags);
+	return voluta_fs_open(env_of(ut_ctx), ino, flags);
 }
 
 int voluta_ut_release(struct voluta_ut_ctx *ut_ctx, ino_t ino)
 {
-	return voluta_fs_release(ctx_of(ut_ctx), ino);
+	return voluta_fs_release(env_of(ut_ctx), ino);
 }
 
 int voluta_ut_fsync(struct voluta_ut_ctx *ut_ctx, ino_t ino, bool datasync)
 {
-	return voluta_fs_fsync(ctx_of(ut_ctx), ino, datasync);
+	return voluta_fs_fsync(env_of(ut_ctx), ino, datasync);
 }
 
 int voluta_ut_read(struct voluta_ut_ctx *ut_ctx, ino_t ino, void *buf,
 		   size_t len, loff_t off, size_t *out_len)
 {
-	return voluta_fs_read(ctx_of(ut_ctx), ino, buf, len, off, out_len);
+	return voluta_fs_read(env_of(ut_ctx), ino, buf, len, off, out_len);
 }
 
 int voluta_ut_write(struct voluta_ut_ctx *ut_ctx, ino_t ino, const void *buf,
 		    size_t len, off_t off, size_t *out_len)
 {
-	return voluta_fs_write(ctx_of(ut_ctx), ino, buf, len, off, out_len);
+	return voluta_fs_write(env_of(ut_ctx), ino, buf, len, off, out_len);
 }
 
 int voluta_ut_truncate(struct voluta_ut_ctx *ut_ctx, ino_t ino, loff_t length)
 {
 	struct stat st;
 
-	return voluta_fs_truncate(ctx_of(ut_ctx), ino, length, &st);
+	return voluta_fs_truncate(env_of(ut_ctx), ino, length, &st);
 }
 
 int voluta_ut_fallocate(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 			int mode, loff_t offset, loff_t len)
 {
-	return voluta_fs_fallocate(ctx_of(ut_ctx), ino, mode, offset, len);
+	return voluta_fs_fallocate(env_of(ut_ctx), ino, mode, offset, len);
 }
 
 int voluta_ut_setxattr(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 		       const char *name, const void *value, size_t size, int f)
 {
-	return voluta_fs_setxattr(ctx_of(ut_ctx), ino, name, value, size, f);
+	return voluta_fs_setxattr(env_of(ut_ctx), ino, name, value, size, f);
 }
 
 int voluta_ut_getxattr(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 		       const char *name, void *buf, size_t size, size_t *out)
 {
-	return voluta_fs_getxattr(ctx_of(ut_ctx), ino, name, buf, size, out);
+	return voluta_fs_getxattr(env_of(ut_ctx), ino, name, buf, size, out);
 }
 
-int voluta_ut_removexattr(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			  const char *name)
+int voluta_ut_removexattr(struct voluta_ut_ctx *ut_ctx,
+			  ino_t ino, const char *name)
 {
-	return voluta_fs_removexattr(ctx_of(ut_ctx), ino, name);
+	return voluta_fs_removexattr(env_of(ut_ctx), ino, name);
 }
 
 static struct voluta_ut_listxattr_ctx *
@@ -275,7 +279,24 @@ int voluta_ut_listxattr(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 	ut_listxattr_ctx->ut_ctx = ut_ctx;
 	ut_listxattr_ctx->listxattr_ctx.actor = fillxent;
 
-	return voluta_fs_listxattr(ctx_of(ut_ctx), ino, listxattr_ctx);
+	return voluta_fs_listxattr(env_of(ut_ctx), ino, listxattr_ctx);
 }
 
+int voluta_ut_inquiry(struct voluta_ut_ctx *ut_ctx, ino_t ino,
+		      struct voluta_inquiry *out_inq)
+{
+	return voluta_fs_inquiry(env_of(ut_ctx), ino, out_inq);
+}
+
+int voluta_ut_fiemap(struct voluta_ut_ctx *ut_ctx,
+		     ino_t ino, struct fiemap *fm)
+{
+	return voluta_fs_fiemap(env_of(ut_ctx), ino, fm);
+}
+
+int voluta_ut_lseek(struct voluta_ut_ctx *ut_ctx, ino_t ino,
+		    loff_t off, int whence, loff_t *out_off)
+{
+	return voluta_fs_lseek(env_of(ut_ctx), ino, off, whence, out_off);
+}
 

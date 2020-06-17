@@ -39,6 +39,7 @@
 #include <ctype.h>
 #include <math.h>
 #include <locale.h>
+#include <getopt.h>
 
 #include "voluta-prog.h"
 
@@ -46,14 +47,15 @@
 struct voluta_globals voluta_globals;
 
 
-voluta_decl_nonreturn_fn
-static void error_and_abort(int errnum, const char *msg)
+__attribute__((__noreturn__))
+static void error_with(int errnum, const char *msg)
 {
 	error(EXIT_FAILURE, abs(errnum), "%s", msg);
+	/* never gets here, but makes compiler happy */
 	abort();
 }
 
-voluta_decl_nonreturn_fn
+__attribute__((__noreturn__))
 void voluta_die(int errnum, const char *fmt, ...)
 {
 	va_list ap;
@@ -63,7 +65,20 @@ void voluta_die(int errnum, const char *fmt, ...)
 	vsnprintf(msg, sizeof(msg) - 1, fmt, ap);
 	va_end(ap);
 
-	error_and_abort(errnum, msg);
+	error_with(errnum, msg);
+}
+
+__attribute__((__noreturn__))
+void voluta_die_redundant_arg(const char *s)
+{
+	voluta_die(0, "redundant argument: %s", s);
+}
+
+
+__attribute__((__noreturn__))
+void voluta_die_unsupported_opt(void)
+{
+	exit(EXIT_FAILURE);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -73,8 +88,7 @@ voluta_signal_hook_fn voluta_signal_callback_hook = NULL;
 
 static void sigaction_info_handler(int signum)
 {
-	/* TODO: trace DEBUG */
-	voluta_log_info("signal: %d", signum);
+	voluta_log_debug("signal: %d", signum);
 }
 
 static void sigaction_halt_handler(int signum)
@@ -292,6 +306,12 @@ illegal_value:
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
+/*
+ * TODO-0014: Dance with systemd upon logout
+ *
+ * May need to call 'loginctl enable-linger username' if we want daemon to
+ * stay alive after login. Need more investigating.
+ */
 void voluta_daemonize(void)
 {
 	int err;
@@ -303,6 +323,19 @@ void voluta_daemonize(void)
 	voluta_g_log_mask |= VOLUTA_LOG_SYSLOG;
 	voluta_g_log_mask |= VOLUTA_LOG_STDOUT;
 	voluta_burnstack();
+}
+
+void voluta_fork_daemon(void)
+{
+	pid_t pid;
+
+	pid = fork();
+	if (pid == -1) {
+		voluta_die(errno, "fork error");
+	}
+	if (pid == 0) {
+		voluta_daemonize();
+	}
 }
 
 void voluta_open_syslog(void)
@@ -346,6 +379,16 @@ void voluta_prctl_non_dumpable(void)
 	}
 }
 
+char *voluta_strdup_safe(const char *s)
+{
+	char *d = strdup(s);
+
+	if (d == NULL) {
+		voluta_die(errno, "strdup failed");
+	}
+	return d;
+}
+
 void voluta_pfree_string(char **pp)
 {
 	if (*pp != NULL) {
@@ -359,17 +402,18 @@ void voluta_pfree_string(char **pp)
 /* Server singleton instance */
 static struct voluta_env *g_ctx_instance;
 
-void voluta_require_instance(void)
+struct voluta_env *voluta_new_instance(void)
 {
 	int err;
 
 	if (g_ctx_instance) {
-		return;
+		voluta_die(0, "internal error: instance exists");
 	}
 	err = voluta_env_new(&g_ctx_instance);
 	if (err) {
-		voluta_die(err, "failed to create env");
+		voluta_die(err, "failed to create instance");
 	}
+	return g_ctx_instance;
 }
 
 struct voluta_env *voluta_get_instance(void)
@@ -433,10 +477,13 @@ static void voluta_error_print_progname(void)
 void voluta_setup_globals(int argc, char *argv[])
 {
 	voluta_globals.version = voluta_version_string;
-	voluta_globals.argc = argc;
-	voluta_globals.argv = argv;
 	voluta_globals.name = program_invocation_short_name;
 	voluta_globals.prog = program_invocation_name;
+	voluta_globals.argc = argc;
+	voluta_globals.argv = argv;
+	voluta_globals.cmd_argc = argc;
+	voluta_globals.cmd_argv = argv;
+	voluta_globals.subcmd = NULL;
 	voluta_globals.pid = getpid();
 	voluta_globals.uid = getuid();
 	voluta_globals.gid = getgid();

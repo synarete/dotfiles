@@ -22,7 +22,7 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
-#include "voluta-lib.h"
+#include "libvoluta.h"
 
 int voluta_thread_sigblock_common(void)
 {
@@ -86,11 +86,11 @@ int voluta_thread_join(struct voluta_thread *thread)
 
 int voluta_mutex_init(struct voluta_mutex *mutex)
 {
-	int err, kind = PTHREAD_MUTEX_NORMAL;
+	int err;
 	pthread_mutexattr_t attr;
 
 	pthread_mutexattr_init(&attr);
-	err = pthread_mutexattr_settype(&attr, kind);
+	err = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_NORMAL);
 	if (err) {
 		return err;
 	}

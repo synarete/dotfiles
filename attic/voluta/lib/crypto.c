@@ -21,7 +21,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <gcrypt.h>
-#include "voluta-lib.h"
+#include "libvoluta.h"
 
 #define VOLUTA_SECMEM_SIZE (65536)
 
@@ -85,6 +85,7 @@ static int setup_mdigest(struct voluta_crypto *crypto)
 		GCRY_MD_MD5,
 		GCRY_MD_CRC32,
 		GCRY_MD_CRC32_RFC1510,
+		GCRY_MD_CRC24_RFC2440,
 		GCRY_MD_SHA256,
 		GCRY_MD_SHA512
 	};
@@ -212,28 +213,30 @@ static void destroy_cipher(struct voluta_crypto *crypto)
 }
 
 static int prepare_cipher(const struct voluta_crypto *crypto,
-			  const struct voluta_iv *iv,
-			  const struct voluta_key *key)
+			  const struct voluta_iv_key *iv_key)
 {
 	size_t blklen;
 	gcry_error_t err;
+	gcry_cipher_hd_t chiper_hd = crypto->chiper_hd;
+	const struct voluta_iv *iv = &iv_key->iv;
+	const struct voluta_key *key = &iv_key->key;
 
 	blklen = gcry_cipher_get_algo_blklen(GCRY_CIPHER_AES256);
 	if (blklen > sizeof(iv->iv)) {
 		log_warn("bad blklen: %lu", blklen);
 		return -1;
 	}
-	err = gcry_cipher_reset(crypto->chiper_hd);
+	err = gcry_cipher_reset(chiper_hd);
 	if (err) {
 		voluta_trace_gcrypt_err("gcry_cipher_reset", err);
 		return gcrypt_err(err);
 	}
-	err = gcry_cipher_setkey(crypto->chiper_hd, key->key, sizeof(key->key));
+	err = gcry_cipher_setkey(chiper_hd, key->key, sizeof(key->key));
 	if (err) {
 		voluta_trace_gcrypt_err("gcry_cipher_setkey", err);
 		return gcrypt_err(err);
 	}
-	err = gcry_cipher_setiv(crypto->chiper_hd, iv->iv, blklen);
+	err = gcry_cipher_setiv(chiper_hd, iv->iv, blklen);
 	if (err) {
 		voluta_trace_gcrypt_err("gcry_cipher_setiv", err);
 		return gcrypt_err(err);
@@ -260,19 +263,25 @@ static int encrypt_data(const struct voluta_crypto *crypto,
 	return 0;
 }
 
-int voluta_encrypt_bk(const struct voluta_crypto *crypto,
-		      const struct voluta_iv *iv, const struct voluta_key *key,
-		      const union voluta_bk *bk, union voluta_bk *enc_bk)
+static int encrypt_kb(const struct voluta_crypto *crypto,
+		      const union voluta_kb *in_kb, union voluta_kb *out_kb)
+{
+	return encrypt_data(crypto, in_kb, out_kb, sizeof(*out_kb));
+}
+
+int voluta_encrypt_nkbs(const struct voluta_crypto *crypto,
+			const struct voluta_iv_key *iv_key,
+			const union voluta_kb *in_kbs,
+			union voluta_kb *out_kbs, size_t nkbs)
 {
 	int err;
 
-	err = prepare_cipher(crypto, iv, key);
+	err = prepare_cipher(crypto, iv_key);
 	if (err) {
 		return err;
 	}
-	for (size_t i = 0; i < ARRAY_SIZE(bk->kbs); ++i) {
-		err = encrypt_data(crypto, &bk->kbs[i], &enc_bk->kbs[i],
-				   sizeof(enc_bk->kbs[i]));
+	for (size_t i = 0; i < nkbs; ++i) {
+		err = encrypt_kb(crypto, &in_kbs[i], &out_kbs[i]);
 		if (err) {
 			return err;
 		}
@@ -299,24 +308,40 @@ static int decrypt_data(const struct voluta_crypto *crypto,
 	return 0;
 }
 
-int voluta_decrypt_bk(const struct voluta_crypto *crypto,
-		      const struct voluta_iv *iv, const struct voluta_key *key,
-		      const union voluta_bk *bk, union voluta_bk *dec_bk)
+static int decrypt_kb(const struct voluta_crypto *crypto,
+		      const union voluta_kb *in_kb, union voluta_kb *out_kb)
+{
+	return decrypt_data(crypto, in_kb, out_kb, sizeof(*out_kb));
+}
+
+int voluta_decrypt_kbs(const struct voluta_crypto *crypto,
+		       const struct voluta_iv_key *iv_key,
+		       const union voluta_kb *in_kbs,
+		       union voluta_kb *out_kbs, size_t nkbs)
 {
 	int err;
 
-	err = prepare_cipher(crypto, iv, key);
+	err = prepare_cipher(crypto, iv_key);
 	if (err) {
 		return err;
 	}
-	for (size_t i = 0; i < ARRAY_SIZE(bk->kbs); ++i) {
-		err = decrypt_data(crypto, &bk->kbs[i], &dec_bk->kbs[i],
-				   sizeof(dec_bk->kbs[i]));
+	for (size_t i = 0; i < nkbs; ++i) {
+		err = decrypt_kb(crypto, &in_kbs[i], &out_kbs[i]);
 		if (err) {
 			return err;
 		}
 	}
 	return 0;
+}
+
+int voluta_decrypt_bk(const struct voluta_crypto *crypto,
+		      const struct voluta_iv_key *iv_key,
+		      const union voluta_bk *bk,
+		      union voluta_bk *dec_bk)
+{
+	const size_t nkbs = ARRAY_SIZE(bk->kb);
+
+	return voluta_decrypt_kbs(crypto, iv_key, bk->kb, dec_bk->kb, nkbs);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -367,20 +392,19 @@ void voluta_fill_random(void *buf, size_t len, bool very_strong)
 
 void voluta_fill_random_ascii(char *str, size_t len)
 {
-	size_t pos;
+	uint32_t print_ch;
 	size_t nrands = 0;
 	uint32_t rands[64];
-	const char *chset = "abcdefghijklmnopqrstuvwxyz"
-			    "ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789";
-	const size_t nchars = strlen(chset);
+	const uint32_t base = 0x21;
+	const uint32_t last = 0x7e;
 
 	for (size_t i = 0; i < len; ++i) {
 		if (nrands == 0) {
 			nrands = ARRAY_SIZE(rands);
 			voluta_fill_random(rands, sizeof(rands), 0);
 		}
-		pos = rands[--nrands] % nchars;
-		str[i] = chset[pos];
+		print_ch = (rands[--nrands] % (last - base)) + base;
+		str[i] = (char)print_ch;
 	}
 }
 

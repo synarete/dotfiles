@@ -39,13 +39,13 @@ int main(int argc, char *argv[])
 	voluta_setup_globals(argc, argv);
 
 	/* Parse arguments */
-	voluta_mkfs_parse_args(0);
+	voluta_getopt_mkfs();
 
 	/* Common process initializations */
 	voluta_init_process();
 
 	/* Execute mkfs */
-	voluta_mkfs_exec();
+	voluta_execute_mkfs();
 
 	/* Goodbye ;) */
 	return 0;

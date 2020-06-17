@@ -21,22 +21,27 @@
 	{ .tests = &(t_), .name = VOLUTA_STR(t_) }
 
 static const struct voluta_ut_tgroup g_ut_tgroups[] = {
-	UT_DEFTGRP(voluta_ut_utest_alloc),
-	UT_DEFTGRP(voluta_ut_utest_super),
-	UT_DEFTGRP(voluta_ut_utest_dir),
-	UT_DEFTGRP(voluta_ut_utest_dir_iter),
-	UT_DEFTGRP(voluta_ut_utest_dir_list),
-	UT_DEFTGRP(voluta_ut_utest_namei),
-	UT_DEFTGRP(voluta_ut_utest_rename),
-	UT_DEFTGRP(voluta_ut_utest_symlink),
-	UT_DEFTGRP(voluta_ut_utest_xattr),
-	UT_DEFTGRP(voluta_ut_file_basic_tests),
-	UT_DEFTGRP(voluta_ut_utest_file_ranges),
-	UT_DEFTGRP(voluta_ut_utest_file_records),
-	UT_DEFTGRP(voluta_ut_utest_file_random),
-	UT_DEFTGRP(voluta_ut_utest_file_truncate),
-	UT_DEFTGRP(voluta_ut_utest_file_fallocate),
-	UT_DEFTGRP(voluta_ut_utest_file_edges),
+	UT_DEFTGRP(voluta_ut_test_avl),
+	UT_DEFTGRP(voluta_ut_test_qalloc),
+	UT_DEFTGRP(voluta_ut_test_super),
+	UT_DEFTGRP(voluta_ut_test_dir),
+	UT_DEFTGRP(voluta_ut_test_dir_iter),
+	UT_DEFTGRP(voluta_ut_test_dir_list),
+	UT_DEFTGRP(voluta_ut_test_namei),
+	UT_DEFTGRP(voluta_ut_test_rename),
+	UT_DEFTGRP(voluta_ut_test_symlink),
+	UT_DEFTGRP(voluta_ut_test_xattr),
+	UT_DEFTGRP(voluta_ut_test_ioctl),
+	UT_DEFTGRP(voluta_ut_test_file_basic),
+	UT_DEFTGRP(voluta_ut_test_file_ranges),
+	UT_DEFTGRP(voluta_ut_test_file_records),
+	UT_DEFTGRP(voluta_ut_test_file_random),
+	UT_DEFTGRP(voluta_ut_test_file_edges),
+	UT_DEFTGRP(voluta_ut_test_file_truncate),
+	UT_DEFTGRP(voluta_ut_test_file_fallocate),
+	UT_DEFTGRP(voluta_ut_test_file_fiemap),
+	UT_DEFTGRP(voluta_ut_test_reload),
+	UT_DEFTGRP(voluta_ut_test_fillfs),
 };
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -86,7 +91,10 @@ static void ut_check_statvfs(const struct statvfs *stvfs1,
 
 static size_t ualloc_nbytes_now(const struct voluta_ut_ctx *ut_ctx)
 {
-	return voluta_env_allocated_mem(ut_ctx->env);
+	struct voluta_stats st;
+
+	voluta_env_stats(ut_ctx->env, &st);
+	return st.nalloc_bytes;
 }
 
 static void ut_probe_stats(struct voluta_ut_ctx *ut_ctx, bool pre_execute)
@@ -142,13 +150,11 @@ static void ut_exec_tests(struct voluta_ut_ctx *ut_ctx)
 static struct voluta_ut_ctx *ut_create_ctx(const char *test_name)
 {
 	int err;
-	struct voluta_ut_ctx *ut_ctx = NULL;
+	struct voluta_ut_ctx *ut_ctx;
 
 	ut_ctx = voluta_ut_new_ctx();
-	voluta_assert_not_null(ut_ctx);
-
-	ut_ctx->volume_size = VOLUTA_VOLUME_SIZE_MIN;
 	ut_ctx->test_name = test_name;
+
 	err = voluta_ut_load(ut_ctx);
 	voluta_assert_ok(err);
 

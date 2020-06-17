@@ -17,7 +17,8 @@
 #define _GNU_SOURCE 1
 #include <stdlib.h>
 #include <stdint.h>
-#include "voluta-lib.h"
+#include "libvoluta.h"
+
 
 #define MOD_ADLER   (65521)
 

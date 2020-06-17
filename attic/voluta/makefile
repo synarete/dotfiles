@@ -87,7 +87,7 @@ CFLAGS += -Wunknown-pragmas -Wunused-macros -Wendif-labels
 CFLAGS += -Wvla -Waddress -Woverlength-strings -Wconversion -Wsign-conversion
 CFLAGS += -Wunreachable-code -Wwrite-strings -Wlarger-than=4096
 CFLAGS += -Wframe-larger-than=4096 -Wmissing-field-initializers
-CFLAGS += -Wstrict-aliasing=2 -Warray-bounds
+CFLAGS += -Wstrict-aliasing=2 -Warray-bounds -Wpadded
 CFLAGS += -fPIC -fwrapv -fstrict-aliasing
 CFLAGS += -fstack-protector -fstack-protector-strong # -fstack-check
 
@@ -132,7 +132,7 @@ define report
 endef
 
 define submakeat
-	@$(MAKE) $(MAKE_OPTS) V=$(V) CFLAGS="$(CFLAGS)" -C $(1) $(2)
+	@+$(MAKE) $(MAKE_OPTS) V=$(V) CFLAGS="$(CFLAGS)" -C $(1) $(2)
 endef
 
 define submake
@@ -187,11 +187,11 @@ clangscan:
 
 rpm: reset
 	$(call report, $@)
-	@$(TOP)/misc/packaging/packagize-rpm.sh
+	@$(TOP)/misc/pkg/packagize-rpm.sh
 
 deb: reset
 	$(call report, $@)
-	@$(TOP)/misc/packaging/packagize-deb.sh
+	@$(TOP)/misc/pkg/packagize-deb.sh
 
 reset:
 	$(call report, $@)

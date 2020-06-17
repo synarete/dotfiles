@@ -50,8 +50,8 @@ AC_CONFIG_FILES([src/Makefile])
 AC_CONFIG_FILES([misc/Makefile])
 AC_CONFIG_FILES([test/Makefile])
 AC_CONFIG_FILES([test/mountd/Makefile])
-AC_CONFIG_FILES([test/sanity/Makefile])
 AC_CONFIG_FILES([test/dstress/Makefile])
+AC_CONFIG_FILES([test/fsstest/Makefile])
 AC_CONFIG_FILES([test/unitest/Makefile])
 AC_OUTPUT
 

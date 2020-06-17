@@ -29,6 +29,7 @@
 #include <sys/resource.h>
 #include <sys/prctl.h>
 #include <linux/fs.h>
+#include <linux/fiemap.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <signal.h>
@@ -41,7 +42,7 @@
 #include <stdio.h>
 #include <limits.h>
 #include <utime.h>
-#include <voluta/voluta-syscall.h>
+#include <voluta/syscall.h>
 
 
 #if _POSIX_C_SOURCE < 200809L
@@ -443,6 +444,12 @@ int voluta_sys_pwritev2(int fd, const struct iovec *iov, int iovcnt,
 	return size_or_errno(pwritev2(fd, iov, iovcnt, off, flags), nwr);
 }
 
+/* FIEMAP */
+int voluta_sys_fiemap(int fd, struct fiemap *fm)
+{
+	return ok_or_errno(ioctl(fd, FS_IOC_FIEMAP, fm));
+}
+
 /* XATTR */
 int voluta_sys_setxattr(const char *path, const char *name,
 			const void *value, size_t size, int flags)
@@ -627,64 +634,25 @@ int voluta_sys_ioctl_ficlone(int dest_fd, int src_fd)
 }
 
 /* GETDENTS */
-struct linux_dirent64 {
+struct linux_dirent64_view {
 	ino64_t        d_ino;
 	off64_t        d_off;
 	unsigned short d_reclen;
 	unsigned char  d_type;
-	char           d_name[1];
+	char           d_name[5];
 };
-
-int voluta_sys_getdent(int fd, loff_t off, struct dirent64 *dent)
-{
-	long err, nread;
-	size_t len;
-	const struct linux_dirent64 *d = NULL;
-	char buf[1024];
-	void *ptr = buf;
-
-	memset(buf, 0, sizeof(buf));
-	memset(dent, 0, sizeof(*dent));
-
-	err = lseek64(fd, off, SEEK_SET);
-	if (err < 0) {
-		return errno_or_generic_error();
-	}
-	nread = syscall(SYS_getdents64, fd, ptr, sizeof(buf));
-	if (nread == -1) {
-		return errno_or_generic_error();
-	}
-	if (nread == 0) {
-		dent->d_off = -1;
-		return 0; /* End-of-stream */
-	}
-	d = (const struct linux_dirent64 *)ptr;
-	if (d->d_reclen >= sizeof(buf)) {
-		return -EINVAL;
-	}
-	dent->d_ino = d->d_ino;
-	dent->d_off = (loff_t)d->d_off;
-	dent->d_type = d->d_type;
-
-	len = strlen(d->d_name);
-	if (!len) {
-		return d->d_type ? -EINVAL : 0;
-	}
-	if (len >= sizeof(dent->d_name)) {
-		return -ENAMETOOLONG;
-	}
-	memcpy(dent->d_name, d->d_name, len);
-	return 0;
-}
 
 int voluta_sys_getdents(int fd, void *buf, size_t bsz, struct dirent64 *dents,
 			size_t ndents, size_t *out_ndents)
 {
-	long nread, pos = 0;
-	size_t len, ndents_decoded = 0;
-	const struct linux_dirent64 *d = NULL;
+	long nread;
+	long pos = 0;
+	size_t len;
+	size_t ndents_decoded = 0;
+	const struct linux_dirent64_view *d = NULL;
 	void *ptr = buf;
-	struct dirent64 *dent = dents, *end = dents + ndents;
+	struct dirent64 *dent = dents;
+	struct dirent64 *end = dents + ndents;
 
 	errno = 0;
 	if (!ndents || (bsz < sizeof(*dents))) {
@@ -699,7 +667,7 @@ int voluta_sys_getdents(int fd, void *buf, size_t bsz, struct dirent64 *dents,
 		dent->d_off = -1;
 		goto out; /* End-of-stream */
 	}
-	d = (const struct linux_dirent64 *)ptr;
+	d = (const struct linux_dirent64_view *)ptr;
 	if (d->d_reclen >= bsz) {
 		return -EINVAL;
 	}
@@ -717,7 +685,7 @@ int voluta_sys_getdents(int fd, void *buf, size_t bsz, struct dirent64 *dents,
 
 		pos += d->d_reclen;
 		ptr = (char *)buf + pos;
-		d = (const struct linux_dirent64 *)ptr;
+		d = (const struct linux_dirent64_view *)ptr;
 
 		++ndents_decoded;
 		++dent;

@@ -1,5 +1,4 @@
 #!/bin/bash
-set -euo pipefail
 IFS=$'\n\t'
 self=$(readlink -f $0)
 base=$(dirname ${self})
@@ -8,9 +7,9 @@ datenow=$(date +%Y%m%d)
 print() { echo -n "$@" | tr -d ' \t\v\n' ; }
 
 cd ${base}
-gittop=$(git rev-parse --show-toplevel 2> /dev/null || echo -n "x")
+gittop=$(git rev-parse --show-toplevel > /dev/null 2>&1 && print "git-repo")
 
-if [ -n "x${gittop}" ]; then
+if [ -n "${gittop}" ]; then
   gitrevision=$(git rev-parse --short HEAD)
 else
   gitrevision=""

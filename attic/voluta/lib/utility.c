@@ -30,7 +30,7 @@
 #include <errno.h>
 #include <time.h>
 #include <uuid/uuid.h>
-#include "voluta-lib.h"
+#include "libvoluta.h"
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
@@ -51,14 +51,14 @@ size_t voluta_clamp(size_t v, size_t lo, size_t hi)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void voluta_burnstack_n(size_t nbytes)
+static void do_burnstack_n(size_t nbytes)
 {
 	char buf[1024];
 	const size_t cnt = min(sizeof(buf), nbytes);
 
 	if (cnt > 0) {
-		memset(buf, 0xfe, cnt);
-		voluta_burnstack_n(nbytes - cnt);
+		memset(buf, 0xfb, cnt);
+		do_burnstack_n(nbytes - cnt);
 	}
 }
 
@@ -66,7 +66,7 @@ void voluta_burnstack(void)
 {
 	const size_t page_size = voluta_sc_page_size();
 
-	voluta_burnstack_n(page_size);
+	do_burnstack_n(page_size);
 }
 
 /* 3-way compare functions when using long-integers as keys */
@@ -110,116 +110,6 @@ size_t voluta_sc_phys_pages(void)
 size_t voluta_sc_avphys_pages(void)
 {
 	return (size_t)sysconf(_SC_AVPHYS_PAGES);
-}
-
-/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-/* double linked-list */
-static void list_head_set(struct voluta_list_head *lnk,
-			  struct voluta_list_head *prv,
-			  struct voluta_list_head *nxt)
-{
-	lnk->next = nxt;
-	lnk->prev = prv;
-}
-
-static void list_head_insert(struct voluta_list_head *lnk,
-			     struct voluta_list_head *prv,
-			     struct voluta_list_head *nxt)
-{
-	list_head_set(lnk, prv, nxt);
-
-	nxt->prev = lnk;
-	prv->next = lnk;
-}
-
-void voluta_list_head_insert_after(struct voluta_list_head *prev_lnk,
-				   struct voluta_list_head *lnk)
-{
-	list_head_insert(lnk, prev_lnk, prev_lnk->next);
-}
-
-void voluta_list_head_insert_before(struct voluta_list_head *lnk,
-				    struct voluta_list_head *next_lnk)
-{
-	list_head_insert(lnk, next_lnk->prev, next_lnk);
-}
-
-void voluta_list_head_remove(struct voluta_list_head *lnk)
-{
-	struct voluta_list_head *next = lnk->next, *prev = lnk->prev;
-
-	next->prev = prev;
-	prev->next = next;
-	list_head_set(lnk, lnk, lnk);
-}
-
-void voluta_list_head_init(struct voluta_list_head *lnk)
-{
-	list_head_set(lnk, lnk, lnk);
-}
-
-void voluta_list_head_initn(struct voluta_list_head *lnk_arr, size_t cnt)
-{
-	for (size_t i = 0; i < cnt; ++i) {
-		voluta_list_head_init(&lnk_arr[i]);
-	}
-}
-
-void voluta_list_head_destroy(struct voluta_list_head *lnk)
-{
-	list_head_set(lnk, NULL, NULL);
-}
-
-void voluta_list_head_destroyn(struct voluta_list_head *lnk_arr, size_t cnt)
-{
-	for (size_t i = 0; i < cnt; ++i) {
-		voluta_list_head_destroy(&lnk_arr[i]);
-	}
-}
-
-void voluta_list_init(struct voluta_list_head *lst)
-{
-	voluta_list_head_init(lst);
-}
-
-void voluta_list_fini(struct voluta_list_head *lst)
-{
-	voluta_list_head_destroy(lst);
-}
-
-void voluta_list_push_front(struct voluta_list_head *lst,
-			    struct voluta_list_head *lnk)
-{
-	voluta_list_head_insert_after(lst, lnk);
-}
-
-void voluta_list_push_back(struct voluta_list_head *lst,
-			   struct voluta_list_head *lnk)
-{
-	voluta_list_head_insert_before(lnk, lst);
-}
-
-struct voluta_list_head *voluta_list_front(const struct voluta_list_head *lst)
-{
-	return lst->next;
-}
-
-struct voluta_list_head *voluta_list_pop_front(struct voluta_list_head *lst)
-{
-	struct voluta_list_head *lnk;
-
-	lnk = voluta_list_front(lst);
-	if (lnk != lst) {
-		voluta_list_head_remove(lnk);
-	} else {
-		lnk = NULL;
-	}
-	return lnk;
-}
-
-bool voluta_list_isempty(const struct voluta_list_head *lst)
-{
-	return (lst->next == lst);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -452,40 +342,14 @@ void voluta_buf_seteos(struct voluta_buf *buf)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 /* miscellaneous */
-void voluta_copy_timespec(struct timespec *dst, const struct timespec *src)
+void voluta_ts_now(struct timespec *ts)
+{
+	ts->tv_sec = 0;
+	ts->tv_nsec = UTIME_NOW;
+}
+
+void voluta_ts_copy(struct timespec *dst, const struct timespec *src)
 {
 	dst->tv_sec = src->tv_sec;
 	dst->tv_nsec = src->tv_nsec;
 }
-
-/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-/* bits */
-#define BITS_PER_WORD   (32)
-#define BIT_MASK(nr)    (1UL << ((nr) % BITS_PER_WORD))
-#define BIT_SLOT(nr)    ((nr) / BITS_PER_WORD)
-
-void voluta_set_bit(uint32_t *arr, size_t nr)
-{
-	const unsigned long mask = BIT_MASK(nr);
-	const unsigned long slot = BIT_SLOT(nr);
-
-	arr[slot] |= (uint32_t)mask;
-}
-
-void voluta_clear_bit(uint32_t *arr, size_t nr)
-{
-	const unsigned long mask = BIT_MASK(nr);
-	const unsigned long slot = BIT_SLOT(nr);
-
-	arr[slot] &= (uint32_t)(~mask);
-}
-
-int voluta_test_bit(const uint32_t *arr, size_t nr)
-{
-	int nr_byte;
-	const unsigned long slot = BIT_SLOT(nr);
-
-	nr_byte = (int)arr[slot] >> (nr & (BITS_PER_WORD - 1));
-	return (nr_byte & 1) == 1;
-}
-

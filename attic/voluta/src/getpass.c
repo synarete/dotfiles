@@ -111,9 +111,11 @@ read_passphrase_buf_from_file(int fd, void *buf, size_t bsz, size_t *out_len)
 static void
 read_passphrase_buf_from_tty(int fd, void *buf, size_t bsz, size_t *out_len)
 {
-	int err, read_err;
+	int err;
+	int read_err;
 	char *pass;
-	struct termios tr_old, tr_new;
+	struct termios tr_old;
+	struct termios tr_new;
 
 	err = tcgetattr(fd, &tr_old);
 	if (err) {
@@ -162,7 +164,8 @@ static void read_passphrase_buf(int fd, void *buf, size_t bsz, size_t *out_len)
 
 static int open_passphrase_file(const char *path)
 {
-	int err, fd;
+	int err;
+	int fd = -1;
 
 	if (path == NULL) {
 		return STDIN_FILENO;
@@ -190,17 +193,6 @@ static void close_passphrase_file(int fd, const char *path)
 	}
 }
 
-static char *dup_passphrase_buf(const char *buf)
-{
-	char *pass;
-
-	pass = strdup(buf);
-	if (pass == NULL) {
-		voluta_die(-errno, "dup passphrase failed");
-	}
-	return pass;
-}
-
 static char *read_passphrase(const char *path)
 {
 	int fd;
@@ -211,7 +203,7 @@ static char *read_passphrase(const char *path)
 	read_passphrase_buf(fd, buf, sizeof(buf), &len);
 	parse_passphrase(buf, len);
 	close_passphrase_file(fd, path);
-	return dup_passphrase_buf(buf);
+	return voluta_strdup_safe(buf);
 }
 
 char *voluta_read_passphrase(const char *path, int repeat)

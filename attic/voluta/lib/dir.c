@@ -21,22 +21,29 @@
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
-#include "voluta-lib.h"
+#include "libvoluta.h"
 
+
+#define STATICASSERT_EQ(a, b)   VOLUTA_STATICASSERT_EQ(a, b)
+#define STATICASSERT_LT(a, b)   VOLUTA_STATICASSERT_LT(a, b)
 
 #define HTREE_FANOUT            VOLUTA_DIR_HTNODE_NCHILDS
 #define HTREE_DEPTH_MAX         VOLUTA_DIR_HTREE_DEPTH_MAX
-#define HTREE_NODE_MAX          VOLUTA_DIR_HTREE_NODE_MAX
-#define HTREE_INDEX_MAX         VOLUTA_DIR_HTREE_NODE_MAX
-#define HTREE_INDEX_NULL        UINT32_MAX
+#define HTREE_INDEX_MAX         VOLUTA_DIR_HTREE_INDEX_MAX
+#define HTREE_INDEX_NULL        VOLUTA_DIR_HTREE_INDEX_NULL
 #define HTREE_INDEX_ROOT        0
 
 
-
+/*
+ * TODO-0006: Support VOLUTA_NAME_MAX=1023
+ *
+ * While 255 is de-facto standard for modern file-systems, long term vision
+ * should allow more (think non-ascii with long UTF8 encoding).
+ */
 struct voluta_dir_entry_view {
 	struct voluta_dir_entry de;
 	uint8_t de_name[VOLUTA_NAME_MAX + 1];
-} voluta_packed;
+} voluta_packed_aligned8;
 
 struct voluta_dir_entry_info {
 	struct voluta_vnode_info *vi;
@@ -46,13 +53,14 @@ struct voluta_dir_entry_info {
 
 struct voluta_dir_ctx {
 	struct voluta_sb_info     *sbi;
-	const struct voluta_oper_info *opi;
+	const struct voluta_oper_ctx *op_ctx;
 	struct voluta_inode_info  *dir_ii;
 	struct voluta_inode_info  *parent_ii;
-	struct voluta_inode_info  *ii;
-	struct voluta_readdir_ctx *readdir_ctx;
+	struct voluta_inode_info  *child_ii;
+	struct voluta_readdir_ctx *rd_ctx;
 	const struct voluta_qstr  *name;
-	bool  keep_iter;
+	int keep_iter;
+	int pad;
 };
 
 
@@ -94,18 +102,6 @@ static void vaddr_of_htnode(struct voluta_vaddr *vaddr, loff_t off)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static loff_t make_doffset(size_t node_index, size_t sloti)
-{
-	return (loff_t)(((node_index + 1) << 16) | (sloti << 2));
-}
-
-static size_t doffset_to_index(loff_t doff)
-{
-	const loff_t base_doff = make_doffset(0, 0);
-
-	return (doff >= base_doff) ?
-	       (size_t)((doff >> 16) & 0xFFFFFFFFL) - 1 : HTREE_INDEX_ROOT;
-}
 
 static bool index_isnull(size_t index)
 {
@@ -114,7 +110,7 @@ static bool index_isnull(size_t index)
 
 static bool index_isvalid(size_t index)
 {
-	VOLUTA_STATICASSERT_GT(HTREE_INDEX_NULL, VOLUTA_DIR_HTREE_NODE_MAX);
+	VOLUTA_STATICASSERT_GT(HTREE_INDEX_NULL, VOLUTA_DIR_HTREE_INDEX_MAX);
 
 	return (index < HTREE_INDEX_MAX);
 }
@@ -177,6 +173,39 @@ static size_t hash_to_child_index(uint64_t hash, size_t parent_index)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
+#define DOFF_SHIFT      VOLUTA_BO_SHIFT
+
+static loff_t make_doffset(size_t node_index, size_t sloti)
+{
+	STATICASSERT_LT(VOLUTA_DIR_HTNODE_NENTS, 1 << 10);
+	STATICASSERT_EQ(VOLUTA_DIR_HTNODE_SIZE, 1 << DOFF_SHIFT);
+
+	return (loff_t)((node_index << DOFF_SHIFT) | (sloti << 2) | 3);
+}
+
+static size_t doffset_to_index(loff_t doff)
+{
+	const loff_t doff_mask = (1L << DOFF_SHIFT) - 1;
+
+	STATICASSERT_EQ(HTREE_INDEX_ROOT, 0);
+
+	return (size_t)((doff >> DOFF_SHIFT) & doff_mask);
+}
+
+static loff_t calc_d_isize(size_t last_index)
+{
+	loff_t dir_isize;
+
+	if (index_isnull(last_index)) {
+		dir_isize = VOLUTA_DIR_EMPTY_SIZE;
+	} else {
+		dir_isize = make_doffset(last_index + 1, 0) & ~3;
+	}
+	return dir_isize;
+}
+
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
+
 static struct voluta_dir_entry_view *
 de_view_of(const struct voluta_dir_entry *de)
 {
@@ -186,19 +215,19 @@ de_view_of(const struct voluta_dir_entry *de)
 	return (struct voluta_dir_entry_view *)de_view;
 }
 
-static mode_t de_dtype(const struct voluta_dir_entry *de)
+static mode_t de_dt(const struct voluta_dir_entry *de)
 {
-	return de->de_dtype;
+	return de->de_dt;
 }
 
-static void de_set_dtype(struct voluta_dir_entry *de, mode_t dt)
+static void de_set_dt(struct voluta_dir_entry *de, mode_t dt)
 {
-	de->de_dtype = (uint8_t)dt;
+	de->de_dt = (uint8_t)dt;
 }
 
 static bool de_isvalid(const struct voluta_dir_entry *de)
 {
-	return (safe_dttoif(de_dtype(de)) != 0);
+	return (safe_dttoif(de_dt(de)) != 0);
 }
 
 static ino_t de_ino(const struct voluta_dir_entry *de)
@@ -209,6 +238,12 @@ static ino_t de_ino(const struct voluta_dir_entry *de)
 static void de_set_ino(struct voluta_dir_entry *de, ino_t ino)
 {
 	de->de_ino = cpu_to_ino(ino);
+}
+
+static void de_set_ino_dt(struct voluta_dir_entry *de, ino_t ino, mode_t dt)
+{
+	de_set_ino(de, ino);
+	de_set_dt(de, dt);
 }
 
 static size_t de_name_len(const struct voluta_dir_entry *de)
@@ -308,9 +343,8 @@ static void de_assign(struct voluta_dir_entry *de, size_t nents,
 {
 	struct voluta_dir_entry_view *de_view  = de_view_of(de);
 
-	de_set_ino(de, ino);
+	de_set_ino_dt(de, ino, dt);
 	de_set_name_len(de, name->len);
-	de_set_dtype(de, dt);
 	de_set_nents(de, nents);
 	memcpy(de_view->de_name, name->str, name->len);
 }
@@ -318,9 +352,8 @@ static void de_assign(struct voluta_dir_entry *de, size_t nents,
 static void de_reset(struct voluta_dir_entry *de, size_t nents, size_t nprev)
 {
 	voluta_memzero(de + 1, (nents - 1) * sizeof(*de));
-	de_set_ino(de, VOLUTA_INO_NULL);
+	de_set_ino_dt(de, VOLUTA_INO_NULL, 0);
 	de_set_name_len(de, 0);
-	de_set_dtype(de, 0);
 	de_set_nents(de, nents);
 	de_set_nprev(de, nprev);
 }
@@ -524,7 +557,7 @@ static void htn_reset_childs(struct voluta_dir_htree_node *htn)
 static void htn_setup(struct voluta_dir_htree_node *htn,
 		      ino_t ino, size_t node_index, loff_t parent_off)
 {
-	voluta_assert_le(node_index, HTREE_NODE_MAX);
+	voluta_assert_le(node_index, HTREE_INDEX_MAX);
 
 	htn_set_ino(htn, ino);
 	htn_set_parent(htn, parent_off);
@@ -638,20 +671,12 @@ static mode_t dtype_of(const struct voluta_inode_info *ii)
 	return IFTODT(i_mode_of(ii));
 }
 
-static int require_dir(const struct voluta_inode_info *ii)
-{
-	return i_isdir(ii) ? 0 : -ENOTDIR;
-}
-
 static int check_dir_io(const struct voluta_inode_info *ii)
 {
-	int err;
-
-	err = require_dir(ii);
-	if (err) {
-		return err;
+	if (!i_isdir(ii)) {
+		return -ENOTDIR;
 	}
-	if (!i_refcnt_of(ii)) {
+	if (!ii->i_nopen) {
 		return -EBADF;
 	}
 	return 0;
@@ -659,12 +684,12 @@ static int check_dir_io(const struct voluta_inode_info *ii)
 
 static struct voluta_inode *unconst_inode(const struct voluta_inode *inode)
 {
-	return (struct voluta_inode *)inode;
+	return unconst(inode);
 }
 
 static struct voluta_inode_info *unconst_ii(const struct voluta_inode_info *ii)
 {
-	return (struct voluta_inode_info *)ii;
+	return unconst(ii);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -709,13 +734,21 @@ static void dis_set_last_index(struct voluta_dir_ispec *dis, size_t index)
 static void dis_update_last_index(struct voluta_dir_ispec *dis,
 				  size_t alt_index, bool add)
 {
+	size_t new_index;
 	const size_t cur_index = dis_last_index(dis);
+	const size_t nil_index = HTREE_INDEX_NULL;
 
-	if (add && (cur_index < alt_index)) {
-		dis_set_last_index(dis, alt_index);
-	} else if (!add && cur_index && (cur_index == alt_index)) {
-		dis_set_last_index(dis, cur_index - 1);
+	new_index = cur_index;
+	if (add) {
+		if ((cur_index < alt_index) || index_isnull(cur_index)) {
+			new_index = alt_index;
+		}
+	} else {
+		if (cur_index == alt_index) {
+			new_index = !cur_index ? nil_index : cur_index - 1;
+		}
 	}
+	dis_set_last_index(dis, new_index);
 }
 
 static loff_t dis_htree_root(const struct voluta_dir_ispec *dis)
@@ -755,16 +788,21 @@ dir_ispec_of(const struct voluta_inode_info *dir_ii)
 	return dis_of(dir_ii->inode);
 }
 
-static void dir_setup(struct voluta_inode_info *dir_ii)
+static void dir_setup(struct voluta_inode_info *dir_ii, nlink_t nlink)
 {
-	struct voluta_iattr attr = {
-		.ia_flags = VOLUTA_ATTR_SIZE | VOLUTA_ATTR_BLOCKS,
+	struct voluta_oper_ctx op_ctx = {
+		.xtime.start = 0
+	};
+	struct voluta_iattr iattr = {
 		.ia_size = VOLUTA_DIR_EMPTY_SIZE,
-		.ia_blocks = 0
+		.ia_nlink = nlink,
+		.ia_blocks = 0,
+		.ia_flags =
+		VOLUTA_IATTR_SIZE | VOLUTA_IATTR_BLOCKS | VOLUTA_IATTR_NLINK
 	};
 
 	dis_setup(dis_of(dir_ii->inode));
-	voluta_update_iattr(dir_ii, NULL, &attr);
+	update_iattrs(&op_ctx, dir_ii, &iattr);
 }
 
 static uint64_t dir_ndents(const struct voluta_inode_info *dir_ii)
@@ -814,14 +852,6 @@ static size_t dir_last_index(const struct voluta_inode_info *dir_ii)
 	return dis_last_index(dir_ispec_of(dir_ii));
 }
 
-static loff_t dir_recalc_isize(const struct voluta_inode_info *dir_ii)
-{
-	const size_t last_index = dir_last_index(dir_ii);
-
-	return dir_has_htree(dir_ii) ?
-	       make_doffset(last_index + 1, 0) : VOLUTA_DIR_EMPTY_SIZE;
-}
-
 static void dir_update_last_index(struct voluta_inode_info *dir_ii,
 				  size_t alt_index, bool add)
 {
@@ -842,17 +872,16 @@ bool voluta_dir_hasflag(const struct voluta_inode_info *dir_ii,
 	return ((flags & mask) == mask);
 }
 
-
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 static struct voluta_vnode_info *unconst_vi(const struct voluta_vnode_info *vi)
 {
-	return (struct voluta_vnode_info *)vi;
+	return unconst(vi);
 }
 
 static struct voluta_dir_entry *unconst_de(const struct voluta_dir_entry *de)
 {
-	return (struct voluta_dir_entry *)de;
+	return unconst(de);
 }
 
 static void dei_setup(struct voluta_dir_entry_info *dei,
@@ -862,7 +891,7 @@ static void dei_setup(struct voluta_dir_entry_info *dei,
 	dei->vi = unconst_vi(vi);
 	dei->de = unconst_de(de);
 	dei->ino_dt.ino = de_ino(de);
-	dei->ino_dt.dt = de_dtype(de);
+	dei->ino_dt.dt = de_dt(de);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -893,7 +922,7 @@ static int search_htnode(const struct voluta_vnode_info *vi,
 	return 0;
 }
 
-static int stage_htnode(const struct voluta_dir_ctx *dir_ctx,
+static int stage_htnode(const struct voluta_dir_ctx *d_ctx,
 			const struct voluta_vaddr *vaddr,
 			struct voluta_vnode_info **out_vi)
 {
@@ -903,94 +932,121 @@ static int stage_htnode(const struct voluta_dir_ctx *dir_ctx,
 	if (vaddr_isnull(vaddr)) {
 		return -ENOENT;
 	}
-	err = voluta_stage_vnode(dir_ctx->sbi, vaddr, &vi);
+	err = voluta_stage_vnode(d_ctx->sbi, vaddr, d_ctx->dir_ii, &vi);
 	if (err) {
 		return err;
 	}
-	if (dir_ino_of(vi) != i_ino_of(dir_ctx->dir_ii)) {
+	if (dir_ino_of(vi) != i_ino_of(d_ctx->dir_ii)) {
 		return -EFSCORRUPTED;
 	}
 	*out_vi = vi;
 	return 0;
 }
 
-static int stage_child(const struct voluta_dir_ctx *dir_ctx,
+static int do_stage_child(const struct voluta_dir_ctx *d_ctx,
+			  const struct voluta_vaddr *vaddr,
+			  struct voluta_vnode_info **out_vi)
+{
+	/* TODO: check depth */
+	return stage_htnode(d_ctx, vaddr, out_vi);
+}
+
+static int stage_child(const struct voluta_dir_ctx *d_ctx,
+		       struct voluta_vnode_info *parent_vi,
 		       const struct voluta_vaddr *vaddr,
 		       struct voluta_vnode_info **out_vi)
 {
-	/* TODO: check depth */
-	return stage_htnode(dir_ctx, vaddr, out_vi);
+	int err;
+
+	v_incref(parent_vi);
+	err = do_stage_child(d_ctx, vaddr, out_vi);
+	v_decref(parent_vi);
+
+	return err;
 }
 
-static int new_htnode(const struct voluta_dir_ctx *dir_ctx,
+static int stage_child_by_name(const struct voluta_dir_ctx *d_ctx,
+			       struct voluta_vnode_info *parent_vi,
+			       struct voluta_vnode_info **out_vi)
+{
+	struct voluta_vaddr vaddr;
+
+	child_addr_by_hash(parent_vi, d_ctx->name->hash, &vaddr);
+	return stage_child(d_ctx, parent_vi, &vaddr, out_vi);
+}
+
+static int new_htnode(const struct voluta_dir_ctx *d_ctx,
 		      struct voluta_vnode_info **out_vi)
 {
-	return voluta_new_vnode(dir_ctx->sbi, VOLUTA_VTYPE_HTNODE, out_vi);
+	return voluta_new_vnode(d_ctx->sbi, d_ctx->dir_ii,
+				VOLUTA_VTYPE_HTNODE, out_vi);
 }
 
-static int del_htnode(const struct voluta_dir_ctx *dir_ctx,
+static int del_htnode(const struct voluta_dir_ctx *d_ctx,
 		      struct voluta_vnode_info *vi)
 {
-	return voluta_del_vnode(dir_ctx->sbi, vi);
+	return voluta_del_vnode(d_ctx->sbi, vi);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static size_t last_node_index_of(const struct voluta_dir_ctx *dir_ctx)
+static size_t last_node_index_of(const struct voluta_dir_ctx *d_ctx)
 {
-	return dir_last_index(dir_ctx->dir_ii);
+	return dir_last_index(d_ctx->dir_ii);
 }
 
-static size_t curr_node_index_of(const struct voluta_dir_ctx *dir_ctx)
+static size_t curr_node_index_of(const struct voluta_dir_ctx *d_ctx)
 {
-	return doffset_to_index(dir_ctx->readdir_ctx->pos);
+	return doffset_to_index(d_ctx->rd_ctx->pos);
 }
 
-static void update_size_blocks(const struct voluta_dir_ctx *dir_ctx,
+static void update_size_blocks(const struct voluta_dir_ctx *d_ctx,
 			       size_t node_index, bool new_node)
 {
-	struct voluta_iattr attr;
-	struct voluta_inode_info *dir_ii = dir_ctx->dir_ii;
+	struct voluta_iattr iattr;
+	struct voluta_inode_info *dir_ii = d_ctx->dir_ii;
 	const blkcnt_t blkcnt = i_blocks_of(dir_ii);
 
-	iattr_init(&attr, dir_ii);
-	attr.ia_blocks = new_node ? blkcnt + 1 : blkcnt - 1;
-	attr.ia_size = dir_recalc_isize(dir_ii);
-	attr.ia_flags = VOLUTA_ATTR_SIZE | VOLUTA_ATTR_BLOCKS;
-	i_update_attr(dir_ii, dir_ctx->opi, &attr);
 	dir_update_last_index(dir_ii, node_index, new_node);
+
+	iattr_setup(&iattr, i_ino_of(dir_ii));
+	iattr.ia_blocks = new_node ? blkcnt + 1 : blkcnt - 1;
+	iattr.ia_size = calc_d_isize(dir_last_index(dir_ii));
+	iattr.ia_flags = VOLUTA_IATTR_SIZE | VOLUTA_IATTR_BLOCKS;
+	update_iattrs(d_ctx->op_ctx, dir_ii, &iattr);
+
 	i_dirtify(dir_ii);
 }
 
-static int create_htnode(const struct voluta_dir_ctx *dir_ctx,
+static int create_htnode(const struct voluta_dir_ctx *d_ctx,
 			 const struct voluta_vaddr *parent, size_t node_index,
 			 struct voluta_vnode_info **out_vi)
 {
 	int err;
 	struct voluta_vnode_info *vi;
-	struct voluta_inode_info *dir_ii = dir_ctx->dir_ii;
+	struct voluta_inode_info *dir_ii = d_ctx->dir_ii;
 
-	err = new_htnode(dir_ctx, &vi);
+	err = new_htnode(d_ctx, &vi);
 	if (err) {
 		return err;
 	}
 	htn_setup(vi->u.htn, i_ino_of(dir_ii), node_index, parent->off);
-	update_size_blocks(dir_ctx, node_index, true);
+	update_size_blocks(d_ctx, node_index, true);
 	v_dirtify(vi);
 	*out_vi = vi;
 	return 0;
 }
 
-static int stage_htree_root(struct voluta_dir_ctx *dir_ctx,
+static int stage_htree_root(const struct voluta_dir_ctx *d_ctx,
 			    struct voluta_vnode_info **out_vi)
 {
 	struct voluta_vaddr vaddr;
 
-	dir_htree_root_addr(dir_ctx->dir_ii, &vaddr);
-	return stage_htnode(dir_ctx, &vaddr, out_vi);
+	dir_htree_root_addr(d_ctx->dir_ii, &vaddr);
+	return stage_htnode(d_ctx, &vaddr, out_vi);
 }
 
-static int create_htree_root(struct voluta_dir_ctx *dir_ctx,
+static int create_htree_root(const struct voluta_dir_ctx *d_ctx,
 			     struct voluta_vnode_info **out_vi)
 {
 	int err;
@@ -998,42 +1054,41 @@ static int create_htree_root(struct voluta_dir_ctx *dir_ctx,
 	struct voluta_vnode_info *vi;
 
 	vaddr_of_htnode(&vaddr, VOLUTA_OFF_NULL);
-	err = create_htnode(dir_ctx, &vaddr, HTREE_INDEX_ROOT, &vi);
+	err = create_htnode(d_ctx, &vaddr, HTREE_INDEX_ROOT, &vi);
 	if (err) {
 		return err;
 	}
-	dir_set_htree_root(dir_ctx->dir_ii, v_vaddr_of(vi));
-	i_dirtify(dir_ctx->dir_ii);
+	dir_set_htree_root(d_ctx->dir_ii, v_vaddr_of(vi));
+	i_dirtify(d_ctx->dir_ii);
 
 	*out_vi = vi;
 	return 0;
 }
 
-static int stage_or_create_root(struct voluta_dir_ctx *dir_ctx,
+static int stage_or_create_root(const struct voluta_dir_ctx *d_ctx,
 				struct voluta_vnode_info **out_vi)
 {
 	int err;
 
-	if (dir_has_htree(dir_ctx->dir_ii)) {
-		err = stage_htree_root(dir_ctx, out_vi);
+	if (dir_has_htree(d_ctx->dir_ii)) {
+		err = stage_htree_root(d_ctx, out_vi);
 	} else {
-		err = create_htree_root(dir_ctx, out_vi);
+		err = create_htree_root(d_ctx, out_vi);
 	}
 	return err;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static int lookup_by_tree(struct voluta_dir_ctx *dir_ctx,
-			  const struct voluta_vnode_info *root_vi,
-			  struct voluta_dir_entry_info *dei)
+static int do_lookup_by_tree(const struct voluta_dir_ctx *d_ctx,
+			     struct voluta_vnode_info *root_vi,
+			     struct voluta_dir_entry_info *dei)
 {
 	int err;
 	size_t depth;
-	struct voluta_vaddr vaddr;
 	struct voluta_vnode_info *child_vi;
-	const struct voluta_vnode_info *vi = root_vi;
-	const struct voluta_qstr *name = dir_ctx->name;
+	struct voluta_vnode_info *vi = root_vi;
+	const struct voluta_qstr *name = d_ctx->name;
 
 	depth = htn_depth(vi->u.htn);
 	while (depth_isvalid(depth)) {
@@ -1044,11 +1099,7 @@ static int lookup_by_tree(struct voluta_dir_ctx *dir_ctx,
 		if (err != -ENOENT) {
 			return err;
 		}
-		child_addr_by_hash(vi, name->hash, &vaddr);
-		if (vaddr_isnull(&vaddr)) {
-			break;
-		}
-		err = stage_child(dir_ctx, &vaddr, &child_vi);
+		err = stage_child_by_name(d_ctx, vi, &child_vi);
 		if (err) {
 			return err;
 		}
@@ -1059,71 +1110,101 @@ static int lookup_by_tree(struct voluta_dir_ctx *dir_ctx,
 	return -ENOENT;
 }
 
-static int lookup_by_name(struct voluta_dir_ctx *dir_ctx,
+static int lookup_by_tree(const struct voluta_dir_ctx *d_ctx,
+			  struct voluta_vnode_info *root_vi,
+			  struct voluta_dir_entry_info *dei)
+{
+	int err;
+
+	v_incref(root_vi);
+	err = do_lookup_by_tree(d_ctx, root_vi, dei);
+	v_decref(root_vi);
+
+	return err;
+}
+
+static int lookup_by_name(const struct voluta_dir_ctx *d_ctx,
 			  struct voluta_dir_entry_info *dei)
 {
 	int err = -ENOENT;
 	struct voluta_vnode_info *root_vi;
 
-	if (!dir_has_htree(dir_ctx->dir_ii)) {
+	if (!dir_has_htree(d_ctx->dir_ii)) {
 		return -ENOENT;
 	}
-	err = stage_htree_root(dir_ctx, &root_vi);
+	err = stage_htree_root(d_ctx, &root_vi);
 	if (err) {
 		return err;
 	}
-	err = lookup_by_tree(dir_ctx, root_vi, dei);
+	err = lookup_by_tree(d_ctx, root_vi, dei);
 	if (err) {
 		return err;
 	}
 	return 0;
 }
 
-static int check_dir_and_name(const struct voluta_dir_ctx *dir_ctx)
+static int check_dir_and_name(const struct voluta_dir_ctx *d_ctx)
 {
-	if (!i_isdir(dir_ctx->dir_ii)) {
+	if (!i_isdir(d_ctx->dir_ii)) {
 		return -ENOTDIR;
 	}
-	if (dir_ctx->name->str.len == 0) {
+	if (d_ctx->name->str.len == 0) {
 		return -EINVAL;
 	}
-	if (dir_ctx->name->str.len > VOLUTA_NAME_MAX) {
+	if (d_ctx->name->str.len > VOLUTA_NAME_MAX) {
 		return -ENAMETOOLONG;
 	}
 	return 0;
 }
 
-int voluta_resolve_by_name(struct voluta_sb_info *sbi,
-			   const struct voluta_oper_info *opi,
-			   const struct voluta_inode_info *dir_ii,
-			   const struct voluta_qstr *name,
-			   struct voluta_ino_dt *out_idt)
+static void fill_ino_dt(struct voluta_ino_dt *ino_dt,
+			const struct voluta_dir_entry_info *dei)
+{
+	ino_dt->ino = dei->ino_dt.ino;
+	ino_dt->dt = dei->ino_dt.dt;
+}
+
+static int do_lookup_dentry(struct voluta_dir_ctx *d_ctx,
+			    struct voluta_ino_dt *ino_dt)
 {
 	int err;
 	struct voluta_dir_entry_info dei;
-	struct voluta_dir_ctx dir_ctx = {
-		.sbi = sbi,
-		.opi = opi,
+
+	err = check_dir_and_name(d_ctx);
+	if (err) {
+		return err;
+	}
+	err = lookup_by_name(d_ctx, &dei);
+	if (err) {
+		return err;
+	}
+	fill_ino_dt(ino_dt, &dei);
+	return 0;
+}
+
+int voluta_lookup_dentry(const struct voluta_oper_ctx *op_ctx,
+			 const struct voluta_inode_info *dir_ii,
+			 const struct voluta_qstr *name,
+			 struct voluta_ino_dt *out_idt)
+{
+	int err;
+	struct voluta_dir_ctx d_ctx = {
+		.sbi = i_sbi_of(dir_ii),
+		.op_ctx = op_ctx,
 		.dir_ii = unconst_ii(dir_ii),
 		.name = name
 	};
 
-	err = check_dir_and_name(&dir_ctx);
-	if (err) {
-		return err;
-	}
-	err = lookup_by_name(&dir_ctx, &dei);
-	if (err) {
-		return err;
-	}
-	out_idt->ino = dei.ino_dt.ino;
-	out_idt->dt = dei.ino_dt.dt;
-	return 0;
+	i_incref(dir_ii);
+	err = do_lookup_dentry(&d_ctx, out_idt);
+	i_decref(dir_ii);
+
+	return err;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static int create_child(const struct voluta_dir_ctx *dir_ctx,
+static int create_child(const struct voluta_dir_ctx *d_ctx,
 			const struct voluta_vaddr *parent, size_t index,
 			struct voluta_vnode_info **out_vi)
 {
@@ -1132,7 +1213,7 @@ static int create_child(const struct voluta_dir_ctx *dir_ctx,
 	if (!index_valid_depth(index)) {
 		return -ENOSPC;
 	}
-	err = create_htnode(dir_ctx, parent, index, out_vi);
+	err = create_htnode(d_ctx, parent, index, out_vi);
 	if (err) {
 		return err;
 	}
@@ -1149,19 +1230,19 @@ static void set_parent_link(struct voluta_vnode_info *parent_vi,
 	v_dirtify(parent_vi);
 }
 
-static int create_link_child(const struct voluta_dir_ctx *dir_ctx,
-			     struct voluta_vnode_info *parent_vi,
-			     struct voluta_vnode_info **out_vi)
+static int do_create_link_child(const struct voluta_dir_ctx *d_ctx,
+				struct voluta_vnode_info *parent_vi,
+				struct voluta_vnode_info **out_vi)
 {
 	int err;
 	size_t parent_index;
 	size_t child_index;
 	struct voluta_vnode_info *vi;
-	const struct voluta_qstr *name = dir_ctx->name;
+	const struct voluta_qstr *name = d_ctx->name;
 
 	parent_index = htn_node_index(parent_vi->u.htn);
 	child_index = hash_to_child_index(name->hash, parent_index);
-	err = create_child(dir_ctx, v_vaddr_of(parent_vi), child_index, &vi);
+	err = create_child(d_ctx, v_vaddr_of(parent_vi), child_index, &vi);
 	if (err) {
 		return err;
 	}
@@ -1170,102 +1251,104 @@ static int create_link_child(const struct voluta_dir_ctx *dir_ctx,
 	return 0;
 }
 
-static int stage_or_create_child(const struct voluta_dir_ctx *dir_ctx,
+static int create_link_child(const struct voluta_dir_ctx *d_ctx,
+			     struct voluta_vnode_info *parent_vi,
+			     struct voluta_vnode_info **out_vi)
+{
+	int err;
+
+	v_incref(parent_vi);
+	err = do_create_link_child(d_ctx, parent_vi, out_vi);
+	v_decref(parent_vi);
+
+	return err;
+}
+
+static int stage_or_create_child(const struct voluta_dir_ctx *d_ctx,
 				 struct voluta_vnode_info *parent_vi,
 				 struct voluta_vnode_info **out_vi)
 {
 	int err;
 	struct voluta_vaddr vaddr;
-	const struct voluta_qstr *name = dir_ctx->name;
+	const struct voluta_qstr *name = d_ctx->name;
 
 	child_addr_by_hash(parent_vi, name->hash, &vaddr);
 	if (!vaddr_isnull(&vaddr)) {
-		err = stage_child(dir_ctx, &vaddr, out_vi);
+		err = stage_child(d_ctx, parent_vi, &vaddr, out_vi);
 	} else {
-		err = create_link_child(dir_ctx, parent_vi, out_vi);
+		err = create_link_child(d_ctx, parent_vi, out_vi);
 	}
 	return err;
 }
 
-static int discard_htnode(const struct voluta_dir_ctx *dir_ctx,
+static int discard_htnode(const struct voluta_dir_ctx *d_ctx,
 			  struct voluta_vnode_info *vi)
 {
 	int err;
 	const size_t node_index = htn_node_index(vi->u.htn);
 
-	voluta_assert_le(i_blocks_of(dir_ctx->dir_ii), HTREE_NODE_MAX);
-	voluta_assert_ge(i_blocks_of(dir_ctx->dir_ii), 0);
+	voluta_assert_le(i_blocks_of(d_ctx->dir_ii), HTREE_INDEX_MAX);
+	voluta_assert_ge(i_blocks_of(d_ctx->dir_ii), 0);
 
 	htn_reset_des(vi->u.htn);
-	err = del_htnode(dir_ctx, vi);
+	err = del_htnode(d_ctx, vi);
 	if (err) {
 		return err;
 	}
-	update_size_blocks(dir_ctx, node_index, false);
+	update_size_blocks(d_ctx, node_index, false);
 	return 0;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void post_add_dentry(const struct voluta_dir_ctx *dir_ctx)
+static nlink_t i_nlink_new(const struct voluta_inode_info *ii, long dif)
 {
-	struct voluta_iattr attr;
-	struct voluta_inode_info *ii = dir_ctx->ii;
-	struct voluta_inode_info *dir_ii = dir_ctx->dir_ii;
-
-	iattr_init(&attr, ii);
-	attr.ia_nlink = i_nlink_of(ii) + 1;
-	attr.ia_parent_ino = i_ino_of(dir_ii);
-	attr.ia_flags |= VOLUTA_ATTR_NLINK | VOLUTA_ATTR_PARENT;
-	i_update_attr(ii, dir_ctx->opi, &attr);
-
-	iattr_init(&attr, dir_ii);
-	if (i_isdir(ii)) {
-		attr.ia_nlink = i_nlink_of(dir_ii) + 1;
-		attr.ia_flags |= VOLUTA_ATTR_NLINK;
-	}
-	i_update_attr(dir_ii, dir_ctx->opi, &attr);
+	return (nlink_t)((long)i_nlink_of(ii) + dif);
 }
 
-static void post_remove_dentry(const struct voluta_dir_ctx *dir_ctx)
+static void update_nlink(const struct voluta_dir_ctx *d_ctx, long dif)
 {
-	struct voluta_iattr attr;
-	struct voluta_inode_info *ii = dir_ctx->ii;
-	struct voluta_inode_info *dir_ii = dir_ctx->dir_ii;
+	struct voluta_iattr iattr;
+	struct voluta_inode_info *child_ii = d_ctx->child_ii;
+	struct voluta_inode_info *dir_ii = d_ctx->dir_ii;
 
-	iattr_init(&attr, ii);
-	attr.ia_nlink = i_nlink_of(ii) - 1;
-	attr.ia_flags |= VOLUTA_ATTR_NLINK;
-	if (i_parent_ino_of(ii) == i_ino_of(dir_ii)) {
-		attr.ia_parent_ino = VOLUTA_INO_NULL;
-		attr.ia_flags |= VOLUTA_ATTR_PARENT;
+	iattr_setup(&iattr, i_ino_of(child_ii));
+	iattr.ia_nlink = i_nlink_new(child_ii, dif);
+	iattr.ia_flags |= VOLUTA_IATTR_NLINK;
+	if (dif > 0) {
+		iattr.ia_parent_ino = i_ino_of(dir_ii);
+		iattr.ia_flags |= VOLUTA_IATTR_PARENT;
+	} else if (i_parent_ino_of(child_ii) == i_ino_of(dir_ii)) {
+		iattr.ia_parent_ino = VOLUTA_INO_NULL;
+		iattr.ia_flags |= VOLUTA_IATTR_PARENT;
 	}
-	i_update_attr(ii, dir_ctx->opi, &attr);
+	update_iattrs(d_ctx->op_ctx, child_ii, &iattr);
 
-	iattr_init(&attr, dir_ii);
-	if (i_isdir(ii)) {
-		attr.ia_nlink = i_nlink_of(dir_ii) - 1;
-		attr.ia_flags |= VOLUTA_ATTR_NLINK;
+	iattr_setup(&iattr, i_ino_of(dir_ii));
+	if (i_isdir(child_ii)) {
+		iattr.ia_nlink = i_nlink_new(dir_ii, dif);
+		iattr.ia_flags |= VOLUTA_IATTR_NLINK;
 	}
-	i_update_attr(dir_ii, dir_ctx->opi, &attr);
+	update_iattrs(d_ctx->op_ctx, dir_ii, &iattr);
 }
 
-static int add_to_htnode(const struct voluta_dir_ctx *dir_ctx,
+static int add_to_htnode(const struct voluta_dir_ctx *d_ctx,
 			 struct voluta_vnode_info *vi)
 {
 	const struct voluta_dir_entry *de;
-	const struct voluta_inode_info *ii = dir_ctx->ii;
+	const struct voluta_inode_info *ii = d_ctx->child_ii;
 
-	de = htn_insert(vi->u.htn, dir_ctx->name, i_ino_of(ii), dtype_of(ii));
+	de = htn_insert(vi->u.htn, d_ctx->name, i_ino_of(ii), dtype_of(ii));
 	if (de == NULL) {
 		return -ENOSPC;
 	}
+	dir_inc_ndents(d_ctx->dir_ii);
 	v_dirtify(vi);
 	return 0;
 }
 
-static int add_to_tree(struct voluta_dir_ctx *dir_ctx,
-		       struct voluta_vnode_info *root_vi)
+static int do_add_to_tree(const struct voluta_dir_ctx *d_ctx,
+			  struct voluta_vnode_info *root_vi)
 {
 	int err;
 	size_t depth;
@@ -1273,11 +1356,11 @@ static int add_to_tree(struct voluta_dir_ctx *dir_ctx,
 
 	depth = htn_depth(vi->u.htn);
 	while (depth_isvalid(depth)) {
-		err = add_to_htnode(dir_ctx, vi);
+		err = add_to_htnode(d_ctx, vi);
 		if (!err) {
 			return 0;
 		}
-		err = stage_or_create_child(dir_ctx, vi, &vi);
+		err = stage_or_create_child(d_ctx, vi, &vi);
 		if (err) {
 			return err;
 		}
@@ -1287,105 +1370,92 @@ static int add_to_tree(struct voluta_dir_ctx *dir_ctx,
 	return -ENOSPC;
 }
 
-static int add_dentry(struct voluta_dir_ctx *dir_ctx)
+static int add_to_tree(const struct voluta_dir_ctx *d_ctx,
+		       struct voluta_vnode_info *root_vi)
+{
+	int err;
+
+	v_incref(root_vi);
+	err = do_add_to_tree(d_ctx, root_vi);
+	v_decref(root_vi);
+
+	return err;
+}
+
+static int insert_dentry(struct voluta_dir_ctx *d_ctx,
+			 struct voluta_vnode_info *root_vi)
+{
+	int err;
+
+	err = add_to_tree(d_ctx, root_vi);
+	if (err) {
+		return err;
+	}
+	update_nlink(d_ctx, 1);
+	return 0;
+}
+
+static int do_add_dentry(struct voluta_dir_ctx *d_ctx)
 {
 	int err;
 	struct voluta_vnode_info *root_vi;
 
-	err = stage_or_create_root(dir_ctx, &root_vi);
+	err = stage_or_create_root(d_ctx, &root_vi);
 	if (err) {
 		return err;
 	}
-	err = add_to_tree(dir_ctx, root_vi);
+	err = insert_dentry(d_ctx, root_vi);
 	if (err) {
 		return err;
-	}
-	dir_inc_ndents(dir_ctx->dir_ii);
-	return 0;
-}
-
-static int check_add_dentry(const struct voluta_dir_ctx *dir_ctx)
-{
-	int err;
-	size_t ndents;
-	const struct voluta_inode_info *dir_ii = dir_ctx->dir_ii;
-
-	err = check_dir_and_name(dir_ctx);
-	if (err) {
-		return err;
-	}
-	ndents = voluta_dir_ndentries(dir_ii);
-	if (!(ndents < VOLUTA_DIR_ENTRIES_MAX)) {
-		return -EMLINK;
-	}
-	/* Special case for remove-directory which is still held by open fd */
-	/* TODO: FIXME */
-	if (!i_nlink_of(dir_ii)) {
-		return -ENOENT;
 	}
 	return 0;
 }
 
-int voluta_check_add_dentry(const struct voluta_inode_info *dir_ii,
-			    const struct voluta_qstr *name)
-{
-	struct voluta_dir_ctx dir_ctx = {
-		.dir_ii = unconst_ii(dir_ii),
-		.name = name
-	};
-
-	return check_add_dentry(&dir_ctx);
-}
-
-int voluta_add_dentry(struct voluta_sb_info *sbi,
-		      const struct voluta_oper_info *opi,
+int voluta_add_dentry(const struct voluta_oper_ctx *op_ctx,
 		      struct voluta_inode_info *dir_ii,
 		      const struct voluta_qstr *name,
 		      struct voluta_inode_info *ii)
 {
 	int err;
-	struct voluta_dir_ctx dir_ctx = {
-		.sbi = sbi,
-		.opi = opi,
+	struct voluta_dir_ctx d_ctx = {
+		.sbi = i_sbi_of(dir_ii),
+		.op_ctx = op_ctx,
 		.dir_ii = dir_ii,
-		.ii = ii,
+		.child_ii = ii,
 		.name = name,
 	};
 
-	err = check_add_dentry(&dir_ctx);
-	if (err) {
-		return err;
-	}
-	err = add_dentry(&dir_ctx);
-	if (err) {
-		return err;
-	}
-	post_add_dentry(&dir_ctx);
-	return 0;
+	i_incref(dir_ii);
+	i_incref(ii);
+	err = do_add_dentry(&d_ctx);
+	i_decref(ii);
+	i_decref(dir_ii);
+
+	return err;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static int require_raccess(const struct voluta_dir_ctx *dir_ctx)
+static int check_rxaccess(const struct voluta_dir_ctx *d_ctx)
 {
-	return voluta_do_access(dir_ctx->opi, dir_ctx->dir_ii, R_OK);
+	return voluta_do_access(d_ctx->op_ctx, d_ctx->dir_ii, R_OK | X_OK);
 }
 
-static int require_rxaccess(const struct voluta_dir_ctx *dir_ctx)
-{
-	return voluta_do_access(dir_ctx->opi, dir_ctx->dir_ii, R_OK | X_OK);
-}
-
-static int require_parent(struct voluta_dir_ctx *dir_ctx)
+static int check_stage_parent(struct voluta_dir_ctx *d_ctx)
 {
 	int err;
 	ino_t parent_ino;
+	struct voluta_sb_info *sbi = d_ctx->sbi;
 
-	parent_ino = i_parent_ino_of(dir_ctx->dir_ii);
+	parent_ino = i_parent_ino_of(d_ctx->dir_ii);
+	if (ino_isnull(parent_ino)) {
+		/* special case: unlinked-but-open dir */
+		return -ENOENT;
+	}
 	if (!ino_isvalid(parent_ino)) {
 		return -EFSCORRUPTED;
 	}
-	err = voluta_stage_inode(dir_ctx->sbi, parent_ino, &dir_ctx->parent_ii);
+	err = voluta_stage_inode(sbi, parent_ino, &d_ctx->parent_ii);
 	if (err) {
 		return err;
 	}
@@ -1394,96 +1464,96 @@ static int require_parent(struct voluta_dir_ctx *dir_ctx)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static bool index_inrange(const struct voluta_dir_ctx *dir_ctx, size_t index)
+static bool index_inrange(const struct voluta_dir_ctx *d_ctx, size_t index)
 {
-	const size_t last = last_node_index_of(dir_ctx);
+	const size_t last = last_node_index_of(d_ctx);
 
 	return (last != HTREE_INDEX_NULL) ? (index <= last) : false;
 }
 
-static bool inrange(const struct voluta_dir_ctx *dir_ctx)
+static bool inrange(const struct voluta_dir_ctx *d_ctx)
 {
-	const loff_t doff = dir_ctx->readdir_ctx->pos;
+	const loff_t doff = d_ctx->rd_ctx->pos;
 
-	return (doff >= 0) && index_inrange(dir_ctx, doffset_to_index(doff));
+	return (doff >= 0) && index_inrange(d_ctx, doffset_to_index(doff));
 }
 
-static bool stopped(const struct voluta_dir_ctx *dir_ctx)
+static bool stopped(const struct voluta_dir_ctx *d_ctx)
 {
-	return !dir_ctx->keep_iter;
+	return !d_ctx->keep_iter;
 }
 
-static bool emit(struct voluta_dir_ctx *dir_ctx, const char *name,
+static bool emit(struct voluta_dir_ctx *d_ctx, const char *name,
 		 size_t nlen, ino_t ino, mode_t dt)
 {
 	int err;
-	struct voluta_readdir_ctx *readdir_ctx = dir_ctx->readdir_ctx;
+	struct voluta_readdir_ctx *rd_ctx = d_ctx->rd_ctx;
 	struct voluta_readdir_entry_info rdei = {
 		.name = name,
 		.name_len = nlen,
 		.ino = ino,
 		.dt = dt,
-		.off = readdir_ctx->pos
+		.off = rd_ctx->pos
 	};
 
-	err = readdir_ctx->actor(readdir_ctx, &rdei);
-	dir_ctx->keep_iter = (err == 0);
-	return dir_ctx->keep_iter;
+	err = rd_ctx->actor(rd_ctx, &rdei);
+	d_ctx->keep_iter = (err == 0);
+	return d_ctx->keep_iter;
 }
 
-static bool emit_dirent(struct voluta_dir_ctx *dir_ctx,
+static bool emit_dirent(struct voluta_dir_ctx *d_ctx,
 			const struct voluta_dir_entry *de, loff_t doff)
 {
-	dir_ctx->readdir_ctx->pos = doff;
-	return emit(dir_ctx, de_name(de),
-		    de_name_len(de), de_ino(de), de_dtype(de));
+	d_ctx->rd_ctx->pos = doff;
+	return emit(d_ctx, de_name(de),
+		    de_name_len(de), de_ino(de), de_dt(de));
 }
 
-static bool emit_ii(struct voluta_dir_ctx *dir_ctx, const char *name,
+static bool emit_ii(struct voluta_dir_ctx *d_ctx, const char *name,
 		    size_t nlen, const struct voluta_inode_info *ii)
 {
 	const ino_t xino = i_xino_of(ii);
 	const mode_t mode = i_mode_of(ii);
 
-	return emit(dir_ctx, name, nlen, xino, IFTODT(mode));
+	return emit(d_ctx, name, nlen, xino, IFTODT(mode));
 }
 
-static int iterate_htnode(struct voluta_dir_ctx *dir_ctx,
+static int iterate_htnode(struct voluta_dir_ctx *d_ctx,
 			  const struct voluta_vnode_info *vi)
 {
 	bool ok;
 	loff_t off;
 	const struct voluta_dir_entry *de = NULL;
 
-	while (!stopped(dir_ctx)) {
-		de = htn_scan(vi->u.htn, de, dir_ctx->readdir_ctx->pos);
+	while (!stopped(d_ctx)) {
+		de = htn_scan(vi->u.htn, de, d_ctx->rd_ctx->pos);
 		if (!de) {
 			off = htn_next_doffset(vi->u.htn);
-			dir_ctx->readdir_ctx->pos = off;
+			d_ctx->rd_ctx->pos = off;
 			break;
 		}
 		off = htn_resolve_doffset(vi->u.htn, de);
-		ok = emit_dirent(dir_ctx, de, off);
+		ok = emit_dirent(d_ctx, de, off);
 		if (!ok) {
 			break;
 		}
-		dir_ctx->readdir_ctx->pos += 1;
+		d_ctx->rd_ctx->pos += 1;
 	}
 	return 0;
 }
 
-static int readdir_eos(struct voluta_dir_ctx *dir_ctx)
+static int readdir_eos(struct voluta_dir_ctx *d_ctx)
 {
-	dir_ctx->readdir_ctx->pos = -1;
-	emit(dir_ctx, "", 0, VOLUTA_INO_NULL, 0);
+	d_ctx->rd_ctx->pos = -1;
+	emit(d_ctx, "", 0, VOLUTA_INO_NULL, 0);
 
-	dir_ctx->keep_iter = false;
+	d_ctx->keep_iter = false;
 	return 0;
 }
 
-static int stage_child_by_ord(struct voluta_dir_ctx *dir_ctx,
-			      const struct voluta_vnode_info *vi, size_t ord,
-			      struct voluta_vnode_info **out_vi)
+static int do_stage_child_by_ord(struct voluta_dir_ctx *d_ctx,
+				 const struct voluta_vnode_info *vi,
+				 size_t ord, struct voluta_vnode_info **out_vi)
 {
 	int err;
 	struct voluta_vaddr vaddr;
@@ -1492,20 +1562,33 @@ static int stage_child_by_ord(struct voluta_dir_ctx *dir_ctx,
 		return -ENOENT;
 	}
 	child_addr_by_ord(vi, ord, &vaddr);
-	err = stage_htnode(dir_ctx, &vaddr, out_vi);
+	err = stage_htnode(d_ctx, &vaddr, out_vi);
 	if (err) {
 		return err;
 	}
 	return 0;
 }
 
-static int stage_htnode_at(struct voluta_dir_ctx *dir_ctx,
-			   const struct voluta_vnode_info *root_vi,
-			   size_t index, struct voluta_vnode_info **out_vi)
+static int stage_child_by_ord(struct voluta_dir_ctx *d_ctx,
+			      struct voluta_vnode_info *vi, size_t ord,
+			      struct voluta_vnode_info **out_vi)
+{
+	int err;
+
+	v_incref(vi);
+	err = do_stage_child_by_ord(d_ctx, vi, ord, out_vi);
+	v_decref(vi);
+
+	return err;
+}
+
+static int stage_htnode_by_index(struct voluta_dir_ctx *d_ctx,
+				 const struct voluta_vnode_info *root_vi,
+				 size_t idx, struct voluta_vnode_info **out_vi)
 {
 	int err;
 	struct voluta_vnode_info *vi;
-	const size_t depth = index_to_depth(index);
+	const size_t depth = index_to_depth(idx);
 	size_t child_ord[HTREE_DEPTH_MAX];
 
 	voluta_assert_lt(depth, ARRAY_SIZE(child_ord));
@@ -1513,12 +1596,12 @@ static int stage_htnode_at(struct voluta_dir_ctx *dir_ctx,
 		return -ENOENT;
 	}
 	for (size_t d = depth; d > 0; --d) {
-		child_ord[d - 1] = index_to_child_ord(index);
-		index = index_to_parent(index);
+		child_ord[d - 1] = index_to_child_ord(idx);
+		idx = index_to_parent(idx);
 	}
 	vi = unconst_vi(root_vi);
 	for (size_t i = 0; i < depth; ++i) {
-		err = stage_child_by_ord(dir_ctx, vi, child_ord[i], &vi);
+		err = stage_child_by_ord(d_ctx, vi, child_ord[i], &vi);
 		if (err) {
 			return err;
 		}
@@ -1527,7 +1610,7 @@ static int stage_htnode_at(struct voluta_dir_ctx *dir_ctx,
 	return 0;
 }
 
-static int next_htnode(struct voluta_dir_ctx *dir_ctx,
+static int next_htnode(struct voluta_dir_ctx *d_ctx,
 		       const struct voluta_vnode_info *vi, size_t *out_index)
 {
 	int err;
@@ -1545,7 +1628,7 @@ static int next_htnode(struct voluta_dir_ctx *dir_ctx,
 		*out_index = next_index;
 		return 0;
 	}
-	err = stage_htnode(dir_ctx, &vaddr, &parent_vi);
+	err = stage_htnode(d_ctx, &vaddr, &parent_vi);
 	if (err) {
 		return err;
 	}
@@ -1561,19 +1644,19 @@ static int next_htnode(struct voluta_dir_ctx *dir_ctx,
 	return 0;
 }
 
-static int iterate_htnodes(struct voluta_dir_ctx *dir_ctx,
-			   const struct voluta_vnode_info *root_vi)
+static int do_iterate_htnodes(struct voluta_dir_ctx *d_ctx,
+			      const struct voluta_vnode_info *root_vi)
 {
 	int err = 0;
 	size_t index;
 	struct voluta_vnode_info *vi = NULL;
 
-	index = curr_node_index_of(dir_ctx);
-	while (!err && !stopped(dir_ctx)) {
-		if (!index_inrange(dir_ctx, index)) {
-			return readdir_eos(dir_ctx);
+	index = curr_node_index_of(d_ctx);
+	while (!err && !stopped(d_ctx)) {
+		if (!index_inrange(d_ctx, index)) {
+			return readdir_eos(d_ctx);
 		}
-		err = stage_htnode_at(dir_ctx, root_vi, index, &vi);
+		err = stage_htnode_by_index(d_ctx, root_vi, index, &vi);
 		if (err == -ENOENT) {
 			index++;
 			err = 0;
@@ -1582,191 +1665,234 @@ static int iterate_htnodes(struct voluta_dir_ctx *dir_ctx,
 		if (err) {
 			break;
 		}
-		err = iterate_htnode(dir_ctx, vi);
+		err = iterate_htnode(d_ctx, vi);
 		if (err) {
 			break;
 		}
-		err = next_htnode(dir_ctx, vi, &index);
+		err = next_htnode(d_ctx, vi, &index);
 	}
 	return err;
 }
 
-static int iterate_htree(struct voluta_dir_ctx *dir_ctx)
+
+static int iterate_htnodes(struct voluta_dir_ctx *d_ctx,
+			   struct voluta_vnode_info *root_vi)
+{
+	int err;
+
+	v_incref(root_vi);
+	err = do_iterate_htnodes(d_ctx, root_vi);
+	v_decref(root_vi);
+
+	return err;
+}
+
+static int iterate_htree(struct voluta_dir_ctx *d_ctx)
 {
 	int err;
 	struct voluta_vnode_info *root_vi;
-	const size_t start_index = curr_node_index_of(dir_ctx);
+	const size_t start_index = curr_node_index_of(d_ctx);
 
-	if (!index_inrange(dir_ctx, start_index)) {
-		return readdir_eos(dir_ctx);
+	if (!index_inrange(d_ctx, start_index)) {
+		return readdir_eos(d_ctx);
 	}
-	err = stage_htree_root(dir_ctx, &root_vi);
+	err = stage_htree_root(d_ctx, &root_vi);
 	if (err) {
 		return err;
 	}
-	err = iterate_htnodes(dir_ctx, root_vi);
+	err = iterate_htnodes(d_ctx, root_vi);
 	if (err) {
 		return err;
 	}
 	return 0;
 }
 
-static int iterate_dir(struct voluta_dir_ctx *dir_ctx)
+static int iterate_dir(struct voluta_dir_ctx *d_ctx)
 {
 	int err;
 
-	if (!dir_has_htree(dir_ctx->dir_ii)) {
-		return readdir_eos(dir_ctx);
+	if (!dir_has_htree(d_ctx->dir_ii)) {
+		return readdir_eos(d_ctx);
 	}
-	err = iterate_htree(dir_ctx);
-	if (err || stopped(dir_ctx)) {
+	err = iterate_htree(d_ctx);
+	if (err || stopped(d_ctx)) {
 		return err;
 	}
-	return readdir_eos(dir_ctx);
+	return readdir_eos(d_ctx);
 }
 
-static int readdir_emit(struct voluta_dir_ctx *dir_ctx)
+static int readdir_emit(struct voluta_dir_ctx *d_ctx)
 {
 	int err = 0;
 	bool ok = true;
-	struct voluta_iattr attr;
+	struct voluta_iattr iattr;
 
-	if (dir_ctx->readdir_ctx->pos == 0) {
-		ok = emit_ii(dir_ctx, ".", 1, dir_ctx->dir_ii);
-		dir_ctx->readdir_ctx->pos = 1;
+	if (d_ctx->rd_ctx->pos == 0) {
+		ok = emit_ii(d_ctx, ".", 1, d_ctx->dir_ii);
+		d_ctx->rd_ctx->pos = 1;
 	}
-	if (ok && (dir_ctx->readdir_ctx->pos == 1)) {
-		ok = emit_ii(dir_ctx, "..", 2, dir_ctx->parent_ii);
-		dir_ctx->readdir_ctx->pos = 2;
+	if (ok && (d_ctx->rd_ctx->pos == 1)) {
+		ok = emit_ii(d_ctx, "..", 2, d_ctx->parent_ii);
+		d_ctx->rd_ctx->pos = 2;
 	}
-	if (ok && !inrange(dir_ctx)) {
-		err = readdir_eos(dir_ctx);
+	if (ok && !inrange(d_ctx)) {
+		err = readdir_eos(d_ctx);
 	}
-	if (ok && !stopped(dir_ctx)) {
-		err = iterate_dir(dir_ctx);
+	if (ok && !stopped(d_ctx)) {
+		err = iterate_dir(d_ctx);
 	}
 
-	iattr_init(&attr, dir_ctx->dir_ii);
-	attr.ia_flags |= VOLUTA_ATTR_ATIME | VOLUTA_ATTR_LAZY;
-	i_update_attr(dir_ctx->dir_ii, dir_ctx->opi, &attr);
+	iattr_setup(&iattr, i_ino_of(d_ctx->dir_ii));
+	iattr.ia_flags |= VOLUTA_IATTR_ATIME | VOLUTA_IATTR_LAZY;
+	update_iattrs(d_ctx->op_ctx, d_ctx->dir_ii, &iattr);
 
 	return err;
 }
 
-int voluta_do_readdir(struct voluta_sb_info *sbi,
-		      const struct voluta_oper_info *opi,
-		      const struct voluta_inode_info *dir_ii,
-		      struct voluta_readdir_ctx *readdir_ctx)
+static int do_readdir(struct voluta_dir_ctx *d_ctx)
 {
 	int err;
-	struct voluta_dir_ctx dir_ctx = {
-		.sbi = sbi,
-		.opi = opi,
-		.readdir_ctx = readdir_ctx,
-		.dir_ii = unconst_ii(dir_ii),
-		.keep_iter = true
-	};
 
-	err = check_dir_io(dir_ii);
+	err = check_dir_io(d_ctx->dir_ii);
 	if (err) {
 		return err;
 	}
-	err = require_rxaccess(&dir_ctx);
+	err = check_rxaccess(d_ctx);
 	if (err) {
 		return err;
 	}
-	err = require_parent(&dir_ctx);
+	err = check_stage_parent(d_ctx);
 	if (err) {
 		return err;
 	}
-	err = readdir_emit(&dir_ctx);
+	err = readdir_emit(d_ctx);
 	if (err) {
 		return err;
 	}
 	return 0;
+}
+
+int voluta_do_readdir(const struct voluta_oper_ctx *op_ctx,
+		      struct voluta_inode_info *dir_ii,
+		      struct voluta_readdir_ctx *rd_ctx)
+{
+	int err;
+	struct voluta_dir_ctx d_ctx = {
+		.op_ctx = op_ctx,
+		.sbi = i_sbi_of(dir_ii),
+		.rd_ctx = rd_ctx,
+		.dir_ii = dir_ii,
+		.keep_iter = true
+	};
+
+	i_incref(dir_ii);
+	err = do_readdir(&d_ctx);
+	i_decref(dir_ii);
+
+	return err;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static int discard_recursively(struct voluta_dir_ctx *dir_ctx,
-			       const struct voluta_vaddr *vaddr)
-{
-	int err;
-	struct voluta_vnode_info *vi;
-	struct voluta_vaddr child_vaddr;
+static int discard_recursively(struct voluta_dir_ctx *d_ctx,
+			       const struct voluta_vaddr *vaddr);
 
-	if (vaddr_isnull(vaddr)) {
-		return 0;
-	}
-	err = stage_htnode(dir_ctx, vaddr, &vi);
-	if (err) {
-		return err;
-	}
-	for (size_t ord = 0; ord < HTREE_FANOUT; ++ord) {
-		htn_child_by_ord(vi->u.htn, ord, &child_vaddr);
-		err = discard_recursively(dir_ctx, &child_vaddr);
-		if (err) {
-			return err;
-		}
-	}
-	err = discard_htnode(dir_ctx, vi);
-	if (err) {
-		return err;
-	}
-	return 0;
-}
-
-static int drop_htree(struct voluta_dir_ctx *dir_ctx,
-		      struct voluta_vnode_info *root_vi)
+static int do_discard_childs_of(struct voluta_dir_ctx *d_ctx,
+				struct voluta_vnode_info *vi)
 {
 	int err = 0;
 	struct voluta_vaddr child_vaddr;
 
-	for (size_t ord = 0; ord < HTREE_FANOUT; ++ord) {
-		htn_child_by_ord(root_vi->u.htn, ord, &child_vaddr);
-		err = discard_recursively(dir_ctx, &child_vaddr);
-		if (err) {
-			break;
-		}
-	}
-	err = discard_htnode(dir_ctx, root_vi);
-	if (err) {
-		return err;
+	for (size_t ord = 0; (ord < HTREE_FANOUT) && !err; ++ord) {
+		htn_child_by_ord(vi->u.htn, ord, &child_vaddr);
+		err = discard_recursively(d_ctx, &child_vaddr);
 	}
 	return err;
 }
 
-static int finalize_htree(struct voluta_dir_ctx *dir_ctx)
+static int discard_childs_of(struct voluta_dir_ctx *d_ctx,
+			     struct voluta_vnode_info *vi)
 {
 	int err;
-	struct voluta_vnode_info *root_vi;
-	struct voluta_inode_info *dir_ii = dir_ctx->dir_ii;
 
-	err = stage_htree_root(dir_ctx, &root_vi);
+	v_incref(vi);
+	err = do_discard_childs_of(d_ctx, vi);
+	v_decref(vi);
+
+	return err;
+}
+
+static int discard_htree_at(struct voluta_dir_ctx *d_ctx,
+			    struct voluta_vnode_info *vi)
+{
+	int err;
+
+	err = discard_childs_of(d_ctx, vi);
 	if (err) {
 		return err;
 	}
-	err = drop_htree(dir_ctx, root_vi);
+	err = discard_htnode(d_ctx, vi);
 	if (err) {
 		return err;
 	}
-	dir_setup(dir_ii);
-	i_dirtify(dir_ii);
 	return 0;
 }
 
-int voluta_drop_dir(struct voluta_sb_info *sbi,
-		    struct voluta_inode_info *dir_ii)
+static int discard_recursively(struct voluta_dir_ctx *d_ctx,
+			       const struct voluta_vaddr *vaddr)
 {
-	struct voluta_dir_ctx dir_ctx = {
-		.sbi = sbi,
-		.dir_ii = dir_ii,
-	};
+	int err;
+	struct voluta_vnode_info *vi;
+
+	if (vaddr_isnull(vaddr)) {
+		return 0;
+	}
+	err = stage_htnode(d_ctx, vaddr, &vi);
+	if (err) {
+		return err;
+	}
+	err = discard_htree_at(d_ctx, vi);
+	if (err) {
+		return err;
+	}
+	return 0;
+}
+
+static int finalize_htree(struct voluta_dir_ctx *d_ctx)
+{
+	int err;
+	struct voluta_vnode_info *root_vi;
+	struct voluta_inode_info *dir_ii = d_ctx->dir_ii;
 
 	if (!dir_has_htree(dir_ii)) {
 		return 0;
 	}
-	return finalize_htree(&dir_ctx);
+	err = stage_htree_root(d_ctx, &root_vi);
+	if (err) {
+		return err;
+	}
+	err = discard_htree_at(d_ctx, root_vi);
+	if (err) {
+		return err;
+	}
+	dir_setup(dir_ii, i_nlink_of(dir_ii));
+	i_dirtify(dir_ii);
+	return 0;
+}
+
+int voluta_drop_dir(struct voluta_inode_info *dir_ii)
+{
+	int err;
+	struct voluta_dir_ctx d_ctx = {
+		.sbi = i_sbi_of(dir_ii),
+		.dir_ii = dir_ii,
+	};
+
+	i_incref(dir_ii);
+	err = finalize_htree(&d_ctx);
+	i_decref(dir_ii);
+
+	return err;
 }
 
 
@@ -1776,135 +1902,105 @@ int voluta_drop_dir(struct voluta_sb_info *sbi,
  * Currently, we drop htree only when its empty. Try to squeeze it up and
  * remove empty leaf nodes.
  */
-static int remove_dentry(struct voluta_dir_ctx *dir_ctx,
-			 const struct voluta_dir_entry_info *dei)
+static int do_erase_dentry(struct voluta_dir_ctx *d_ctx,
+			   const struct voluta_dir_entry_info *dei)
 {
-	struct voluta_inode_info *dir_ii = dir_ctx->dir_ii;
+	struct voluta_inode_info *dir_ii = d_ctx->dir_ii;
 
 	voluta_assert_not_null(dei->vi);
 	de_remove(dei->de, htn_end(dei->vi->u.htn));
 	v_dirtify(dei->vi);
 
 	dir_dec_ndents(dir_ii);
+	update_nlink(d_ctx, -1);
 
-	return !dir_ndents(dir_ii) ? finalize_htree(dir_ctx) : 0;
+	return !dir_ndents(dir_ii) ? finalize_htree(d_ctx) : 0;
 }
 
-int voluta_remove_dentry(struct voluta_sb_info *sbi,
-			 const struct voluta_oper_info *opi,
+static int erase_dentry(struct voluta_dir_ctx *d_ctx,
+			const struct voluta_dir_entry_info *dei)
+{
+	int err;
+
+	i_incref(d_ctx->child_ii);
+	err = do_erase_dentry(d_ctx, dei);
+	i_decref(d_ctx->child_ii);
+
+	return err;
+}
+
+static int check_and_lookup_by_name(struct voluta_dir_ctx *d_ctx,
+				    struct voluta_dir_entry_info *dei)
+{
+	int err;
+
+	err = check_dir_and_name(d_ctx);
+	if (err) {
+		return err;
+	}
+	err = lookup_by_name(d_ctx, dei);
+	if (err) {
+		return err;
+	}
+	return 0;
+}
+static int stage_child_by_de(struct voluta_dir_ctx *d_ctx,
+			     const struct voluta_dir_entry_info *dei)
+{
+	int err;
+	const ino_t ino = dei->ino_dt.ino;
+
+	v_incref(dei->vi);
+	err = voluta_stage_inode(d_ctx->sbi, ino, &d_ctx->child_ii);
+	v_decref(dei->vi);
+
+	return err;
+}
+
+static int do_remove_dentry(struct voluta_dir_ctx *d_ctx)
+{
+	int err;
+	struct voluta_dir_entry_info dei;
+
+	err = check_and_lookup_by_name(d_ctx, &dei);
+	if (err) {
+		return err;
+	}
+	err = stage_child_by_de(d_ctx, &dei);
+	if (err) {
+		return err;
+	}
+	err = erase_dentry(d_ctx, &dei);
+	if (err) {
+		return err;
+	}
+	return 0;
+}
+
+int voluta_remove_dentry(const struct voluta_oper_ctx *op_ctx,
 			 struct voluta_inode_info *dir_ii,
 			 const struct voluta_qstr *name)
 {
 	int err;
-	struct voluta_dir_entry_info dei;
-	struct voluta_dir_ctx dir_ctx = {
-		.sbi = sbi,
-		.opi = opi,
+	struct voluta_dir_ctx d_ctx = {
+		.sbi = i_sbi_of(dir_ii),
+		.op_ctx = op_ctx,
 		.dir_ii = unconst_ii(dir_ii),
-		.ii = NULL,
 		.name = name
 	};
 
-	err = check_dir_and_name(&dir_ctx);
-	if (err) {
-		return err;
-	}
-	err = lookup_by_name(&dir_ctx, &dei);
-	if (err) {
-		return err;
-	}
-	err = voluta_stage_inode(dir_ctx.sbi, dei.ino_dt.ino, &dir_ctx.ii);
-	if (err) {
-		return err;
-	}
-	err = remove_dentry(&dir_ctx, &dei);
-	if (err) {
-		return err;
-	}
-	post_remove_dentry(&dir_ctx);
-	return 0;
-}
+	i_incref(dir_ii);
+	err = do_remove_dentry(&d_ctx);
+	i_decref(dir_ii);
 
-/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-
-int voluta_do_opendir(struct voluta_sb_info *sbi,
-		      const struct voluta_oper_info *opi,
-		      struct voluta_inode_info *dir_ii)
-{
-	int err;
-	struct voluta_dir_ctx dir_ctx = {
-		.sbi = sbi,
-		.opi = opi,
-		.dir_ii = dir_ii,
-	};
-
-	err = require_dir(dir_ii);
-	if (err) {
-		return err;
-	}
-	err = require_raccess(&dir_ctx);
-	if (err) {
-		return err;
-	}
-	err = voluta_inc_fileref(opi, dir_ii);
-	if (err) {
-		return err;
-	}
-	return 0;
-}
-
-int voluta_do_releasedir(struct voluta_sb_info *sbi,
-			 const struct voluta_oper_info *opi,
-			 struct voluta_inode_info *dir_ii)
-{
-	int err;
-
-	err = check_dir_io(dir_ii);
-	if (err) {
-		return err;
-	}
-	err = voluta_do_access(opi, dir_ii, F_OK); /* XXX */
-	if (err) {
-		return err;
-	}
-	dir_ii->vi.ce.ce_refcnt--;
-
-	/* TODO: Shrink sparse dir-tree upon last close */
-	voluta_unused(sbi);
-
-	return 0;
-}
-
-int voluta_do_fsyncdir(struct voluta_sb_info *sbi,
-		       const struct voluta_oper_info *opi,
-		       struct voluta_inode_info *dir_ii, bool dsync)
-{
-	int err;
-
-	err = check_dir_io(dir_ii);
-	if (err) {
-		return err;
-	}
-	/* TODO */
-	voluta_unused(sbi);
-	voluta_unused(opi);
-	voluta_unused(dsync);
-	(void)sbi;
-	(void)dsync;
-	return 0;
+	return err;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 void voluta_setup_new_dir(struct voluta_inode_info *dir_ii)
 {
-	struct voluta_iattr attr = {
-		.ia_flags = VOLUTA_ATTR_NLINK,
-		.ia_nlink = 1
-	};
-
-	dir_setup(dir_ii);
-	voluta_update_iattr(dir_ii, NULL, &attr);
+	dir_setup(dir_ii, 1);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/

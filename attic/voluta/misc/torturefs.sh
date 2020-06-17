@@ -1,32 +1,19 @@
 #!/bin/bash
 #
-# Torture file-system using various well-known tools. Using environment
-# variable LOCAL_GIT_REPO_HOME as root directory for local git repositories,
-# or else, got to the web.
+# Torture file-system using various well-known tools.
 #
+TOKYOCABINET_GIT_URL="https://github.com/maiha/tokyocabinet"
+RSYNC_GIT_URL="git://git.samba.org/rsync.git"
+POSTGRESQL_GIT_URL="git://git.postgresql.org/git/postgresql.git"
+SQLITE_GIT_URL="https://github.com/mackyle/sqlite.git"
+COREUTILS_GIT_GRL="https://github.com/coreutils/coreutils"
+GITSCM_GIT_URL="https://github.com/git/git.git"
+SUBVERSION_GIT_URL="https://github.com/apache/subversion"
+DIFFUTILS_GIT_URL="git://git.savannah.gnu.org/diffutils"
+FINDUTILS_GIT_URL="git://git.savannah.gnu.org/findutils"
+
+
 self=$(basename ${BASH_SOURCE[0]})
-
-TOKYOCABINET_GIT_URL="${LOCAL_GIT_REPO_HOME}/tokyocabinet"
-RSYNC_GIT_URL="${LOCAL_GIT_REPO_HOME}/rsync"
-POSTGRESQL_GIT_URL="${LOCAL_GIT_REPO_HOME}/postgresql"
-SQLITE_GIT_URL="${LOCAL_GIT_REPO_HOME}/sqlite"
-COREUTILS_GIT_GRL="${LOCAL_GIT_REPO_HOME}/coreutils"
-GITSCM_GIT_URL="${LOCAL_GIT_REPO_HOME}/git"
-SUBVERSION_GIT_URL="${LOCAL_GIT_REPO_HOME}/subversion"
-DIFFUTILS_GIT_URL="${LOCAL_GIT_REPO_HOME}/diffutils"
-
-if [[ -z "${LOCAL_GIT_REPO_HOME}" ]]; then
-  TOKYOCABINET_GIT_URL="https://github.com/maiha/tokyocabinet"
-  RSYNC_GIT_URL="git://git.samba.org/rsync.git"
-  POSTGRESQL_GIT_URL="git://git.postgresql.org/git/postgresql.git"
-  SQLITE_GIT_URL="https://github.com/mackyle/sqlite.git"
-  COREUTILS_GIT_GRL="https://github.com/coreutils/coreutils"
-  GITSCM_GIT_URL="https://github.com/git/git.git"
-  SUBVERSION_GIT_URL="https://github.com/apache/subversion"
-  DIFFUTILS_GIT_URL="git://git.savannah.gnu.org/diffutils"
-fi
-
-
 msg() { echo "$self: $*" >&2; }
 die() { msg "$*"; exit 1; }
 try() { echo "$self: $@" >&2; ( "$@" ) || msg "failed: $*"; }
@@ -41,7 +28,7 @@ git_clone() {
 }
 
 git_clean_fxd() {
-  run git clean -fxd
+  run git clean -fxd > /dev/null
 }
 
 
@@ -148,6 +135,24 @@ do_diffutils_check() {
   run rm -rf ${workdir}
 }
 
+# Findutils
+do_findutils_check() {
+  local currdir=$(pwd)
+  local workdir="$1/findutils"
+
+  git_clone ${FINDUTILS_GIT_URL} ${workdir}
+
+  cd ${workdir}
+  run ./bootstrap
+  run ./configure
+  run make
+  run make check
+  git_clean_fxd
+
+  cd ${currdir}
+  run rm -rf ${workdir}
+}
+
 # Subversion
 do_subversion_check() {
   local currdir=$(pwd)
@@ -200,6 +205,7 @@ do_all_checks() {
   do_postgresql_check ${workdir}
   do_coreutils_check ${workdir}
   do_diffutils_check ${workdir}
+  do_findutils_check ${workdir}
   do_sqlite_check ${workdir}
   do_gitscm_check ${workdir}
   do_subversion_check ${workdir}
@@ -207,10 +213,11 @@ do_all_checks() {
 
 
 show_usage() {
-  echo ${self}": generate heavy load on file-system via other tools"
+  echo ${self}": generate heavy load on file-system via common tools"
   echo
   echo "  -c|--coreutils        (${COREUTILS_GIT_GRL})"
   echo "  -d|--diffutils        (${DIFFUTILS_GIT_URL})"
+  echo "  -f|--findutils        (${FINDUTILS_GIT_URL})"
   echo "  -t|--tokyocabinet     (${TOKYOCABINET_GIT_URL})"
   echo "  -r|--rsync            (${RSYNC_GIT_URL})"
   echo "  -p|--postgres         (${POSTGRESQL_GIT_URL})"
@@ -231,6 +238,9 @@ case "$arg" in
     ;;
   -d|--diffutils)
     do_diffutils_check ${wd}
+    ;;
+  -f|--findutils)
+    do_findutils_check ${wd}
     ;;
   -g|--gitscm)
     do_gitscm_check ${wd}

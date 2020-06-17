@@ -25,10 +25,10 @@
 #include <string.h>
 #include <stdbool.h>
 #include <errno.h>
-#include "voluta-lib.h"
+#include "libvoluta.h"
 
-#define MPAGE_SHIFT             VOLUTA_PAGE_SHIFT_MIN
-#define MPAGE_SIZE              VOLUTA_PAGE_SIZE_MIN
+#define MPAGE_SHIFT             VOLUTA_PAGE_SHIFT
+#define MPAGE_SIZE              VOLUTA_PAGE_SIZE
 #define MPAGE_NSEGS             (MPAGE_SIZE / MSLAB_SEG_SIZE)
 #define MPAGES_IN_BK            (VOLUTA_BK_SIZE / MPAGE_SIZE)
 #define MSLAB_SHIFT_MIN         (4)
@@ -38,7 +38,7 @@
 #define MSLAB_SEG_SIZE          MSLAB_SIZE_MIN
 #define MSLAB_INDEX_NONE        (-1)
 #define MALLOC_SIZE_MAX         (8 * VOLUTA_UMEGA)
-#define CACHELINE_SIZE_MIN      VOLUTA_CACHELINE_SIZE_MIN
+#define CACHELINE_SIZE_MIN      VOLUTA_CACHELINE_SIZE
 #define QALLOC_NSLABS           (MPAGE_SHIFT - MSLAB_SHIFT_MIN)
 
 #define STATICASSERT_EQ(x_, y_) \
@@ -54,6 +54,8 @@
 	VOLUTA_STATICASSERT_LE(sizeof(t_), s_)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
+
+/* TODO: Use AVL instead of linked-list for free-chunks */
 
 struct voluta_slab_seg {
 	struct voluta_list_head link;
@@ -295,7 +297,8 @@ static int resolve_mem_sizes(size_t npgs, size_t *msz_data, size_t *msz_meta)
 static int memfd_setup(const char *name, size_t size,
 		       int *out_fd, void **out_mem)
 {
-	int err, fd = -1;
+	int err;
+	int fd = -1;
 	void *mem = NULL;
 	const int prot = PROT_READ | PROT_WRITE;
 	const int flags = MAP_SHARED;
@@ -388,12 +391,12 @@ static int qalloc_fini_memfd(struct voluta_qalloc *qal)
 
 static void qalloc_init_slabs(struct voluta_qalloc *qal)
 {
-	size_t elemsz, shift = MSLAB_SHIFT_MIN;
+	size_t elemsz;
 	struct voluta_slab *slab;
+	const size_t shift_base = MSLAB_SHIFT_MIN;
 
 	for (size_t i = 0; i < ARRAY_SIZE(qal->slabs); ++i) {
-		voluta_assert_le(shift, MSLAB_SHIFT_MAX);
-		elemsz = 1U << shift++;
+		elemsz = 1U << (shift_base + i);
 		slab = &qal->slabs[i];
 		slab_init(slab, i, elemsz);
 	}
@@ -406,12 +409,13 @@ static void qalloc_fini_slabs(struct voluta_qalloc *qal)
 	}
 }
 
-static union voluta_page *qalloc_page_at(const struct voluta_qalloc *qal,
-			size_t idx)
+static void *qalloc_page_at(const struct voluta_qalloc *qal, size_t idx)
 {
 	union voluta_page *pg_arr = qal->mem_data;
 
-	return (idx < qal->st.npages) ? pg_arr + idx : NULL;
+	voluta_assert_lt(idx, qal->st.npages);
+
+	return pg_arr + idx;
 }
 
 static struct voluta_page_info *
@@ -419,14 +423,22 @@ qalloc_page_info_at(const struct voluta_qalloc *qal, size_t idx)
 {
 	struct voluta_page_info *pgi_arr = qal->mem_meta;
 
-	return (idx < qal->st.npages) ? pgi_arr + idx : NULL;
+	voluta_assert_lt(idx, qal->st.npages);
+
+	return pgi_arr + idx;
 }
 
 static struct voluta_page_info *
 qalloc_next(const struct voluta_qalloc *qal,
 	    const struct voluta_page_info *pgi, size_t npgs)
 {
-	return qalloc_page_info_at(qal, pgi->pg_index + npgs);
+	const size_t idx_next = pgi->pg_index + npgs;
+	struct voluta_page_info *pgi_next = NULL;
+
+	if (idx_next < qal->st.npages) {
+		pgi_next = qalloc_page_info_at(qal, idx_next);
+	}
+	return pgi_next;
 }
 
 static void qalloc_update(const struct voluta_qalloc *qal,
@@ -444,12 +456,12 @@ static void qalloc_add_free(struct voluta_qalloc *qal,
 			    struct voluta_page_info *pgi,
 			    struct voluta_page_info *prev, size_t npgs)
 {
-	const size_t head_threshold = MPAGES_IN_BK;
+	const size_t threshold = MPAGES_IN_BK;
 	struct voluta_list_head *free_list = &qal->free_list;
 
 	page_info_update(pgi, prev, npgs);
 	qalloc_update(qal, pgi, npgs);
-	if (npgs >= head_threshold) {
+	if (npgs >= threshold) {
 		page_info_push_head(pgi, free_list);
 	} else {
 		page_info_push_tail(pgi, free_list);
@@ -476,7 +488,7 @@ int voluta_qalloc_init(struct voluta_qalloc *qal, size_t mlimit)
 {
 	int err;
 	size_t npgs;
-	const size_t qalloc_size_min = (16 * VOLUTA_UMEGA);
+	const size_t qalloc_size_min = (8 * VOLUTA_UMEGA);
 
 	if (mlimit < qalloc_size_min) {
 		return -EINVAL;
@@ -484,7 +496,6 @@ int voluta_qalloc_init(struct voluta_qalloc *qal, size_t mlimit)
 	static_assert_alloc_sizes();
 	qal->st.npages_used = 0;
 	qal->st.nbytes_used = 0;
-	qal->ncycles = 1;
 	qal->pedantic_mode = false;
 
 	npgs = mlimit / MPAGE_SIZE;
@@ -502,44 +513,6 @@ int voluta_qalloc_fini(struct voluta_qalloc *qal)
 	/* TODO: release all pending memory-elements in slabs */
 	qalloc_fini_slabs(qal);
 	return qalloc_fini_memfd(qal);
-}
-
-int voluta_qalloc_new(size_t mlimit, struct voluta_qalloc **out_qal)
-{
-	int err;
-	void *page;
-	size_t page_size;
-
-	page_size = voluta_sc_page_size();
-	if (sizeof(**out_qal) > page_size) {
-		return -ENOMEM;
-	}
-	err = voluta_mmap_memory(page_size, &page);
-	if (err) {
-		return err;
-	}
-	err = voluta_qalloc_init(page, mlimit);
-	if (err) {
-		voluta_munmap_memory(page, page_size);
-		return err;
-	}
-	*out_qal = page;
-	return 0;
-}
-
-int voluta_qalloc_del(struct voluta_qalloc *qal)
-{
-	int err;
-	void *page = qal;
-	size_t page_size;
-
-	err = voluta_qalloc_fini(qal);
-	if (err) {
-		return err;
-	}
-	page_size = voluta_sc_page_size();
-	voluta_munmap_memory(page, page_size);
-	return 0;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -603,7 +576,8 @@ static struct voluta_page_info *
 qalloc_search_free_from_tail(struct voluta_qalloc *qal, size_t npgs)
 {
 	struct voluta_page_info *pgi;
-	struct voluta_list_head *itr, *free_list = &qal->free_list;
+	struct voluta_list_head *itr;
+	struct voluta_list_head *free_list = &qal->free_list;
 
 	itr = free_list->prev;
 	while (itr != free_list) {
@@ -620,7 +594,8 @@ static struct voluta_page_info *
 qalloc_search_free_from_head(struct voluta_qalloc *qal, size_t npgs)
 {
 	struct voluta_page_info *pgi;
-	struct voluta_list_head *itr, *free_list = &qal->free_list;
+	struct voluta_list_head *itr;
+	struct voluta_list_head *free_list = &qal->free_list;
 
 	itr = free_list->next;
 	while (itr != free_list) {
@@ -633,15 +608,14 @@ qalloc_search_free_from_head(struct voluta_qalloc *qal, size_t npgs)
 	return NULL;
 }
 
-static struct voluta_page_info *qalloc_search_free_list(
-	struct voluta_qalloc *qal,
-	size_t npgs)
+static struct voluta_page_info *
+qalloc_search_free_list(struct voluta_qalloc *qal, size_t npgs)
 {
 	struct voluta_page_info *pgi = NULL;
-	const size_t head_threshold = MPAGES_IN_BK;
+	const size_t threshold = MPAGES_IN_BK;
 
 	if ((qal->st.npages_used + npgs) <= qal->st.npages) {
-		if (npgs >= head_threshold) {
+		if (npgs >= threshold) {
 			pgi = qalloc_search_free_from_head(qal, npgs);
 		} else {
 			pgi = qalloc_search_free_from_tail(qal, npgs);
@@ -650,10 +624,11 @@ static struct voluta_page_info *qalloc_search_free_list(
 	return pgi;
 }
 
-static struct voluta_page_info *qalloc_alloc_npgs(struct voluta_qalloc *qal,
-		size_t npgs)
+static struct voluta_page_info *
+qalloc_alloc_npgs(struct voluta_qalloc *qal, size_t npgs)
 {
-	struct voluta_page_info *pgi_next, *pgi = NULL;
+	struct voluta_page_info *pgi;
+	struct voluta_page_info *pgi_next = NULL;
 
 	pgi = qalloc_search_free_list(qal, npgs);
 	if (pgi == NULL) {
@@ -668,6 +643,7 @@ static struct voluta_page_info *qalloc_alloc_npgs(struct voluta_qalloc *qal,
 		return pgi;
 	}
 	pgi_next = qalloc_next(qal, pgi, npgs);
+	voluta_assert_not_null(pgi_next);
 	voluta_assert_eq(pgi_next->slab_index, MSLAB_INDEX_NONE);
 	voluta_assert_eq(pgi_next->pg_count, 0);
 	voluta_assert_eq(pgi_next->pg_free, 1);
@@ -678,17 +654,17 @@ static struct voluta_page_info *qalloc_alloc_npgs(struct voluta_qalloc *qal,
 }
 
 static struct voluta_slab *
-qalloc_slab_of(struct voluta_qalloc *qal, size_t nbytes)
+qalloc_slab_of(const struct voluta_qalloc *qal, size_t nbytes)
 {
 	int err;
 	size_t sindex;
-	struct voluta_slab *slab = NULL;
+	const struct voluta_slab *slab = NULL;
 
 	err = slab_size_to_index(nbytes, &sindex);
 	if (!err && (sindex < ARRAY_SIZE(qal->slabs))) {
 		slab = &qal->slabs[sindex];
 	}
-	return slab;
+	return unconst(slab);
 }
 
 static int qalloc_require_slab_space(struct voluta_qalloc *qal,
@@ -852,21 +828,34 @@ qalloc_punch_hole_at(const struct voluta_qalloc *qal,
 		     const struct voluta_page_info *pgi, size_t npgs)
 {
 	int err;
-	loff_t off, len;
+	size_t off;
+	size_t len;
 	const int mode = FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE;
 
-	off = (loff_t)npgs_to_nbytes(pgi->pg_index);
-	len = (loff_t)npgs_to_nbytes(npgs);
-	err = voluta_sys_fallocate(qal->memfd_data, mode, off, len);
+	off = npgs_to_nbytes(pgi->pg_index);
+	len = npgs_to_nbytes(npgs);
+	err = voluta_sys_fallocate(qal->memfd_data, mode,
+				   (loff_t)off, (loff_t)len);
 	voluta_assert_ok(err);
+}
+
+static void
+qalloc_release_npgs(const struct voluta_qalloc *qal,
+		    const struct voluta_page_info *pgi, size_t npgs)
+{
+	const size_t threshold = MPAGES_IN_BK;
+
+	if (npgs >= threshold) {
+		qalloc_punch_hole_at(qal, pgi, npgs);
+	}
 }
 
 static int qalloc_free_npgs(struct voluta_qalloc *qal,
 			    struct voluta_page_info *pgi, size_t npgs)
 {
-	struct voluta_page_info *pgi_next, *pgi_prev;
+	struct voluta_page_info *pgi_next;
+	struct voluta_page_info *pgi_prev;
 
-	qalloc_punch_hole_at(qal, pgi, npgs);
 	pgi_next = qalloc_next(qal, pgi, npgs);
 	if (pgi_next && pgi_next->pg_free) {
 		voluta_assert_gt(pgi_next->pg_count, 0);
@@ -882,10 +871,12 @@ static int qalloc_free_npgs(struct voluta_qalloc *qal,
 		pgi_prev = pgi_prev->prev;
 		page_info_unlink_mute(pgi);
 	}
+
+	qalloc_release_npgs(qal, pgi, npgs);
 	qalloc_add_free(qal, pgi, pgi_prev, npgs);
+
 	return 0;
 }
-
 
 static void qalloc_free_to_slab(struct voluta_qalloc *qal,
 				struct voluta_slab *slab,
@@ -905,28 +896,55 @@ static void qalloc_free_to_slab(struct voluta_qalloc *qal,
 	}
 }
 
+static int qalloc_check_at_slab(const struct voluta_qalloc *qal,
+				const struct voluta_slab_seg *seg, size_t nb)
+{
+	const struct voluta_slab *slab;
+	const struct voluta_page_info *pgi;
+
+	slab = qalloc_slab_of(qal, nb);
+	if (slab == NULL) {
+		return -EINVAL;
+	}
+	if (!slab->nused) {
+		return -EINVAL;
+	}
+	if (nb > slab->elemsz) {
+		return -EINVAL;
+	}
+	if (slab->sindex && (nb <= (slab->elemsz / 2))) {
+		return -EINVAL;
+	}
+	pgi = qalloc_page_info_of(qal, seg);
+	if (pgi->slab_index != ((int)slab->sindex)) {
+		return -EINVAL;
+	}
+	if (pgi->slab_nused == 0) {
+		return -EINVAL;
+	}
+	return 0;
+}
+
 static int qalloc_free_slab(struct voluta_qalloc *qal,
 			    struct voluta_slab_seg *seg, size_t nbytes)
 {
+	int err;
 	struct voluta_slab *slab;
 
 	slab = qalloc_slab_of(qal, nbytes);
 	if (slab == NULL) {
 		return -EINVAL;
 	}
-	voluta_assert_ge(slab->elemsz, nbytes);
-	if (nbytes > slab->elemsz) {
-		return -EINVAL;
-	}
-	if (nbytes <= (slab->elemsz / 2)) {
-		return -EINVAL;
+	err = qalloc_check_at_slab(qal, seg, nbytes);
+	if (err) {
+		return err;
 	}
 	qalloc_free_to_slab(qal, slab, seg);
 	return 0;
 }
 
-static int qalloc_free_sub_pg(struct voluta_qalloc *qal, void *ptr,
-			      size_t nbytes)
+static int qalloc_free_sub_pg(struct voluta_qalloc *qal,
+			      void *ptr, size_t nbytes)
 {
 	struct voluta_slab_seg *seg;
 
@@ -934,20 +952,63 @@ static int qalloc_free_sub_pg(struct voluta_qalloc *qal, void *ptr,
 	return qalloc_free_slab(qal, seg, nbytes);
 }
 
-static int qalloc_free_multi_pg(struct voluta_qalloc *qal, void *ptr,
-				size_t nbytes)
+static int qalloc_check_by_page(const struct voluta_qalloc *qal,
+				const void *ptr, size_t nbytes)
 {
+	size_t npgs;
+	const struct voluta_page_info *pgi;
+
+	npgs = nbytes_to_npgs(nbytes);
+	if (qal->st.npages_used < npgs) {
+		return -EINVAL;
+	}
+	pgi = qalloc_page_info_of(qal, ptr);
+	if (pgi == NULL) {
+		return -EINVAL;
+	}
+	if (pgi->pg_count != npgs) {
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int qalloc_free_multi_pg(struct voluta_qalloc *qal,
+				void *ptr, size_t nbytes)
+{
+	int err;
 	size_t npgs;
 	struct voluta_page_info *pgi;
 
+	err = qalloc_check_by_page(qal, ptr, nbytes);
+	if (err) {
+		return err;
+	}
 	npgs = nbytes_to_npgs(nbytes);
-	voluta_assert_ge(qal->st.npages_used, npgs);
-
 	pgi = qalloc_page_info_of(qal, ptr);
-	voluta_assert_eq(pgi->pg_count, npgs);
 	qalloc_free_npgs(qal, pgi, npgs);
 	qal->st.npages_used -= npgs;
 	return 0;
+}
+
+static void *qalloc_base_of(const struct voluta_qalloc *qal,
+			    void *ptr, size_t nbytes)
+{
+	void *base = NULL;
+	struct voluta_slab_seg *seg;
+	struct voluta_page_info *pgi;
+
+	if (slab_issize(nbytes)) {
+		seg = qalloc_slab_seg_of(qal, ptr);
+		if (seg != NULL) {
+			base = seg;
+		}
+	} else {
+		pgi = qalloc_page_info_of(qal, ptr);
+		if (pgi != NULL) {
+			base = pgi->pg;
+		}
+	}
+	return base;
 }
 
 static void
@@ -995,31 +1056,65 @@ int voluta_zfree(struct voluta_qalloc *qal, void *ptr, size_t nbytes)
 	return err;
 }
 
-int voluta_nfree(struct voluta_qalloc *qal, void *ptr, size_t elemsz,
-		 size_t nelems)
+int voluta_nfree(struct voluta_qalloc *qal,
+		 void *ptr, size_t elemsz, size_t nelems)
 {
 	return voluta_free(qal, ptr, elemsz * nelems);
 }
 
-int voluta_memref(const struct voluta_qalloc *qal, const void *ptr,
-		  size_t len, struct voluta_qmref *out_qmref)
+static int qalloc_check_by_slab(const struct voluta_qalloc *qal,
+				const void *ptr, size_t nbytes)
 {
-	int err = -ERANGE;
+	int err = -EINVAL;
+	const struct voluta_slab_seg *seg;
 
-	if (qalloc_isinrange(qal, ptr, len)) {
-		out_qmref->off = qalloc_ptr_to_off(qal, ptr);
-		out_qmref->len = len;
-		out_qmref->mem = (void *)ptr;
-		out_qmref->fd  = qal->memfd_data;
-		err = 0;
+	seg = qalloc_slab_seg_of(qal, ptr);
+	if (seg != NULL) {
+		err = qalloc_check_at_slab(qal, seg, nbytes);
 	}
 	return err;
 }
 
-void voluta_qmstat(const struct voluta_qalloc *qal,
-		   struct voluta_qmstat *qmst)
+int voluta_mcheck(const struct voluta_qalloc *qal,
+		  const void *ptr, size_t nbytes)
 {
-	memcpy(qmst, &qal->st, sizeof(*qmst));
+	int err;
+
+	if ((ptr == NULL) || (nbytes == 0)) {
+		return 0;
+	}
+	err = qalloc_check_free(qal, ptr, nbytes);
+	if (err) {
+		return err;
+	}
+	if (slab_issize(nbytes)) {
+		err = qalloc_check_by_slab(qal, ptr, nbytes);
+	} else {
+		err = qalloc_check_by_page(qal, ptr, nbytes);
+	}
+	return err;
+}
+
+int voluta_memref(const struct voluta_qalloc *qal,
+		  void *ptr, size_t len, void *cookie,
+		  struct voluta_memref *memref)
+{
+	if (!qalloc_isinrange(qal, ptr, len)) {
+		return -ERANGE;
+	}
+	memref->off = qalloc_ptr_to_off(qal, ptr);
+	memref->len = len;
+	memref->mem = ptr;
+	memref->page = qalloc_base_of(qal, ptr, len);
+	memref->fd = qal->memfd_data;
+	memref->cookie = cookie;
+	return 0;
+}
+
+void voluta_qalloc_stat(const struct voluta_qalloc *qal,
+			struct voluta_qastat *qast)
+{
+	memcpy(qast, &qal->st, sizeof(*qast));
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -1029,7 +1124,7 @@ static size_t align_down(size_t sz, size_t align)
 	return (sz / align) * align;
 }
 
-int voluta_resolve_memsize(size_t mem_want, size_t *out_memsize)
+int voluta_resolve_memsize(size_t mem_want, size_t *out_mem_size)
 {
 	int err;
 	struct rlimit rlim;
@@ -1055,7 +1150,7 @@ int voluta_resolve_memsize(size_t mem_want, size_t *out_memsize)
 	mem_glim = 4 * VOLUTA_UGIGA;
 	mem_ceil = min3(mem_glim, mem_rlim, mem_total / 4);
 	mem_uget = clamp(mem_want, mem_floor, mem_ceil);
-	*out_memsize = align_down(mem_uget, mem_align);
+	*out_mem_size = align_down(mem_uget, mem_align);
 	return 0;
 }
 

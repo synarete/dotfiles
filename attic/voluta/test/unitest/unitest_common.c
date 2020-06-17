@@ -41,11 +41,12 @@ static size_t aligned_size(size_t sz, size_t a)
 
 static size_t malloc_total_size(size_t nbytes)
 {
-	size_t total_size, mchunk_size, data_size;
+	size_t total_size;
 	struct voluta_ut_malloc_chunk *mchunk = NULL;
+	const size_t mchunk_size = sizeof(*mchunk);
+	const size_t data_size = sizeof(mchunk->data);
 
-	total_size = mchunk_size = sizeof(*mchunk);
-	data_size = sizeof(mchunk->data);
+	total_size = mchunk_size;
 	if (nbytes > data_size) {
 		total_size += aligned_size(nbytes - data_size, mchunk_size);
 	}
@@ -116,9 +117,9 @@ char *voluta_ut_strndup(struct voluta_ut_ctx *ut_ctx, const char *str,
 
 void voluta_ut_freeall(struct voluta_ut_ctx *ut_ctx)
 {
-	struct voluta_ut_malloc_chunk *mchunk, *mnext;
+	struct voluta_ut_malloc_chunk *mnext;
+	struct voluta_ut_malloc_chunk *mchunk = ut_ctx->malloc_list;
 
-	mchunk = ut_ctx->malloc_list;
 	while (mchunk != NULL) {
 		mnext = mchunk->next;
 		ut_free(ut_ctx, mchunk);
@@ -128,6 +129,15 @@ void voluta_ut_freeall(struct voluta_ut_ctx *ut_ctx)
 
 	ut_ctx->nbytes_alloc = 0;
 	ut_ctx->malloc_list = NULL;
+}
+
+char *voluta_ut_make_name(struct voluta_ut_ctx *ut_ctx,
+			  const char *prefix, size_t idx)
+{
+	char name[UT_NAME_MAX + 1] = "";
+
+	snprintf(name, sizeof(name) - 1, "%s-%lx", prefix, idx + 1);
+	return voluta_ut_strdup(ut_ctx, name);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -155,12 +165,24 @@ void voluta_ut_munmap_memory(void *mem, size_t msz)
 static void ut_ctx_init(struct voluta_ut_ctx *ut_ctx)
 {
 	int err;
+	size_t len;
+	size_t psz;
+	time_t now = time(NULL);
 	struct voluta_env *env = NULL;
-	const struct voluta_ucred ucred = {
-		.uid = getuid(),
-		.gid = getgid(),
-		.pid = getpid(),
-		.umask = 0002
+	struct voluta_params params = {
+		.ucred = {
+			.uid = getuid(),
+			.gid = getgid(),
+			.pid = getpid(),
+			.umask = 0002
+		},
+		.mount_point = "/",
+		.volume_path = NULL,
+		.volume_size = VOLUTA_VOLUME_SIZE_MIN,
+		.passphrase = ut_ctx->pass,
+		.salt = ut_ctx->salt,
+		.tmpfs = true,
+		.pedantic = true
 	};
 
 	memset(ut_ctx, 0, sizeof(*ut_ctx));
@@ -168,12 +190,24 @@ static void ut_ctx_init(struct voluta_ut_ctx *ut_ctx)
 	ut_ctx->malloc_list = NULL;
 	ut_ctx->nbytes_alloc = 0;
 
+	psz = sizeof(ut_ctx->pass);
+	len = voluta_clamp((size_t)now % psz, 1, psz - 1);
+	err = voluta_make_ascii_passphrase(ut_ctx->pass, len);
+	voluta_assert_ok(err);
+
+	psz = sizeof(ut_ctx->salt);
+	len = voluta_clamp(++len % psz, 1, psz - 1);
+	err = voluta_make_ascii_passphrase(ut_ctx->salt, len);
+	voluta_assert_ok(err);
+
 	err = voluta_env_new(&env);
 	voluta_assert_ok(err);
 
-	voluta_env_setcreds(env, &ucred);
-	voluta_env_setmode(env, true);
+	err = voluta_env_setparams(env, &params);
+	voluta_assert_ok(err);
+
 	ut_ctx->env = env;
+	ut_ctx->volume_size = params.volume_size;
 }
 
 static void ut_ctx_fini(struct voluta_ut_ctx *ut_ctx)
@@ -236,15 +270,15 @@ static void swap(long *arr, size_t p1, size_t p2)
 long *voluta_ut_randseq(struct voluta_ut_ctx *ut_ctx, size_t len, long base)
 {
 	long *arr;
-	size_t i, *pos;
+	size_t *pos;
 
 	arr = voluta_ut_zerobuf(ut_ctx, len * sizeof(*arr));
-	for (i = 0; i < len; ++i) {
+	for (size_t i = 0; i < len; ++i) {
 		arr[i] = base++;
 	}
 
 	pos = voluta_ut_randbuf(ut_ctx, len * sizeof(*pos));
-	for (i = 0; i < len; ++i) {
+	for (size_t i = 0; i < len; ++i) {
 		swap(arr, i, pos[i] % len);
 	}
 	return arr;
@@ -315,66 +349,6 @@ struct voluta_ut_iobuf *voluta_ut_new_iobuf(struct voluta_ut_ctx *ut_ctx,
 	return iobuf;
 }
 
-
-/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-/*
- * Generate pseudo-random priority-value.
- * Don't care about thread-safety here -- its random...
- *
- * See also: www0.cs.ucl.ac.uk/staff/d.jones/GoodPracticeRNG.pdf
- * Does is it make real random? no! but for unit-tests its good enough...
- */
-static unsigned long marsaglia_prng(void)
-{
-	/* Seed variables */
-	static uint64_t x = 123456789ULL;
-	static uint64_t y = 362436000ULL;
-	static uint64_t z = 521288629ULL;
-	static uint64_t c = 7654321ULL;
-
-	uint64_t t, a = 698769069ULL;
-
-	x = 69069 * x + 12345;
-	y ^= (y << 13);
-	y ^= (y >> 17);
-	y ^= (y << 5);
-	t = a * z + c;
-	c = (t >> 32);
-	return (x + y + (z = t));
-}
-
-static uint64_t xor_next_prng(uint64_t a)
-{
-	return a ^ marsaglia_prng();
-}
-
-static uint64_t rotate(uint64_t v, unsigned int n)
-{
-	return ((v << n) | (v >> (64 - n)));
-}
-
-static void next_prandoms(uint64_t dat[8], long seed)
-{
-	const uint64_t useed = ((uint64_t)seed);
-
-	dat[0] = xor_next_prng(0x6A09E667UL + rotate(useed, 1));
-	dat[1] = xor_next_prng(0xBB67AE85UL - rotate(useed, 2));
-	dat[2] = xor_next_prng(0x3C6EF372UL ^ rotate(useed, 3));
-	dat[3] = xor_next_prng(0xA54FF53AUL * rotate(useed, 5));
-	dat[4] = xor_next_prng(0x510E527FUL + ~rotate(useed, 7));
-	dat[5] = xor_next_prng(0x9B05688CUL - ~rotate(useed, 11));
-	dat[6] = xor_next_prng(0x1F83D9ABUL ^ ~rotate(useed, 13));
-	dat[7] = xor_next_prng(0x5BE0CD19UL * ~rotate(useed, 19));
-}
-
-static void next_prandoms_time(uint64_t dat[8])
-{
-	struct timeval tv;
-
-	gettimeofday(&tv, NULL);
-	next_prandoms(dat, (long)tv.tv_sec ^ (long)tv.tv_usec);
-}
-
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 static void swap_long(long *a, long *b)
@@ -389,26 +363,32 @@ static void swap_long(long *a, long *b)
  * Pseudo-random shuffle, using hash function.
  * See: http://benpfaff.org/writings/clc/shuffle.html
  */
-static uint64_t next_prandom(uint64_t dat[8], size_t *nr)
+struct voluta_prandoms {
+	uint64_t dat[16];
+	size_t nr;
+};
+
+static uint64_t next_prandom(struct voluta_prandoms *pr)
 {
-	if (*nr == 0) {
-		next_prandoms_time(dat);
-		*nr = 8;
+	if (pr->nr == 0) {
+		voluta_getentropy(pr->dat, sizeof(pr->dat));
+		pr->nr = VOLUTA_ARRAY_SIZE(pr->dat);
 	}
-	*nr -= 1;
-	return dat[*nr];
+	pr->nr -= 1;
+	return pr->dat[pr->nr];
 }
 
 static void prandom_shuffle(long *arr, size_t len)
 {
-	size_t i, j, nr = 0;
-	uint64_t rnd, dat[8];
+	size_t j;
+	uint64_t rnd;
+	struct voluta_prandoms pr = { .nr = 0 };
 
 	if (len < 2) {
 		return;
 	}
-	for (i = 0; i < len - 1; i++) {
-		rnd = next_prandom(dat, &nr);
+	for (size_t i = 0; i < len - 1; i++) {
+		rnd = next_prandom(&pr);
 		j = i + (rnd / (ULONG_MAX / (len - i) + 1));
 		swap_long(arr + i, arr + j);
 	}

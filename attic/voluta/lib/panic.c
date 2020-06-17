@@ -26,11 +26,8 @@
 #define UNW_LOCAL_ONLY 1
 #include <libunwind.h>
 
-#include "voluta-lib.h"
+#include "libvoluta.h"
 
-/* TODO: be visible in header */
-#define voluta_likely(x_)       __builtin_expect(!!(x_), 1)
-#define voluta_unlikely(x_)     __builtin_expect(!!(x_), 0)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
@@ -109,7 +106,7 @@ static void voluta_dump_addr2line(void)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-voluta_decl_nonreturn_fn
+__attribute__((__noreturn__))
 static void voluta_abort(void)
 {
 	fflush(stdout);
@@ -117,7 +114,7 @@ static void voluta_abort(void)
 	abort();
 }
 
-voluta_decl_nonreturn_fn
+__attribute__((__noreturn__))
 static void assertion_failure_at(const char *msg, const char *file, int line)
 {
 	voluta_panicf(file, line, "failure: `%s'", msg);
@@ -126,12 +123,12 @@ static void assertion_failure_at(const char *msg, const char *file, int line)
 
 void voluta_assert_if_(bool cond, const char *str, const char *file, int line)
 {
-	if (voluta_unlikely(!cond)) {
+	if (unlikely(!cond)) {
 		assertion_failure_at(str, file, line);
 	}
 }
 
-voluta_decl_nonreturn_fn
+__attribute__((__noreturn__))
 static void assertion_failure_op(long a, const char *op, long b,
 				 const char *file, int line)
 {
@@ -143,42 +140,42 @@ static void assertion_failure_op(long a, const char *op, long b,
 
 void voluta_assert_eq_(long a, long b, const char *file, int line)
 {
-	if (voluta_unlikely(a != b)) {
+	if (unlikely(a != b)) {
 		assertion_failure_op(a, "!=", b, file, line);
 	}
 }
 
 void voluta_assert_ne_(long a, long b, const char *file, int line)
 {
-	if (voluta_unlikely(a == b)) {
+	if (unlikely(a == b)) {
 		assertion_failure_op(a, "==", b, file, line);
 	}
 }
 
 void voluta_assert_lt_(long a, long b, const char *file, int line)
 {
-	if (voluta_unlikely(a >= b)) {
+	if (unlikely(a >= b)) {
 		assertion_failure_op(a, ">=", b, file, line);
 	}
 }
 
 void voluta_assert_le_(long a, long b, const char *file, int line)
 {
-	if (voluta_unlikely(a > b)) {
+	if (unlikely(a > b)) {
 		assertion_failure_op(a, ">", b, file, line);
 	}
 }
 
 void voluta_assert_gt_(long a, long b, const char *file, int line)
 {
-	if (voluta_unlikely(a <= b)) {
+	if (unlikely(a <= b)) {
 		assertion_failure_op(a, "<=", b, file, line);
 	}
 }
 
 void voluta_assert_ge_(long a, long b, const char *file, int line)
 {
-	if (voluta_unlikely(a < b)) {
+	if (unlikely(a < b)) {
 		assertion_failure_op(a, "<", b, file, line);
 	}
 }
@@ -197,28 +194,28 @@ static void assertion_failure(const char *file, int line, const char *fmt, ...)
 
 void voluta_assert_ok_(int err, const char *file, int line)
 {
-	if (voluta_unlikely(err != 0)) {
+	if (unlikely(err != 0)) {
 		assertion_failure(file, line, "not ok: %d", err);
 	}
 }
 
 void voluta_assert_err_(int err, int exp, const char *file, int line)
 {
-	if (voluta_unlikely(err != exp)) {
+	if (unlikely(err != exp)) {
 		assertion_failure(file, line, "status %d != %d", err, exp);
 	}
 }
 
 void voluta_assert_not_null_(const void *ptr, const char *file, int line)
 {
-	if (voluta_unlikely(ptr == NULL)) {
+	if (unlikely(ptr == NULL)) {
 		assertion_failure_at("NULL pointer", file, line);
 	}
 }
 
 void voluta_assert_null_(const void *ptr, const char *file, int line)
 {
-	if (voluta_unlikely(ptr != NULL)) {
+	if (unlikely(ptr != NULL)) {
 		assertion_failure(file, line, "not NULL %p", ptr);
 	}
 }
@@ -229,7 +226,7 @@ void voluta_assert_eqs_(const char *s1, const char *s2,
 	int cmp;
 
 	cmp = strcmp(s1, s2);
-	if (voluta_unlikely(cmp != 0)) {
+	if (unlikely(cmp != 0)) {
 		assertion_failure(file, line,
 				  "strings-not-equal: %s != %s", s1, s2);
 	}
@@ -269,7 +266,7 @@ void voluta_assert_eqm_(const void *m1, const void *m2, size_t nn,
 	char s1[36], s2[36];
 	const int cmp = memcmp(m1, m2, nn);
 
-	if (voluta_unlikely(cmp != 0)) {
+	if (unlikely(cmp != 0)) {
 		assertion_failure(file, line, "memory-not-equal: %s != %s ",
 				  mem_to_str(m1, nn, s1, sizeof(s1)),
 				  mem_to_str(m2, nn, s2, sizeof(s2)));
@@ -283,7 +280,7 @@ static const char *basename_of(const char *file)
 {
 	const char *base = strrchr(file, '/');
 
-	return voluta_likely(base) ? (base + 1) : file;
+	return likely(base) ? (base + 1) : file;
 }
 
 static void voluta_dump_panic_msg(const char *file, int line,
@@ -301,7 +298,7 @@ static void voluta_dump_panic_msg(const char *file, int line,
 	log_error("%s", es);
 }
 
-voluta_decl_nonreturn_fn
+__attribute__((__noreturn__))
 void voluta_panicf(const char *file, int line, const char *fmt, ...)
 {
 	va_list ap;

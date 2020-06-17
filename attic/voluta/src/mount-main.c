@@ -39,13 +39,13 @@ int main(int argc, char *argv[])
 	voluta_setup_globals(argc, argv);
 
 	/* Parse arguments */
-	voluta_mount_parse_args(0);
+	voluta_getopt_mount();
 
 	/* Common process initializations */
 	voluta_init_process();
 
 	/* Execute mount */
-	voluta_mount_exec();
+	voluta_execute_mount();
 
 	/* Goodbye ;) */
 	return 0;

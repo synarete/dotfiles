@@ -23,7 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include "voluta-lib.h"
+#include "libvoluta.h"
 
 static int resolve_by_fd(int fd, loff_t *out_size, mode_t *out_mode)
 {
@@ -98,16 +98,10 @@ static int vol_size_check(loff_t size)
 	return ((size < size_min) || (size > size_max)) ? -EINVAL : 0;
 }
 
-int voluta_resolve_volume_size(const char *path,
-			       loff_t size_want, loff_t *out_size)
+static int vol_size_resolve(loff_t size_cur, loff_t size_want, loff_t *out_vsz)
 {
 	int err;
-	loff_t size_cur = 0;
 
-	err = resolve_by_path(path, &size_cur);
-	if (err) {
-		return err;
-	}
 	if (size_want == 0) {
 		size_want = size_cur;
 	}
@@ -115,8 +109,21 @@ int voluta_resolve_volume_size(const char *path,
 	if (err) {
 		return err;
 	}
-	*out_size = vol_size_fixup(size_want);
+	*out_vsz = vol_size_fixup(size_want);
 	return 0;
+}
+
+int voluta_resolve_volume_size(const char *path,
+			       loff_t size_want, loff_t *out_size)
+{
+	int err;
+	loff_t size_cur = 0;
+
+	err = resolve_by_path(path, &size_cur);
+	if (!err) {
+		err = vol_size_resolve(size_cur, size_want, out_size);
+	}
+	return err;
 }
 
 int voluta_require_volume_path(const char *path)
@@ -147,32 +154,6 @@ int voluta_require_volume_path(const char *path)
 		return err;
 	}
 	return 0;
-}
-
-int voluta_require_volume_exclusive(const char *path)
-{
-	int err;
-	struct voluta_pstore pstore;
-
-	err = voluta_pstore_init(&pstore);
-	if (err) {
-		return err;
-	}
-	err = voluta_pstore_open(&pstore, path);
-	if (err) {
-		goto out;
-	}
-	err = voluta_pstore_flock(&pstore);
-	if (err) {
-		goto out;
-	}
-	err = voluta_pstore_funlock(&pstore);
-	if (err) {
-		goto out;
-	}
-out:
-	voluta_pstore_fini(&pstore);
-	return err;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -417,16 +398,10 @@ int voluta_pstore_write(const struct voluta_pstore *pstore,
 	return 0;
 }
 
-static int pstore_pwrite_nbk(const struct voluta_pstore *pstore, loff_t off,
-			     const union voluta_bk *bks, size_t nbks)
+static int pstore_pwrite_nkbs(const struct voluta_pstore *pstore, loff_t off,
+			      const union voluta_kb *kbs, size_t nkbs)
 {
-	return voluta_pstore_write(pstore, off, nbks * sizeof(*bks), bks);
-}
-
-static int pstore_pwrite_bk(const struct voluta_pstore *pstore,
-			    loff_t off, const union voluta_bk *bk)
-{
-	return pstore_pwrite_nbk(pstore, off, bk, 1);
+	return voluta_pstore_write(pstore, off, nkbs * sizeof(*kbs), kbs);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -493,36 +468,72 @@ int voluta_pstore_funlock(const struct voluta_pstore *pstore)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static int new_bk(struct voluta_qalloc *qal, union voluta_bk **out_bk)
+
+static int cstore_init_aux_bk(struct voluta_cstore *cstore)
 {
 	int err;
 	void *mem = NULL;
 
-	err = voluta_malloc(qal, sizeof(**out_bk), &mem);
-	*out_bk = mem;
-	return err;
-}
-
-static void del_bk(struct voluta_qalloc *qal, union voluta_bk *bk)
-{
-	voluta_free(qal, bk, sizeof(*bk));
-}
-
-int voluta_cstore_init(struct voluta_cstore *cstore,
-		       struct voluta_qalloc *qal,
-		       const struct voluta_crypto *crypto)
-{
-	int err;
-
-	err = voluta_pstore_init(&cstore->pstore);
+	err = voluta_malloc(cstore->qal, sizeof(*cstore->aux_bk), &mem);
 	if (err) {
 		return err;
 	}
-	cstore->crypto = crypto;
-	cstore->qal = qal;
-	err = new_bk(qal, &cstore->enc_bk);
+	cstore->aux_bk = mem;
+	return 0;
+}
+
+static void cstore_fini_aux_bk(struct voluta_cstore *cstore)
+{
+	union voluta_bk *aux_bk = cstore->aux_bk;
+
+	if (aux_bk != NULL) {
+		voluta_free(cstore->qal, aux_bk, sizeof(*aux_bk));
+		cstore->aux_bk = NULL;
+	}
+}
+
+static int cstore_init_crypto(struct voluta_cstore *cstore)
+{
+	return voluta_crypto_init(&cstore->crypto);
+}
+
+static void cstore_fini_crypto(struct voluta_cstore *cstore)
+{
+	voluta_crypto_fini(&cstore->crypto);
+}
+
+static int cstore_init_pstore(struct voluta_cstore *cstore)
+{
+	return voluta_pstore_init(&cstore->pstore);
+}
+
+static void cstore_fini_pstore(struct voluta_cstore *cstore)
+{
+	voluta_pstore_fini(&cstore->pstore);
+}
+
+int voluta_cstore_init(struct voluta_cstore *cstore,
+		       struct voluta_qalloc *qalloc)
+{
+	int err;
+
+	cstore->qal = qalloc;
+	cstore->aux_bk = NULL;
+	cstore->pstore.fd = -1;
+
+	err = cstore_init_aux_bk(cstore);
 	if (err) {
-		voluta_pstore_fini(&cstore->pstore);
+		return err;
+	}
+	err = cstore_init_crypto(cstore);
+	if (err) {
+		cstore_fini_aux_bk(cstore);
+		return err;
+	}
+	err = cstore_init_pstore(cstore);
+	if (err) {
+		cstore_fini_crypto(cstore);
+		cstore_fini_aux_bk(cstore);
 		return err;
 	}
 	return 0;
@@ -530,63 +541,131 @@ int voluta_cstore_init(struct voluta_cstore *cstore,
 
 void voluta_cstore_fini(struct voluta_cstore *cstore)
 {
-	del_bk(cstore->qal, cstore->enc_bk);
-	cstore->crypto = NULL;
+	cstore_fini_pstore(cstore);
+	cstore_fini_crypto(cstore);
+	cstore_fini_aux_bk(cstore);
 	cstore->qal = NULL;
-	cstore->enc_bk = NULL;
-	voluta_pstore_fini(&cstore->pstore);
 }
 
-static int cstore_decrypt_bk(const struct voluta_cstore *cstore,
-			     const struct voluta_iv_key *iv_key,
-			     union voluta_bk *enc_bk,
-			     union voluta_bk *out_bk)
+int voluta_cstore_stage_bk(struct voluta_cstore *cstore,
+			   loff_t off, union voluta_bk *bk)
 {
-	return voluta_decrypt_bk(cstore->crypto,
-				 &iv_key->iv, &iv_key->key, enc_bk, out_bk);
+	return pstore_pread_bk(&cstore->pstore, bk, off);
 }
 
-int voluta_cstore_load_dec(struct voluta_cstore *cstore, loff_t off,
-			   const struct voluta_iv_key *iv_key,
-			   union voluta_bk *bk)
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
+
+static size_t view_nkbs_of(const struct voluta_vnode_info *vi)
+{
+	return voluta_nkbs_of(v_vaddr_of(vi));
+}
+
+static long view_kb_index(const struct voluta_vnode_info *vi)
+{
+	const union voluta_kb *kb_view = &vi->view->kb;
+	const union voluta_kb *kb_start = vi->v_bki->bk->kb;
+
+	voluta_assert_ge(kb_view, kb_start);
+	voluta_assert_le(kb_view - kb_start, VOLUTA_NKB_IN_BK);
+
+	return (kb_view - kb_start);
+}
+
+static union voluta_kb *view_kbs_of(const struct voluta_vnode_info *vi)
+{
+	return &vi->v_bki->bk->kb[view_kb_index(vi)];
+}
+
+static union voluta_kb *aux_kbs_of(const struct voluta_vnode_info *vi)
+{
+	const struct voluta_cstore *cstore = vi->v_sbi->s_cstore;
+
+	return &cstore->aux_bk->kb[view_kb_index(vi)];
+}
+
+static int cstore_encrypt_vnode(const struct voluta_cstore *cstore,
+				const struct voluta_vnode_info *vi,
+				const struct voluta_iv_key *iv_key)
+{
+	const size_t nkbs = view_nkbs_of(vi);
+	const union voluta_kb *kbs = view_kbs_of(vi);
+	union voluta_kb *enc = aux_kbs_of(vi);
+
+	return voluta_encrypt_nkbs(&cstore->crypto, iv_key, kbs, enc, nkbs);
+}
+
+static int cstore_write_enc_kbs_of(const struct voluta_cstore *cstore,
+				   const struct voluta_vnode_info *vi)
+{
+	const size_t nkbs = view_nkbs_of(vi);
+	const struct voluta_vaddr *vaddr = v_vaddr_of(vi);
+	union voluta_kb *enc_kbs = aux_kbs_of(vi);
+
+	return pstore_pwrite_nkbs(&cstore->pstore, vaddr->off, enc_kbs, nkbs);
+}
+
+int voluta_encrypt_destage(const struct voluta_vnode_info *vi)
 {
 	int err;
+	struct voluta_iv_key iv_key;
+	const struct voluta_sb_info *sbi = v_sbi_of(vi);
 
+	voluta_assert(voluta_is_visible(vi));
 
-	err = pstore_pread_bk(&cstore->pstore, cstore->enc_bk, off);
+	voluta_iv_key_of(vi, &iv_key);
+	err = cstore_encrypt_vnode(sbi->s_cstore, vi, &iv_key);
 	if (err) {
 		return err;
 	}
-	err = cstore_decrypt_bk(cstore, iv_key, cstore->enc_bk, bk);
+	err = cstore_write_enc_kbs_of(sbi->s_cstore, vi);
 	if (err) {
 		return err;
 	}
 	return 0;
 }
 
-static int cstore_encrypt_bk(const struct voluta_cstore *cstore,
-			     const struct voluta_iv_key *iv_key,
-			     const union voluta_bk *bk,
-			     union voluta_bk *out_bk)
-{
-	return voluta_encrypt_bk(cstore->crypto,
-				 &iv_key->iv, &iv_key->key, bk, out_bk);
-}
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-int voluta_cstore_enc_save(struct voluta_cstore *cstore, loff_t off,
-			   const struct voluta_iv_key *iv_key,
-			   const union voluta_bk *bk)
+static int cstore_decrypt_vnode(const struct voluta_cstore *cstore,
+				const struct voluta_vnode_info *vi,
+				const struct voluta_iv_key *iv_key)
 {
 	int err;
+	const size_t nkbs = view_nkbs_of(vi);
+	union voluta_kb *kbs = view_kbs_of(vi);
+	const struct voluta_vaddr *vaddr = v_vaddr_of(vi);
 
-	err = cstore_encrypt_bk(cstore, iv_key, bk, cstore->enc_bk);
+	/* Decrypt in-place */
+	err = voluta_decrypt_kbs(&cstore->crypto, iv_key, kbs, kbs, nkbs);
 	if (err) {
-		return err;
+		log_error("decypt error: vtype=%d off=0x%lx err=%d",
+			  vaddr->vtype, vaddr->off, err);
+
+		/* Narrow to file-system error type */
+		err = vaddr_isdata(vaddr) ? -EIO : -EFSCORRUPTED;
 	}
-	err = pstore_pwrite_bk(&cstore->pstore, off, cstore->enc_bk);
-	if (err) {
-		return err;
-	}
-	return 0;
+	return err;
 }
 
+static bool need_restage_view(const struct voluta_vnode_info *vi)
+{
+	return !voluta_is_visible(vi);
+}
+
+int voluta_decrypt_reload(const struct voluta_vnode_info *vi)
+{
+	int err;
+	struct voluta_iv_key iv_key;
+	const struct voluta_sb_info *sbi = vi->v_sbi;
+
+	if (!need_restage_view(vi)) {
+		return 0;
+	}
+	voluta_iv_key_of(vi, &iv_key);
+	err = cstore_decrypt_vnode(sbi->s_cstore, vi, &iv_key);
+	if (err) {
+		return err;
+	}
+	voluta_mark_visible(vi);
+	return 0;
+}
