@@ -55,9 +55,7 @@ Voluta secure archiver
 %defattr(-, root, root)
 %{_bindir}/%{name}
 %{_bindir}/%{name}-fsstest
-%{_sbindir}/mkfs.%{name}
-%{_sbindir}/mount.%{name}
-%{_sbindir}/fsck.%{name}
+%{_sbindir}/%{name}-mountd
 %exclude %{_bindir}/%{name}-unitest
 %{_includedir}/%{name}/*.h
 %exclude %{_libdir}/lib%{name}*.so*

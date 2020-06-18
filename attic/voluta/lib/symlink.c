@@ -513,8 +513,10 @@ void voluta_setup_new_symlnk(struct voluta_inode_info *lnk_ii)
 int voluta_verify_lnk_value(const struct voluta_lnk_value *lnv)
 {
 	int err;
+	ino_t parent_ino;
 
-	err = voluta_verify_ino(lnv_parent_ino(lnv));
+	parent_ino = lnv_parent_ino(lnv);
+	err = voluta_verify_ino(parent_ino);
 	if (err) {
 		return err;
 	}

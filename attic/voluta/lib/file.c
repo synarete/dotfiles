@@ -1444,6 +1444,7 @@ static int do_write_to_leaf(struct voluta_file_ctx *f_ctx,
 			    struct voluta_vnode_info *leaf_vi, size_t *out_sz)
 {
 	int err;
+	struct voluta_vnode_info *agm_vi = leaf_vi->v_pvi;
 
 	err = import_from_user(f_ctx, leaf_vi, out_sz);
 	if (err) {
@@ -1451,7 +1452,12 @@ static int do_write_to_leaf(struct voluta_file_ctx *f_ctx,
 	}
 	clear_unwritten_leaf(leaf_vi);
 	v_dirtify(leaf_vi);
-	return err;
+
+	/* for data checksum */
+	voluta_assert_eq(agm_vi->vaddr.vtype, VOLUTA_VTYPE_AGMAP);
+	v_dirtify(agm_vi);
+
+	return 0;
 }
 
 static int write_to_leaf(struct voluta_file_ctx *f_ctx,

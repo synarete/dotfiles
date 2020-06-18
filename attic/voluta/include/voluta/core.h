@@ -319,6 +319,12 @@ struct voluta_sb_info {
 	char   s_pad[12];
 };
 
+struct voluta_dirtymap {
+	struct voluta_avl dm_avl;
+	struct voluta_sb_info *dm_sbi;
+	struct voluta_inode_info *dm_ii;
+};
+
 /* FUSE interface */
 struct voluta_fusei {
 	unsigned long magic;
@@ -929,12 +935,24 @@ void voluta_mark_opaque(const struct voluta_vnode_info *vi);
 
 bool voluta_is_visible(const struct voluta_vnode_info *vi);
 
-void voluta_grab_dirty_set(struct voluta_sb_info *sbi,
-			   struct voluta_inode_info *ii,
-			   struct voluta_avl *avl, bool data_only);
 
-void voluta_clear_dirty_set(struct voluta_sb_info *sbi,
-			    const struct voluta_avl *avl);
+void voluta_dirtymap_init(struct voluta_dirtymap *dmap,
+			  struct voluta_sb_info *sbi,
+			  struct voluta_inode_info *ii);
+
+void voluta_dirtymap_reset(struct voluta_dirtymap *dmap);
+
+struct voluta_vnode_info *
+voluta_dirtymap_first(const struct voluta_dirtymap *dmap);
+
+struct voluta_vnode_info *
+voluta_dirtymap_next(const struct voluta_dirtymap *dmap,
+		     const struct voluta_vnode_info *vi);
+
+void voluta_dirtymap_inhabit(struct voluta_dirtymap *dmap);
+
+void voluta_dirtymap_purge(const struct voluta_dirtymap *dmap);
+
 
 /* persist */
 void voluta_verify_persistent_format(void);
@@ -954,12 +972,17 @@ int voluta_verify_ino(ino_t ino);
 int voluta_verify_off(loff_t off);
 
 /* fusei */
-int voluta_fusei_init(struct voluta_fusei *, struct voluta_env *);
-void voluta_fusei_fini(struct voluta_fusei *);
-int voluta_fusei_mount(struct voluta_fusei *, const char *mntpoint);
-int voluta_fusei_umount(struct voluta_fusei *);
-int voluta_fusei_session_loop(struct voluta_fusei *);
-void voluta_fusei_session_break(struct voluta_fusei *);
+int voluta_fusei_init(struct voluta_fusei *fusei, struct voluta_env *env);
+
+void voluta_fusei_fini(struct voluta_fusei *fusei);
+
+int voluta_fusei_mount(struct voluta_fusei *fusei, const char *mntpoint);
+
+int voluta_fusei_umount(struct voluta_fusei *fusei);
+
+int voluta_fusei_session_loop(struct voluta_fusei *fusei);
+
+void voluta_fusei_session_break(struct voluta_fusei *fusei);
 
 /* mpool */
 void voluta_mpool_init(struct voluta_mpool *mpool, struct voluta_qalloc *qal);

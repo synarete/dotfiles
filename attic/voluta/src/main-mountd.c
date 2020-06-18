@@ -21,6 +21,22 @@
 #endif
 
 #define _GNU_SOURCE 1
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/resource.h>
+#include <sys/capability.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+#include <stdio.h>
+#include <errno.h>
+#include <error.h>
+#include <locale.h>
+#include <time.h>
+#include <getopt.h>
+
 #include "voluta-prog.h"
 
 
@@ -28,7 +44,7 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *                                                                           *
  *                                                                           *
- *                 Voluta administrator's mkfs utility program               *
+ *                         Voluta's Mounting-Daemon                          *
  *                                                                           *
  *                                                                           *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -38,15 +54,7 @@ int main(int argc, char *argv[])
 	/* Setup process defaults */
 	voluta_setup_globals(argc, argv);
 
-	/* Parse arguments */
-	voluta_getopt_mkfs();
+	/* TODO: MOUNTD... */
 
-	/* Common process initializations */
-	voluta_init_process();
-
-	/* Execute mkfs */
-	voluta_execute_mkfs();
-
-	/* Goodbye ;) */
 	return 0;
 }

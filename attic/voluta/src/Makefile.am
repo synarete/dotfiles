@@ -29,18 +29,8 @@ voluta_LDADD += $(LIBGCRYPT_LIBS)
 voluta_LDADD += -lfuse3
 voluta_SOURCES = main.c
 
-sbin_PROGRAMS = mkfs.voluta mount.voluta fsck.voluta
-mkfs_voluta_CPPFLAGS = $(voluta_CPPFLAGS)
-mkfs_voluta_LDFLAGS = $(voluta_LDFLAGS)
-mkfs_voluta_LDADD = $(voluta_LDADD)
-mkfs_voluta_SOURCES = mkfs-main.c
-
-mount_voluta_CPPFLAGS = $(voluta_CPPFLAGS)
-mount_voluta_LDFLAGS = $(voluta_LDFLAGS)
-mount_voluta_LDADD = $(voluta_LDADD)
-mount_voluta_SOURCES = mount-main.c
-
-fsck_voluta_CPPFLAGS = $(voluta_CPPFLAGS)
-fsck_voluta_LDFLAGS = $(voluta_LDFLAGS)
-fsck_voluta_LDADD = $(voluta_LDADD)
-fsck_voluta_SOURCES = fsck-main.c
+sbin_PROGRAMS = voluta-mountd
+voluta_mountd_CPPFLAGS = $(voluta_CPPFLAGS)
+voluta_mountd_LDFLAGS = $(voluta_LDFLAGS)
+voluta_mountd_LDADD = $(voluta_LDADD)
+voluta_mountd_SOURCES = main-mountd.c

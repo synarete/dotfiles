@@ -1013,24 +1013,9 @@ void voluta_fini_itable(struct voluta_sb_info *sbi)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static int verify_ino(ino_t ino)
-{
-	return ino_isnull(ino) ? 0 : voluta_verify_ino(ino);
-}
-
 static int verify_itable_entry(const struct voluta_itable_entry *ite)
 {
-	int err;
-
-	err = verify_ino(ite_ino(ite));
-	if (err) {
-		return err;
-	}
-	err = voluta_verify_off(ite_off(ite));
-	if (err) {
-		return err;
-	}
-	return 0;
+	return voluta_verify_off(ite_off(ite));
 }
 
 static int verify_count(size_t count, size_t expected)

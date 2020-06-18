@@ -305,6 +305,10 @@ static void ut_symlink_and_io2_(struct voluta_ut_ctx *ut_ctx, size_t cnt)
 
 static void ut_symlink_and_io2(struct voluta_ut_ctx *ut_ctx)
 {
+	ut_symlink_and_io2_(ut_ctx, 1);
+	ut_symlink_and_io2_(ut_ctx, 2);
+	ut_symlink_and_io2_(ut_ctx, 11);
+
 	ut_symlink_and_io2_(ut_ctx, 111);
 	ut_symlink_and_io2_(ut_ctx, 1111);
 }

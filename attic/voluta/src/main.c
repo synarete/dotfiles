@@ -82,7 +82,8 @@ static void voluta_exec_subcmd(void)
 static const char *g_main_usage =
 	"<command> [options]\n\n" \
 	"main commands: \n" \
-	"  mkfs\n"\
+	"  mkfs\n" \
+	"  fsck\n" \
 	"  mount\n" \
 	"  inquiry\n" \
 	"";
@@ -134,6 +135,9 @@ static void voluta_parse_args(void)
 	} else if (voluta_issubcmd("mkfs")) {
 		voluta_getopt_mkfs();
 		voluta_globals.exec_hook = voluta_execute_mkfs;
+	} else if (voluta_issubcmd("fsck")) {
+		voluta_getopt_fsck();
+		voluta_globals.exec_hook = voluta_execute_fsck;
 	} else if (voluta_issubcmd("inquiry")) {
 		voluta_getopt_inquiry();
 		voluta_globals.exec_hook = voluta_execute_inquiry;

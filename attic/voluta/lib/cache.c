@@ -1693,6 +1693,11 @@ void voluta_cache_fini(struct voluta_cache *cache)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
+static bool v_isinode(const struct voluta_vnode_info *vi)
+{
+	return vtype_isinode(vi->vaddr.vtype);
+}
+
 void voluta_dirtify_vi(struct voluta_vnode_info *vi)
 {
 	struct voluta_cache *cache = v_cache_of(vi);
@@ -1720,99 +1725,6 @@ void voluta_dirtify_ii(struct voluta_inode_info *ii)
 	struct voluta_cache *cache = cache_of_ii(ii);
 
 	cache_dirtify_ii(cache, ii);
-}
-
-/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-
-static bool v_isinode(const struct voluta_vnode_info *vi)
-{
-	return vtype_isinode(vi->vaddr.vtype);
-}
-
-static bool v_isdata(const struct voluta_vnode_info *vi)
-{
-	return vtype_isdata(vi->vaddr.vtype);
-}
-
-static void vi_add_to_set(struct voluta_vnode_info *vi,
-			  struct voluta_avl *avl, bool data_only)
-{
-	int err;
-	struct voluta_avl_node *an = &vi->v_dt_an;
-
-	if (!data_only || v_isdata(vi)) {
-		err = voluta_avl_insert_unique(avl, an);
-		voluta_assert_ok(err);
-	}
-}
-
-static void ii_grab_dirty(const struct voluta_inode_info *ii,
-			  struct voluta_avl *avl, bool data_only)
-{
-	struct voluta_vnode_info *vi;
-	const struct voluta_dirtyq *dq = &ii->i_vdq;
-
-	vi = dirtyq_front(dq);
-	while (vi != NULL) {
-		vi_add_to_set(vi, avl, data_only);
-		vi = dirtyq_next(dq, vi);
-	}
-}
-
-static void vi_grab_dirty_subs(const struct voluta_vnode_info *vi,
-			       struct voluta_avl *avl, bool data_only)
-{
-	if (v_isinode(vi)) {
-		ii_grab_dirty(ii_from_vi(vi), avl, data_only);
-	}
-}
-
-static void cache_grab_dirty(struct voluta_cache *cache,
-			     struct voluta_avl *avl, bool data_only)
-{
-	struct voluta_vnode_info *vi;
-	const struct voluta_dirtyq *dq = &cache->c_vdq;
-
-	vi = dirtyq_front(dq);
-	while (vi != NULL) {
-		vi_grab_dirty_subs(vi, avl, data_only);
-		vi_add_to_set(vi, avl, data_only);
-		vi = dirtyq_next(dq, vi);
-	}
-}
-
-void voluta_grab_dirty_set(struct voluta_sb_info *sbi,
-			   struct voluta_inode_info *ii,
-			   struct voluta_avl *avl, bool data_only)
-{
-	if (ii != NULL) {
-		ii_grab_dirty(ii, avl, data_only);
-	} else {
-		cache_grab_dirty(sbi->s_cache, avl, data_only);
-	}
-}
-
-static void cache_clear_dirty(struct voluta_cache *cache,
-			      const struct voluta_avl *avl)
-{
-	struct voluta_vnode_info *vi;
-	const struct voluta_avl_node *itr;
-	const struct voluta_avl_node *end;
-
-	end = voluta_avl_end(avl);
-	itr = voluta_avl_begin(avl);
-	while (itr != end) {
-		vi = avl_node_to_vi(itr);
-		vi_undirtify(vi);
-		itr = voluta_avl_next(avl, itr);
-	}
-	voluta_unused(cache);
-}
-
-void voluta_clear_dirty_set(struct voluta_sb_info *sbi,
-			    const struct voluta_avl *avl)
-{
-	cache_clear_dirty(sbi->s_cache, avl);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -1863,5 +1775,123 @@ void voluta_mark_opaque(const struct voluta_vnode_info *vi)
 bool voluta_is_visible(const struct voluta_vnode_info *vi)
 {
 	return bki_is_visible(vi->v_bki, v_vaddr_of(vi));
+}
+
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
+
+static long off_compare(const void *x, const void *y)
+{
+	const loff_t x_off = *((const loff_t *)x);
+	const loff_t y_off = *((const loff_t *)y);
+
+	return y_off - x_off;
+}
+
+static const void *vi_getkey(const struct voluta_avl_node *an)
+{
+	const struct voluta_vnode_info *vi = avl_node_to_vi(an);
+
+	return &vi->vaddr.off;
+}
+
+static void vi_visit_reinit(struct voluta_avl_node *an, void *p)
+{
+	struct voluta_vnode_info *vi = avl_node_to_vi(an);
+
+	voluta_avl_node_init(&vi->v_dt_an);
+	voluta_unused(p);
+}
+
+void voluta_dirtymap_init(struct voluta_dirtymap *dmap,
+			  struct voluta_sb_info *sbi,
+			  struct voluta_inode_info *ii)
+{
+	voluta_avl_init(&dmap->dm_avl, dmap, vi_getkey, off_compare);
+	dmap->dm_sbi = sbi;
+	dmap->dm_ii = ii;
+}
+
+void voluta_dirtymap_reset(struct voluta_dirtymap *dmap)
+{
+	voluta_avl_clear(&dmap->dm_avl, vi_visit_reinit, NULL);
+}
+
+static void dset_add_dirty_vi(struct voluta_dirtymap *dmap,
+			      struct voluta_vnode_info *vi)
+{
+	voluta_avl_insert(&dmap->dm_avl, &vi->v_dt_an);
+}
+
+static void dset_iter_dirty_by_ii(struct voluta_dirtymap *dmap,
+				  const struct voluta_inode_info *ii)
+{
+	struct voluta_vnode_info *vi;
+	const struct voluta_dirtyq *dq = &ii->i_vdq;
+
+	vi = dirtyq_front(dq);
+	while (vi != NULL) {
+		dset_add_dirty_vi(dmap, vi);
+		vi = dirtyq_next(dq, vi);
+	}
+}
+
+static void dset_iter_dirty_by_cache(struct voluta_dirtymap *dmap)
+{
+	struct voluta_vnode_info *vi;
+	const struct voluta_dirtyq *dq = &dmap->dm_sbi->s_cache->c_vdq;
+
+	vi = dirtyq_front(dq);
+	while (vi != NULL) {
+		if (v_isinode(vi)) {
+			dset_iter_dirty_by_ii(dmap, ii_from_vi(vi));
+		}
+		dset_add_dirty_vi(dmap, vi);
+		vi = dirtyq_next(dq, vi);
+	}
+}
+
+struct voluta_vnode_info *
+voluta_dirtymap_first(const struct voluta_dirtymap *dmap)
+{
+	const struct voluta_avl_node *an;
+
+	if (!dmap->dm_avl.size) {
+		return NULL;
+	}
+	an = voluta_avl_begin(&dmap->dm_avl);
+	return avl_node_to_vi(an);
+}
+
+struct voluta_vnode_info *
+voluta_dirtymap_next(const struct voluta_dirtymap *dmap,
+		     const struct voluta_vnode_info *vi)
+{
+	const struct voluta_avl_node *end;
+	const struct voluta_avl_node *nxt;
+
+	end = voluta_avl_end(&dmap->dm_avl);
+	nxt = voluta_avl_next(&dmap->dm_avl, &vi->v_dt_an);
+
+	return (nxt != end) ? avl_node_to_vi(nxt) : NULL;
+}
+
+void voluta_dirtymap_inhabit(struct voluta_dirtymap *dmap)
+{
+	if (dmap->dm_ii != NULL) {
+		dset_iter_dirty_by_ii(dmap, dmap->dm_ii);
+	} else {
+		dset_iter_dirty_by_cache(dmap);
+	}
+}
+
+void voluta_dirtymap_purge(const struct voluta_dirtymap *dmap)
+{
+	struct voluta_vnode_info *vi;
+
+	vi = voluta_dirtymap_first(dmap);
+	while (vi != NULL) {
+		vi_undirtify(vi);
+		vi = voluta_dirtymap_next(dmap, vi);
+	}
 }
 

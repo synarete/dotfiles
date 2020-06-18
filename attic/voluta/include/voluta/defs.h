@@ -500,15 +500,14 @@ struct voluta_bkref {
 
 struct voluta_agroup_map {
 	struct voluta_header    ag_hdr;
-	struct voluta_uuid      ag_fs_uuid;
 	uint64_t                ag_index;
-	uint64_t                ag_reserved1;
+	uint8_t                 ag_reserved1[8];
 	uint32_t                ag_nkb_used;
 	uint8_t                 ag_reserved2[2];
 	uint8_t                 ag_ciper_type;
 	uint8_t                 ag_ciper_mode;
 	uint8_t                 ag_reserved3[8];
-	struct voluta_iv        ag_ivs[4];
+	struct voluta_iv        ag_ivs[5];
 	struct voluta_bkref     ag_bkref[VOLUTA_NBK_IN_AG - 1];
 } voluta_packed_aligned64;
 

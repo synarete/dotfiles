@@ -172,7 +172,6 @@ static void static_assert_persistent_types_alignment(void)
 	REQUIRE_AOFFSET64(struct voluta_super_block, s_ivs, 4096);
 	REQUIRE_AOFFSET64(struct voluta_super_block, s_keys, 5536);
 	REQUIRE_AOFFSET(struct voluta_agroup_map, ag_hdr, 0);
-	REQUIRE_AOFFSET(struct voluta_agroup_map, ag_fs_uuid, 16);
 	REQUIRE_AOFFSET64(struct voluta_agroup_map, ag_bkref, 128);
 	REQUIRE_AOFFSET64(struct voluta_itable_tnode, ite, 64);
 	REQUIRE_AOFFSET64(struct voluta_itable_tnode, it_child, 6144);
@@ -437,11 +436,7 @@ static int verify_checksum(const union voluta_view *view,
 
 int voluta_verify_ino(ino_t ino)
 {
-	const ino_t ino_null = VOLUTA_INO_NULL;
-
-	voluta_assert_ne(ino, ino_null);
-	voluta_assert_lt(ino, ULONG_MAX >> 8); /* XXX */
-	return (ino != ino_null) ? 0 : -EFSCORRUPTED;
+	return !ino_isnull(ino) ? 0 : -EFSCORRUPTED;
 }
 
 int voluta_verify_off(loff_t off)

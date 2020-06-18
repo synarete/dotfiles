@@ -129,20 +129,22 @@ static int filldir(struct voluta_readdir_ctx *readdir_ctx,
 }
 
 int voluta_ut_readdir(struct voluta_ut_ctx *ut_ctx, ino_t ino, loff_t doff,
-		      struct voluta_ut_readdir_ctx *ut_readdir_ctx)
+		      struct voluta_ut_readdir_ctx *ut_rdir_ctx)
 {
-	struct voluta_readdir_ctx *readdir_ctx = &ut_readdir_ctx->readdir_ctx;
+	struct voluta_readdir_ctx *rdir_ctx = &ut_rdir_ctx->readdir_ctx;
 
-	ut_readdir_ctx->ndents = 0;
-	readdir_ctx->pos = doff;
-	readdir_ctx->actor = filldir;
-	return voluta_fs_readdir(env_of(ut_ctx), ino, readdir_ctx);
+	ut_rdir_ctx->ndents = 0;
+	rdir_ctx->pos = doff;
+	rdir_ctx->actor = filldir;
+	return voluta_fs_readdir(env_of(ut_ctx), ino, rdir_ctx);
 }
 
 int voluta_ut_symlink(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		      const char *name, const char *symval, struct stat *out)
+		      const char *name, const char *symval,
+		      struct stat *out_stat)
 {
-	return voluta_fs_symlink(env_of(ut_ctx), parent, name, symval, out);
+	return voluta_fs_symlink(env_of(ut_ctx), parent,
+				 name, symval, out_stat);
 }
 
 int voluta_ut_readlink(struct voluta_ut_ctx *ut_ctx,
@@ -157,30 +159,29 @@ int voluta_ut_link(struct voluta_ut_ctx *ut_ctx, ino_t ino, ino_t parent,
 	return voluta_fs_link(env_of(ut_ctx), ino, parent, name, out);
 }
 
-int voluta_ut_unlink(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		     const char *name)
+int voluta_ut_unlink(struct voluta_ut_ctx *ut_ctx,
+		     ino_t parent, const char *name)
 {
 	return voluta_fs_unlink(env_of(ut_ctx), parent, name);
 }
 
 int voluta_ut_rename(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		     const char *name,
-		     ino_t newparent, const char *newname, int flags)
+		     const char *name, ino_t newparent,
+		     const char *newname, int flags)
 {
 	return voluta_fs_rename(env_of(ut_ctx), parent, name,
 				newparent, newname, flags);
 }
 
 int voluta_ut_create(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		     const char *name,
-		     mode_t mode, struct stat *out_stat)
+		     const char *name, mode_t mode, struct stat *out_stat)
 {
 	return voluta_fs_create(env_of(ut_ctx), parent, name, mode, out_stat);
 }
 
 int voluta_ut_mknod(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		    const char *name,
-		    mode_t mode, dev_t rdev, struct stat *out_stat)
+		    const char *name, mode_t mode, dev_t rdev,
+		    struct stat *out_stat)
 {
 	return voluta_fs_mknod(env_of(ut_ctx), parent,
 			       name, mode, rdev, out_stat);

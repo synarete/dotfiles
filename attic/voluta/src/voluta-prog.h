@@ -97,6 +97,9 @@ struct voluta_globals {
 	bool    mkfs_force;
 	char    pad4[7];
 
+	/* Options for 'fsck' sub-command */
+	char   *fsck_volume;
+
 	/* Options for 'inquiry' sub-command */
 	char   *inq_path;
 
@@ -112,9 +115,13 @@ void voluta_execute_mount(void);
 
 void voluta_execute_mkfs(void);
 
+void voluta_execute_fsck(void);
+
 void voluta_execute_inquiry(void);
 
 void voluta_getopt_mkfs(void);
+
+void voluta_getopt_fsck(void);
 
 void voluta_getopt_mount(void);
 

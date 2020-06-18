@@ -219,42 +219,59 @@ int voluta_ut_releasedir(struct voluta_ut_ctx *ut_ctx, ino_t ino);
 
 int voluta_ut_fsyncdir(struct voluta_ut_ctx *ut_ctx, ino_t ino, bool datasync);
 
-int voluta_ut_readdir(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-		      loff_t doff, struct voluta_ut_readdir_ctx *);
+int voluta_ut_readdir(struct voluta_ut_ctx *ut_ctx, ino_t ino, loff_t doff,
+		      struct voluta_ut_readdir_ctx *ut_rdir_ctx);
+
 int voluta_ut_symlink(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		      const char *name, const char *linkpath, struct stat *);
+		      const char *name, const char *linkpath,
+		      struct stat *out_stat);
+
 int voluta_ut_readlink(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 		       char *buf, size_t bufsz);
+
 int voluta_ut_link(struct voluta_ut_ctx *ut_ctx, ino_t ino, ino_t parent,
 		   const char *name, struct stat *out);
-int voluta_ut_unlink(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		     const char *name);
+
+int voluta_ut_unlink(struct voluta_ut_ctx *ut_ctx,
+		     ino_t parent, const char *name);
+
 int voluta_ut_rename(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		     const char *name,
-		     ino_t newparent, const char *newname, int);
+		     const char *name, ino_t newparent,
+		     const char *newname, int flags);
+
 int voluta_ut_create(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		     const char *name,
-		     mode_t mode, struct stat *out_stat);
+		     const char *name, mode_t mode, struct stat *out_stat);
+
 int voluta_ut_mknod(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		    const char *name,
-		    mode_t mode, dev_t rdev, struct stat *out_stat);
+		    const char *name, mode_t mode, dev_t rdev,
+		    struct stat *out_stat);
+
 int voluta_ut_open(struct voluta_ut_ctx *ut_ctx, ino_t ino, int flags);
+
 int voluta_ut_release(struct voluta_ut_ctx *ut_ctx, ino_t ino);
+
 int voluta_ut_fsync(struct voluta_ut_ctx *ut_ctx, ino_t ino, bool datasync);
+
 int voluta_ut_read(struct voluta_ut_ctx *ut_ctx, ino_t ino, void *buf,
 		   size_t len, loff_t off, size_t *out_len);
+
 int voluta_ut_write(struct voluta_ut_ctx *ut_ctx, ino_t ino, const void *buf,
 		    size_t len, off_t off, size_t *out_len);
+
 int voluta_ut_truncate(struct voluta_ut_ctx *ut_ctx, ino_t ino, loff_t length);
+
 int voluta_ut_fallocate(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 			int mode, loff_t offset, loff_t len);
+
 int voluta_ut_setxattr(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 		       const char *name, const void *value,
 		       size_t size, int flags);
+
 int voluta_ut_getxattr(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 		       const char *name, void *buf, size_t size, size_t *out);
-int voluta_ut_removexattr(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			  const char *);
+
+int voluta_ut_removexattr(struct voluta_ut_ctx *ut_ctx,
+			  ino_t ino, const char *name);
 
 int voluta_ut_listxattr(struct voluta_ut_ctx *ut_ctx, ino_t ino,
 			struct voluta_ut_listxattr_ctx *ut_listxattr_ctx);
