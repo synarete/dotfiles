@@ -13,4 +13,7 @@
 .pydevproject
 .settings
 
+# Extras
+tags
+TAGS
 
