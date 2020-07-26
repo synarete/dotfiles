@@ -18,7 +18,9 @@ AC_DEFUN([AX_VOLUTA_NEED_FUNCS],
   AC_FUNC_VPRINTF
 
   AX_VOLUTA_CHECK_FUNCS([atexit])
+  AX_VOLUTA_CHECK_FUNCS([mount])
   AX_VOLUTA_CHECK_FUNCS([umount2])
+  AX_VOLUTA_CHECK_FUNCS([pipe2])
   AX_VOLUTA_CHECK_FUNCS([gettimeofday])
   AX_VOLUTA_CHECK_FUNCS([isascii])
   AX_VOLUTA_CHECK_FUNCS([iswprint])
@@ -53,6 +55,7 @@ AC_DEFUN([AX_VOLUTA_NEED_FUNCS],
   AX_VOLUTA_CHECK_FUNCS([memfd_create])
   AX_VOLUTA_CHECK_FUNCS([copy_file_range])
   AX_VOLUTA_CHECK_FUNCS([tcgetattr])
+  AX_VOLUTA_CHECK_FUNCS([canonicalize_file_name])
 ])
 
 

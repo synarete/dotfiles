@@ -36,11 +36,11 @@ static struct timespec g_start_ts;
 
 
 /* Local functions */
-static void voluta_ut_setup_globals(int argc, char *argv[]);
-static void voluta_ut_show_version(void);
-static void voluta_ut_show_done(void);
-static void voluta_ut_parse_args(void);
-static void voluta_ut_setup_tracing(void);
+static void ut_setup_globals(int argc, char *argv[]);
+static void ut_show_version(void);
+static void ut_show_done(void);
+static void ut_parse_args(void);
+static void ut_setup_tracing(void);
 
 
 /*
@@ -55,27 +55,27 @@ static void voluta_ut_setup_tracing(void);
 int main(int argc, char *argv[])
 {
 	/* Setup process defaults */
-	voluta_ut_setup_globals(argc, argv);
+	ut_setup_globals(argc, argv);
 
 	/* Disable tracing */
-	voluta_ut_setup_tracing();
+	ut_setup_tracing();
 
 	/* Parse common line arguments */
-	voluta_ut_parse_args();
+	ut_parse_args();
 
 	/* Show generic info */
-	voluta_ut_show_version();
+	ut_show_version();
 
 	/* Actual tests execution... */
-	voluta_ut_execute(g_ut_test_name);
+	ut_execute(g_ut_test_name);
 
 	/* ...and we are done! */
-	voluta_ut_show_done();
+	ut_show_done();
 
 	return 0;
 }
 
-static void voluta_ut_setup_globals(int argc, char *argv[])
+static void ut_setup_globals(int argc, char *argv[])
 {
 	g_ut_argc = argc;
 	g_ut_argv = argv;
@@ -85,18 +85,18 @@ static void voluta_ut_setup_globals(int argc, char *argv[])
 	voluta_mclock_now(&g_start_ts);
 }
 
-static void voluta_ut_setup_tracing(void)
+static void ut_setup_tracing(void)
 {
-	voluta_g_log_mask =
-		(VOLUTA_LOG_ERROR | VOLUTA_LOG_CRIT | VOLUTA_LOG_STDOUT);
+	voluta_log_mask_set(VOLUTA_LOG_ERROR |
+			    VOLUTA_LOG_CRIT | VOLUTA_LOG_STDOUT);
 }
 
-static void voluta_ut_show_version(void)
+static void ut_show_version(void)
 {
-	printf("%s\n", voluta_version_string);
+	printf("%s\n", voluta_g_config.version);
 }
 
-static void voluta_ut_show_done(void)
+static void ut_show_done(void)
 {
 	struct timespec dur;
 
@@ -121,11 +121,11 @@ static void show_help_and_exit(void)
 
 static void show_version_and_exit(void)
 {
-	voluta_ut_show_version();
+	ut_show_version();
 	exit(EXIT_SUCCESS);
 }
 
-static void voluta_ut_parse_args(void)
+static void ut_parse_args(void)
 {
 	int c, opt_index, getnext = 1;
 	struct option long_opts[] = {

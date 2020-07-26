@@ -25,6 +25,7 @@ AC_DEFUN([AX_VOLUTA_NEED_HEADERS],
   AX_VOLUTA_CHECK_HEADERS([pthread.h])
   AX_VOLUTA_CHECK_HEADERS([gcrypt.h])
   AX_VOLUTA_CHECK_HEADERS([libunwind.h])
+  AX_VOLUTA_CHECK_HEADERS([liburing.h])
   AX_VOLUTA_CHECK_HEADERS([uuid/uuid.h])
   AX_VOLUTA_CHECK_HEADERS([attr/attributes.h])
   AX_VOLUTA_CHECK_HEADERS([sys/xattr.h])
@@ -43,6 +44,12 @@ AC_DEFUN([AX_VOLUTA_NEED_HEADERS],
   AX_VOLUTA_CHECK_HEADERS([sys/mman.h])
   AX_VOLUTA_CHECK_HEADERS([sys/mount.h])
   AX_VOLUTA_CHECK_HEADERS([sys/uio.h])
+  AX_VOLUTA_CHECK_HEADERS([sys/select.h])
+  AX_VOLUTA_CHECK_HEADERS([sys/un.h])
+  AX_VOLUTA_CHECK_HEADERS([netinet/in.h])
+  AX_VOLUTA_CHECK_HEADERS([netinet/udp.h])
+  AX_VOLUTA_CHECK_HEADERS([netinet/tcp.h])
+  AX_VOLUTA_CHECK_HEADERS([arpa/inet.h])
   AX_VOLUTA_CHECK_HEADERS([linux/kernel.h])
   AX_VOLUTA_CHECK_HEADERS([linux/types.h])
   AX_VOLUTA_CHECK_HEADERS([linux/falloc.h])
@@ -65,6 +72,9 @@ AC_DEFUN([AX_VOLUTA_NEED_LIBS],
 
   AC_SEARCH_LIBS([unw_backtrace], [unwind], :,
     AC_MSG_ERROR([Unable to find libunwind]))
+
+  AC_SEARCH_LIBS([io_uring_queue_init], [uring], :,
+    AC_MSG_ERROR([Unable to find liburing]))
 
   AC_SEARCH_LIBS([cap_clear], [cap], :,
     AC_MSG_ERROR([Unable to find libcap]))

@@ -30,7 +30,7 @@
 #define MPAGE_SHIFT             VOLUTA_PAGE_SHIFT
 #define MPAGE_SIZE              VOLUTA_PAGE_SIZE
 #define MPAGE_NSEGS             (MPAGE_SIZE / MSLAB_SEG_SIZE)
-#define MPAGES_IN_BK            (VOLUTA_BK_SIZE / MPAGE_SIZE)
+#define MPAGES_IN_SEG           (VOLUTA_SEG_SIZE / MPAGE_SIZE)
 #define MSLAB_SHIFT_MIN         (4)
 #define MSLAB_SHIFT_MAX         (MPAGE_SHIFT - 1)
 #define MSLAB_SIZE_MIN          (1U << MSLAB_SHIFT_MIN)
@@ -102,7 +102,10 @@ static void static_assert_alloc_sizes(void)
 static struct voluta_page_info *
 link_to_page_info(const struct voluta_list_head *link)
 {
-	return container_of(link, struct voluta_page_info, link);
+	const struct voluta_page_info *pgi =
+		container_of2(link, struct voluta_page_info, link);
+
+	return unconst(pgi);
 }
 
 static void page_info_update(struct voluta_page_info *pgi,
@@ -157,7 +160,10 @@ static void page_info_unlink_mute(struct voluta_page_info *pgi)
 static struct voluta_slab_seg *
 link_to_slab_seg(const struct voluta_list_head *link)
 {
-	return container_of(link, struct voluta_slab_seg, link);
+	const struct voluta_slab_seg *seg =
+		container_of2(link, struct voluta_slab_seg, link);
+
+	return unconst(seg);
 }
 
 static struct voluta_list_head *slab_seg_to_link(struct voluta_slab_seg *seg)
@@ -456,7 +462,7 @@ static void qalloc_add_free(struct voluta_qalloc *qal,
 			    struct voluta_page_info *pgi,
 			    struct voluta_page_info *prev, size_t npgs)
 {
-	const size_t threshold = MPAGES_IN_BK;
+	const size_t threshold = MPAGES_IN_SEG;
 	struct voluta_list_head *free_list = &qal->free_list;
 
 	page_info_update(pgi, prev, npgs);
@@ -612,7 +618,7 @@ static struct voluta_page_info *
 qalloc_search_free_list(struct voluta_qalloc *qal, size_t npgs)
 {
 	struct voluta_page_info *pgi = NULL;
-	const size_t threshold = MPAGES_IN_BK;
+	const size_t threshold = MPAGES_IN_SEG;
 
 	if ((qal->st.npages_used + npgs) <= qal->st.npages) {
 		if (npgs >= threshold) {
@@ -843,7 +849,7 @@ static void
 qalloc_release_npgs(const struct voluta_qalloc *qal,
 		    const struct voluta_page_info *pgi, size_t npgs)
 {
-	const size_t threshold = MPAGES_IN_BK;
+	const size_t threshold = MPAGES_IN_SEG;
 
 	if (npgs >= threshold) {
 		qalloc_punch_hole_at(qal, pgi, npgs);
@@ -1016,7 +1022,7 @@ qalloc_wreck_data(const struct voluta_qalloc *qal, void *ptr, size_t nbytes)
 {
 	voluta_assert_ge(qal->st.nbytes_used, nbytes);
 
-	if (qal->pedantic_mode) {
+	if (qal->pedantic_mode && ptr) {
 		memset(ptr, 0xF3, nbytes);
 	}
 }
@@ -1147,7 +1153,7 @@ int voluta_resolve_memsize(size_t mem_want, size_t *out_mem_size)
 	if (mem_rlim < mem_floor) {
 		return -ENOMEM;
 	}
-	mem_glim = 4 * VOLUTA_UGIGA;
+	mem_glim = 32 * VOLUTA_UGIGA;
 	mem_ceil = min3(mem_glim, mem_rlim, mem_total / 4);
 	mem_uget = clamp(mem_want, mem_floor, mem_ceil);
 	*out_mem_size = align_down(mem_uget, mem_align);

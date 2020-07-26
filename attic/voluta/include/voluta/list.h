@@ -19,20 +19,7 @@
 
 #include <stdlib.h>
 
-/* linked-list */
-struct voluta_list_head {
-	struct voluta_list_head *prev;
-	struct voluta_list_head *next;
-};
 
-
-/* sized linked-list queue */
-struct voluta_listq {
-	struct voluta_list_head ls;
-	size_t sz;
-};
-
-/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 void voluta_list_head_init(struct voluta_list_head *lnk);
 
@@ -68,7 +55,6 @@ voluta_list_front(const struct voluta_list_head *lst);
 struct voluta_list_head *
 voluta_list_pop_front(struct voluta_list_head *lst);
 
-/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 void voluta_listq_init(struct voluta_listq *lsq);
 

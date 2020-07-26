@@ -34,6 +34,18 @@
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
+void *voluta_unconst(const void *p)
+{
+	union {
+		const void *p;
+		void *q;
+	} u = {
+		.p = p
+	};
+
+	return u.q;
+}
+
 size_t voluta_min(size_t x, size_t y)
 {
 	return min(x, y);
@@ -239,8 +251,28 @@ void voluta_memzero(void *s, size_t n)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 /* logging */
-int voluta_g_log_mask =
+static int voluta_g_log_mask =
 	(VOLUTA_LOG_ERROR | VOLUTA_LOG_CRIT | VOLUTA_LOG_STDOUT);
+
+void voluta_log_mask_set(int mask)
+{
+	voluta_g_log_mask = mask;
+}
+
+void voluta_log_mask_add(int mask)
+{
+	voluta_g_log_mask |= mask;
+}
+
+void voluta_log_mask_clear(int mask)
+{
+	voluta_g_log_mask &= ~mask;
+}
+
+int voluta_log_mask_test(int mask)
+{
+	return ((voluta_g_log_mask & mask) == mask);
+}
 
 static void log_to_stdout(const char *msg)
 {
@@ -292,21 +324,21 @@ static void log_msg(int log_mask, const char *msg)
 	}
 }
 
-void voluta_logf(int log_mask, const char *fmt, ...)
+void voluta_logf(int flags, const char *fmt, ...)
 {
 	va_list ap;
 	size_t len;
 	int saved_errno;
 	char msg[512];
 
-	if (log_mask & voluta_g_log_mask) {
+	if (flags & voluta_g_log_mask) {
 		saved_errno = errno;
 		va_start(ap, fmt);
 		len = (size_t)vsnprintf(msg, sizeof(msg), fmt, ap);
 		va_end(ap);
 		len = min(len, sizeof(msg) - 1);
 		msg[len] = '\0';
-		log_msg(log_mask, msg);
+		log_msg(flags, msg);
 		errno = saved_errno;
 	}
 }
@@ -342,14 +374,23 @@ void voluta_buf_seteos(struct voluta_buf *buf)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 /* miscellaneous */
-void voluta_ts_now(struct timespec *ts)
-{
-	ts->tv_sec = 0;
-	ts->tv_nsec = UTIME_NOW;
-}
-
 void voluta_ts_copy(struct timespec *dst, const struct timespec *src)
 {
 	dst->tv_sec = src->tv_sec;
 	dst->tv_nsec = src->tv_nsec;
 }
+
+int voluta_ts_gettime(struct timespec *ts, bool realtime)
+{
+	int err = 0;
+
+	if (realtime) {
+		err = voluta_sys_clock_gettime(CLOCK_REALTIME, ts);
+	} else {
+		ts->tv_sec = time(NULL);
+		ts->tv_nsec = 0;
+	}
+	return err;
+}
+
+

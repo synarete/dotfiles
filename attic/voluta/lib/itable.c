@@ -25,7 +25,6 @@
 
 #define ITNODE_ROOT_DEPTH 1
 
-/* Local functions forward declarations */
 static int lookup_iref(struct voluta_sb_info *sbi,
 		       struct voluta_vnode_info *itn_vi, ino_t ino,
 		       struct voluta_iaddr *out_iaddr);
@@ -206,7 +205,7 @@ itn_entry_at(const struct voluta_itable_tnode *itn, size_t slot)
 {
 	const struct voluta_itable_entry *ite = &itn->ite[slot];
 
-	return (struct voluta_itable_entry *)ite;
+	return unconst(ite);
 }
 
 static void itn_init(struct voluta_itable_tnode *itn,
@@ -274,7 +273,7 @@ itn_lookup(const struct voluta_itable_tnode *itn, ino_t ino)
 		slot = itn_slot_by_ino(itn, ino);
 		ite = itn_entry_at(itn, slot);
 		if (ite_has_ino(ite, ino)) {
-			return (struct voluta_itable_entry *)ite;
+			return unconst(ite);
 		}
 	}
 	return NULL;
@@ -404,7 +403,7 @@ static struct voluta_itable *itable_of(const struct voluta_sb_info *sbi)
 {
 	const struct voluta_itable *itable = &sbi->s_itable;
 
-	return (struct voluta_itable *)itable;
+	return unconst(itable);
 }
 
 static int stage_itnode(struct voluta_sb_info *sbi,

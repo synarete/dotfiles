@@ -22,51 +22,7 @@
 struct voluta_avl;
 struct voluta_avl_node;
 
-/* Get key-ref of tree-node */
-typedef const void *(*voluta_avl_getkey_fn)(const struct voluta_avl_node *);
 
-/* 3-way compare function-pointer */
-typedef long (*voluta_avl_keycmp_fn)(const void *, const void *);
-
-/* Node operator */
-typedef void (*voluta_avl_node_fn)(struct voluta_avl_node *, void *);
-
-
-struct voluta_avl_node {
-	struct voluta_avl_node *parent;
-	struct voluta_avl_node *left;
-	struct voluta_avl_node *right;
-	int balance;
-	int magic;
-};
-
-
-/* "Iterators" range a-la STL pair */
-struct voluta_avl_range {
-	struct voluta_avl_node *first;
-	struct voluta_avl_node *second;
-};
-
-
-/*
- * AVL: self-balancing binary-search-tree. Holds reference to user-provided
- * nodes (intrusive container). Uses user-provided hooks for resolving
- * node-to-key and key-compare. Head stores leftmost, rightmost and root
- * pointers.
- *
- * NB: It is up to the user to release any associated resources, including the
- * possibly still-linked nodes upon destruction.
- */
-struct voluta_avl {
-	voluta_avl_getkey_fn getkey;
-	voluta_avl_keycmp_fn keycmp;
-	struct voluta_avl_node head;
-	size_t size;
-	void *userp;
-};
-
-
-/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 void voluta_avl_node_init(struct voluta_avl_node *x);
 

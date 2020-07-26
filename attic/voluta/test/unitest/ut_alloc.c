@@ -15,7 +15,6 @@
  * GNU General Public License for more details.
  */
 #define _GNU_SOURCE 1
-#define VOLUTA_TEST 1
 #include "unitest.h"
 
 #define MAGIC   0xDEADBEEF
@@ -29,7 +28,7 @@
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-struct voluta_ut_mrecord {
+struct ut_mrecord {
 	long    magic;
 	struct voluta_qalloc *qal;
 	struct voluta_list_head link;
@@ -40,7 +39,7 @@ struct voluta_ut_mrecord {
 };
 
 
-static void mrecord_setup(struct voluta_ut_mrecord *mr, void *mem, size_t len)
+static void mrecord_setup(struct ut_mrecord *mr, void *mem, size_t len)
 {
 	STATICASSERT_SIZEOF(*mr, 64);
 
@@ -49,45 +48,45 @@ static void mrecord_setup(struct voluta_ut_mrecord *mr, void *mem, size_t len)
 	mr->magic = MAGIC;
 	mr->mem = mem;
 	mr->len = len;
-	mr->dat_len = len - offsetof(struct voluta_ut_mrecord, dat);
+	mr->dat_len = len - offsetof(struct ut_mrecord, dat);
 }
 
-static struct voluta_ut_mrecord *mrecord_of(void *mem, size_t len)
+static struct ut_mrecord *mrecord_of(void *mem, size_t len)
 {
-	struct voluta_ut_mrecord *mr = mem;
+	struct ut_mrecord *mr = mem;
 
 	mrecord_setup(mr, mem, len);
 	return mr;
 }
 
-static void mrecord_check(const struct voluta_ut_mrecord *mr)
+static void mrecord_check(const struct ut_mrecord *mr)
 {
 	ut_assert_eq(mr->magic, MAGIC);
 	ut_assert_ge(mr->len, sizeof(*mr));
-	ut_assert_notnull(mr->mem);
+	ut_assert_not_null(mr->mem);
 }
 
-static struct voluta_ut_mrecord *
+static struct ut_mrecord *
 link_to_mrecord(const struct voluta_list_head *link)
 {
-	const struct voluta_ut_mrecord *mr =
-		voluta_container_of(link, struct voluta_ut_mrecord, link);
+	const struct ut_mrecord *mr =
+		ut_container_of2(link, struct ut_mrecord, link);
 
 	mrecord_check(mr);
-	return (struct voluta_ut_mrecord *)mr;
+	return voluta_unconst(mr);
 }
 
-static struct voluta_ut_mrecord *
+static struct ut_mrecord *
 mrecord_new(struct voluta_qalloc *qal, size_t msz)
 {
 	int err;
 	void *mem = NULL;
-	struct voluta_ut_mrecord *mr;
+	struct ut_mrecord *mr;
 	struct voluta_memref mref = { .fd = -1 };
 
 	err = voluta_malloc(qal, msz, &mem);
 	ut_assert_ok(err);
-	ut_assert_notnull(mem);
+	ut_assert_not_null(mem);
 
 	err = voluta_mcheck(qal, mem, msz);
 	ut_assert_ok(err);
@@ -95,7 +94,7 @@ mrecord_new(struct voluta_qalloc *qal, size_t msz)
 	err = voluta_memref(qal, mem, msz, NULL, &mref);
 	ut_assert_ok(err);
 	ut_assert_eq(mem, mref.mem);
-	ut_assert_notnull(mref.page);
+	ut_assert_not_null(mref.page);
 	ut_assert_ge(mem, mref.page);
 
 	mr = mrecord_of(mem, msz);
@@ -104,7 +103,7 @@ mrecord_new(struct voluta_qalloc *qal, size_t msz)
 	return mr;
 }
 
-static void mrecord_del(struct voluta_ut_mrecord *mr)
+static void mrecord_del(struct ut_mrecord *mr)
 {
 	int err;
 	struct voluta_qalloc *qal = mr->qal;
@@ -118,7 +117,7 @@ static void mrecord_del(struct voluta_ut_mrecord *mr)
 
 static void link_mrecord_del(struct voluta_list_head *link)
 {
-	struct voluta_ut_mrecord *mr;
+	struct ut_mrecord *mr;
 
 	mr = link_to_mrecord(link);
 	voluta_list_head_remove(link);
@@ -128,12 +127,12 @@ static void link_mrecord_del(struct voluta_list_head *link)
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 static struct voluta_qalloc *
-ut_new_qalloc(struct voluta_ut_ctx *ut_ctx, size_t sz)
+ut_new_qalloc(struct ut_env *ut_env, size_t sz)
 {
 	int err;
 	struct voluta_qalloc *qal = NULL;
 
-	qal = voluta_ut_zalloc(ut_ctx, sizeof(*qal));
+	qal = ut_zalloc(ut_env, sizeof(*qal));
 	err = voluta_qalloc_init(qal, sz);
 	ut_assert_ok(err);
 
@@ -150,19 +149,19 @@ static void ut_del_qalloc(struct voluta_qalloc *qal)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_qalloc_nbks_simple(struct voluta_ut_ctx *ut_ctx)
+static void ut_qalloc_nbks_simple(struct ut_env *ut_env)
 {
 	struct voluta_qalloc *qal;
-	struct voluta_ut_mrecord *mr;
+	struct ut_mrecord *mr;
 	struct voluta_list_head lst, *lnk;
 	size_t sizes[] = {
-		BK_SIZE - 1, BK_SIZE, BK_SIZE + 1,
-		2 * BK_SIZE, 8 * BK_SIZE - 1
+		UT_BK_SIZE - 1, UT_BK_SIZE, UT_BK_SIZE + 1,
+		2 * UT_BK_SIZE, 8 * UT_BK_SIZE - 1
 	};
 
 	voluta_list_init(&lst);
-	qal = ut_new_qalloc(ut_ctx, 32 * UMEGA);
-	for (size_t i = 0; i < ARRAY_SIZE(sizes); ++i) {
+	qal = ut_new_qalloc(ut_env, 32 * UT_UMEGA);
+	for (size_t i = 0; i < UT_ARRAY_SIZE(sizes); ++i) {
 		mr = mrecord_new(qal, sizes[i]);
 		memset(mr->dat, (int)i, mr->dat_len);
 		voluta_list_push_back(&lst, &mr->link);
@@ -182,18 +181,18 @@ static size_t align_up(size_t nn, size_t align)
 	return ((nn + align - 1) / align) * align;
 }
 
-static void ut_qalloc_free_nbks(struct voluta_ut_ctx *ut_ctx)
+static void ut_qalloc_free_nbks(struct ut_env *ut_env)
 {
 	size_t msz, rem, total = 0;
 	struct voluta_qalloc *qal;
-	struct voluta_ut_mrecord *mr;
+	struct ut_mrecord *mr;
 	struct voluta_list_head lst;
 	struct voluta_list_head *lnk;
-	const size_t bk_size =  BK_SIZE;
+	const size_t bk_size =  UT_BK_SIZE;
 	struct voluta_qastat qast;
 
 	voluta_list_init(&lst);
-	qal = ut_new_qalloc(ut_ctx, 32 * UMEGA);
+	qal = ut_new_qalloc(ut_env, 32 * UT_UMEGA);
 	voluta_qalloc_stat(qal, &qast);
 	while (total < qast.memsz_data) {
 		rem = qast.memsz_data - total;
@@ -216,16 +215,16 @@ static void ut_qalloc_free_nbks(struct voluta_ut_ctx *ut_ctx)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_qalloc_slab_elems(struct voluta_ut_ctx *ut_ctx)
+static void ut_qalloc_slab_elems(struct ut_env *ut_env)
 {
 	size_t val, msz;
 	struct voluta_qalloc *qal;
-	struct voluta_ut_mrecord *mr;
+	struct ut_mrecord *mr;
 	struct voluta_list_head lst, *lnk;
 	const size_t pg_size = VOLUTA_PAGE_SIZE;
 
 	voluta_list_init(&lst);
-	qal = ut_new_qalloc(ut_ctx, 64 * UMEGA);
+	qal = ut_new_qalloc(ut_env, 64 * UT_UMEGA);
 	for (size_t i = 0; i < 10000; ++i) {
 		val = (pg_size + i) % (pg_size / 2);
 		msz = voluta_clamp(val, sizeof(*mr), (pg_size / 2));
@@ -247,16 +246,16 @@ static void ut_qalloc_slab_elems(struct voluta_ut_ctx *ut_ctx)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_qalloc_mixed(struct voluta_ut_ctx *ut_ctx)
+static void ut_qalloc_mixed(struct ut_env *ut_env)
 {
 	size_t msz, val, val2, val_max = 100000;
 	struct voluta_qalloc *qal;
-	const size_t bk_size = BK_SIZE;
-	struct voluta_ut_mrecord *ai;
+	const size_t bk_size = UT_BK_SIZE;
+	struct ut_mrecord *ai;
 	struct voluta_list_head lst, *lnk;
 
 	voluta_list_init(&lst);
-	qal = ut_new_qalloc(ut_ctx, 256 * UMEGA);
+	qal = ut_new_qalloc(ut_env, 256 * UT_UMEGA);
 	for (val = 0; val < val_max; val += 100) {
 		msz = voluta_clamp(val, sizeof(*ai), 11 * bk_size);
 		ai = mrecord_new(qal, msz);
@@ -288,7 +287,7 @@ static size_t small_alloc_size(size_t i)
 	return (i * 17) + 1;
 }
 
-static void ut_qalloc_small_sizes(struct voluta_ut_ctx *ut_ctx)
+static void ut_qalloc_small_sizes(struct ut_env *ut_env)
 {
 	int err;
 	size_t idx;
@@ -298,36 +297,36 @@ static void ut_qalloc_small_sizes(struct voluta_ut_ctx *ut_ctx)
 	long idx_arr[NALLOC_SMALL];
 	struct voluta_qalloc *qal;
 
-	qal = ut_new_qalloc(ut_ctx, 32 * UMEGA);
-	for (size_t i = 0; i < ARRAY_SIZE(ptr); ++i) {
+	qal = ut_new_qalloc(ut_env, 32 * UT_UMEGA);
+	for (size_t i = 0; i < UT_ARRAY_SIZE(ptr); ++i) {
 		msz = small_alloc_size(i);
 		mem = NULL;
 		err = voluta_malloc(qal, msz, &mem);
 		ut_assert_ok(err);
-		ut_assert_notnull(mem);
+		ut_assert_not_null(mem);
 		memset(mem, (int)i, msz);
 		ptr[i] = mem;
 	}
-	for (size_t i = 0; i < ARRAY_SIZE(ptr); ++i) {
+	for (size_t i = 0; i < UT_ARRAY_SIZE(ptr); ++i) {
 		msz = small_alloc_size(i);
 		mem = ptr[i];
 		voluta_free(qal, mem, msz);
 		ptr[i] = NULL;
 	}
 
-	voluta_ut_prandom_seq(idx_arr, ARRAY_SIZE(idx_arr), 0);
-	for (size_t i = 0; i < ARRAY_SIZE(ptr); ++i) {
+	ut_prandom_seq(idx_arr, UT_ARRAY_SIZE(idx_arr), 0);
+	for (size_t i = 0; i < UT_ARRAY_SIZE(ptr); ++i) {
 		idx = (size_t)idx_arr[i];
 		msz = small_alloc_size(idx);
 		mem = NULL;
 		err = voluta_malloc(qal, msz, &mem);
 		ut_assert_ok(err);
-		ut_assert_notnull(mem);
+		ut_assert_not_null(mem);
 		memset(mem, (int)i, msz);
 		ptr[idx] = mem;
 	}
-	voluta_ut_prandom_seq(idx_arr, ARRAY_SIZE(idx_arr), 0);
-	for (size_t i = 0; i < ARRAY_SIZE(ptr); ++i) {
+	ut_prandom_seq(idx_arr, UT_ARRAY_SIZE(idx_arr), 0);
+	for (size_t i = 0; i < UT_ARRAY_SIZE(ptr); ++i) {
 		idx = (size_t)idx_arr[i];
 		msz = small_alloc_size(idx);
 		mem = ptr[idx];
@@ -339,15 +338,15 @@ static void ut_qalloc_small_sizes(struct voluta_ut_ctx *ut_ctx)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static struct iovec *random_iovecs(struct voluta_ut_ctx *ut_ctx,
+static struct iovec *random_iovecs(struct ut_env *ut_env,
 				   size_t cnt, size_t len_min, size_t len_max)
 {
 	struct iovec *iov = NULL;
 	const size_t msz = sizeof(*iov) * cnt;
 	const size_t len_dif = len_max - len_min;
 
-	iov = voluta_ut_malloc(ut_ctx, msz);
-	voluta_ut_randfill(ut_ctx, iov, msz);
+	iov = ut_malloc(ut_env, msz);
+	ut_randfill(ut_env, iov, msz);
 
 	for (size_t i = 0; i < cnt; ++i) {
 		iov[i].iov_len = (iov[i].iov_len % len_dif) + len_min;
@@ -356,7 +355,7 @@ static struct iovec *random_iovecs(struct voluta_ut_ctx *ut_ctx,
 	return iov;
 }
 
-static void ut_qalloc_random_(struct voluta_ut_ctx *ut_ctx, size_t cnt)
+static void ut_qalloc_random_(struct ut_env *ut_env, size_t cnt)
 {
 	int err;
 	size_t msz;
@@ -365,14 +364,14 @@ static void ut_qalloc_random_(struct voluta_ut_ctx *ut_ctx, size_t cnt)
 	struct voluta_qalloc *qal;
 	const size_t pg_size = VOLUTA_PAGE_SIZE;
 
-	qal = ut_new_qalloc(ut_ctx, cnt * 2 * pg_size);
-	iov = random_iovecs(ut_ctx, cnt, 1, 2 * pg_size);
+	qal = ut_new_qalloc(ut_env, cnt * 2 * pg_size);
+	iov = random_iovecs(ut_env, cnt, 1, 2 * pg_size);
 	for (size_t i = 0; i < cnt; ++i) {
 		msz = iov[i].iov_len;
 		mem = NULL;
 		err = voluta_malloc(qal, msz, &mem);
 		ut_assert_ok(err);
-		ut_assert_notnull(mem);
+		ut_assert_not_null(mem);
 		memset(mem, (int)i, msz);
 		err = voluta_mcheck(qal, mem, msz);
 		ut_assert_ok(err);
@@ -402,7 +401,7 @@ static void ut_qalloc_random_(struct voluta_ut_ctx *ut_ctx, size_t cnt)
 		mem = NULL;
 		err = voluta_malloc(qal, msz, &mem);
 		ut_assert_ok(err);
-		ut_assert_notnull(mem);
+		ut_assert_not_null(mem);
 		iov[i].iov_base = mem;
 	}
 	for (size_t i = 0; i < cnt; i++) {
@@ -418,20 +417,20 @@ static void ut_qalloc_random_(struct voluta_ut_ctx *ut_ctx, size_t cnt)
 	ut_del_qalloc(qal);
 }
 
-static void ut_qalloc_random(struct voluta_ut_ctx *ut_ctx)
+static void ut_qalloc_random(struct ut_env *ut_env)
 {
-	ut_qalloc_random_(ut_ctx, 1024);
+	ut_qalloc_random_(ut_env, 1024);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static struct voluta_mpool *ut_new_mpool(struct voluta_ut_ctx *ut_ctx)
+static struct voluta_mpool *ut_new_mpool(struct ut_env *ut_env)
 {
 	struct voluta_qalloc *qal;
 	struct voluta_mpool *mpool;
 
-	qal = ut_new_qalloc(ut_ctx, 8 * UMEGA);
-	mpool = voluta_ut_malloc(ut_ctx, sizeof(*mpool));
+	qal = ut_new_qalloc(ut_env, 8 * UT_UMEGA);
+	mpool = ut_malloc(ut_env, sizeof(*mpool));
 	voluta_mpool_init(mpool, qal);
 	return mpool;
 }
@@ -444,30 +443,30 @@ static void ut_del_mpool(struct voluta_mpool *mpool)
 	ut_del_qalloc(qal);
 }
 
-static void ut_mpool_simple(struct voluta_ut_ctx *ut_ctx)
+static void ut_mpool_simple(struct ut_env *ut_env)
 {
 	struct voluta_mpool *mpool;
-	struct voluta_bk_info *bki[64];
+	struct voluta_seg_info *sgi[64];
 
-	mpool = ut_new_mpool(ut_ctx);
-	for (size_t i = 0; i < ARRAY_SIZE(bki); ++i) {
-		bki[i] = voluta_malloc_bki(mpool);
-		ut_assert_notnull(bki[i]);
+	mpool = ut_new_mpool(ut_env);
+	for (size_t i = 0; i < UT_ARRAY_SIZE(sgi); ++i) {
+		sgi[i] = voluta_malloc_sgi(mpool);
+		ut_assert_not_null(sgi[i]);
 	}
-	for (size_t i = 1; i < ARRAY_SIZE(bki); i += 2) {
-		voluta_free_bki(mpool, bki[i]);
-		bki[i] = NULL;
+	for (size_t i = 1; i < UT_ARRAY_SIZE(sgi); i += 2) {
+		voluta_free_sgi(mpool, sgi[i]);
+		sgi[i] = NULL;
 	}
-	for (size_t i = 0; i < ARRAY_SIZE(bki); i += 2) {
-		voluta_free_bki(mpool, bki[i]);
-		bki[i] = NULL;
+	for (size_t i = 0; i < UT_ARRAY_SIZE(sgi); i += 2) {
+		voluta_free_sgi(mpool, sgi[i]);
+		sgi[i] = NULL;
 	}
 	ut_del_mpool(mpool);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static const struct voluta_ut_testdef ut_local_tests[] = {
+static const struct ut_testdef ut_local_tests[] = {
 	UT_DEFTEST(ut_qalloc_nbks_simple),
 	UT_DEFTEST(ut_qalloc_free_nbks),
 	UT_DEFTEST(ut_qalloc_slab_elems),
@@ -477,7 +476,7 @@ static const struct voluta_ut_testdef ut_local_tests[] = {
 	UT_DEFTEST(ut_mpool_simple),
 };
 
-const struct voluta_ut_tests voluta_ut_test_qalloc =
+const struct ut_tests ut_test_qalloc =
 	UT_MKTESTS(ut_local_tests);
 
 

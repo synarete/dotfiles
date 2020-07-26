@@ -96,7 +96,7 @@ static void avl_node_swap_balance(struct voluta_avl_node *x,
 static struct voluta_avl_node *
 avl_node_unconst(const struct voluta_avl_node *x)
 {
-	return (struct voluta_avl_node *)x;
+	return unconst(x);
 }
 
 static void avl_node_verify(const struct voluta_avl_node *x)

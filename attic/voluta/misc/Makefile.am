@@ -14,3 +14,4 @@ EXTRA_DIST += clangscanbuild.py
 EXTRA_DIST += clangtidycheck.sh
 EXTRA_DIST += fio2csv.sh
 EXTRA_DIST += fiocsv2plot.py
+EXTRA_DIST += valgrind-memcheck.sh

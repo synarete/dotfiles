@@ -1,1 +1,1 @@
-SUBDIRS = mountd dstress fsstest unitest
+SUBDIRS = mountd dstress vfstest unitest

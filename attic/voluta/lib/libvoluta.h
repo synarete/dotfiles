@@ -29,6 +29,10 @@
 #include <voluta/voluta.h>
 #include <voluta/syscall.h>
 #include <voluta/error.h>
+#include <voluta/types.h>
+#include <voluta/infra.h>
+#include <voluta/socket.h>
+#include <voluta/fuse.h>
 #include <voluta/core.h>
 
 
@@ -50,11 +54,14 @@
 /* aliases */
 #define ARRAY_SIZE(x)                   VOLUTA_ARRAY_SIZE(x)
 #define container_of(p, t, m)           voluta_container_of(p, t, m)
+#define container_of2(p, t, m)          voluta_container_of2(p, t, m)
+#define unconst(p)                      voluta_unconst(p)
+#define unused(x)                       voluta_unused(x)
 
 #define log_debug(fmt, ...)             voluta_log_debug(fmt, __VA_ARGS__)
 #define log_info(fmt, ...)              voluta_log_info(fmt, __VA_ARGS__)
 #define log_warn(fmt, ...)              voluta_log_warn(fmt, __VA_ARGS__)
-#define log_error(fmt, ...)             voluta_log_error(fmt, __VA_ARGS__)
+#define log_err(fmt, ...)               voluta_log_error(fmt, __VA_ARGS__)
 #define log_crit(fmt, ...)              voluta_log_crit(fmt, __VA_ARGS__)
 
 #define vaddr_isnull(va)                voluta_vaddr_isnull(va)
@@ -71,7 +78,7 @@
 #define i_refcnt(ii)                    v_refcnt(i_vi(ii))
 #define i_dirtify(ii)                   voluta_dirtify_ii(ii)
 #define i_xino_of(ii)                   voluta_xino_of(ii)
-#define i_parent_ino_of(ii)             voluta_parent_ino_of(ii)
+#define i_parent_of(ii)                 voluta_parent_of(ii)
 #define i_uid_of(ii)                    voluta_uid_of(ii)
 #define i_gid_of(ii)                    voluta_gid_of(ii)
 #define i_mode_of(ii)                   voluta_mode_of(ii)
@@ -84,9 +91,9 @@
 #define i_islnk(ii)                     voluta_islnk(ii)
 #define i_isfifo(ii)                    voluta_isfifo(ii)
 #define i_issock(ii)                    voluta_issock(ii)
-#define update_itimes(op_ctx, ii, f)    voluta_update_itimes(op_ctx, ii, f)
-#define update_iattrs(op_ctx, ii, a)    voluta_update_iattrs(op_ctx, ii, a)
-#define ts_now(ts)                      voluta_ts_now(ts)
+#define i_stat(ii, st)                  voluta_stat_of(ii, st);
+#define update_itimes(op, ii, f)        voluta_update_itimes(op, ii, f)
+#define update_iattrs(op, ii, a)        voluta_update_iattrs(op, ii, a)
 #define ts_copy(dst, src)               voluta_ts_copy(dst, src)
 #define iattr_setup(ia, ino)            voluta_iattr_setup(ia, ino)
 
@@ -121,11 +128,6 @@
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 /* inlines */
-static inline void *unconst(const void *p)
-{
-	return (void *)p;
-}
-
 static inline size_t min(size_t x, size_t y)
 {
 	return (x < y) ? x : y;
@@ -159,6 +161,21 @@ static inline bool ino_isnull(ino_t ino)
 static inline bool off_isnull(loff_t off)
 {
 	return (off == VOLUTA_OFF_NULL);
+}
+
+static inline loff_t off_end(loff_t off, size_t len)
+{
+	return off + (loff_t)len;
+}
+
+static inline loff_t off_align(loff_t off, loff_t align)
+{
+	return (off / align) * align;
+}
+
+static inline loff_t off_to_lba(loff_t off)
+{
+	return off / VOLUTA_BK_SIZE;
 }
 
 static inline bool uid_eq(uid_t uid1, uid_t uid2)
@@ -199,6 +216,11 @@ const struct voluta_vaddr *v_vaddr_of(const struct voluta_vnode_info *vi)
 	return &vi->vaddr;
 }
 
+static inline size_t v_length_of(const struct voluta_vnode_info *vi)
+{
+	return v_vaddr_of(vi)->len;
+}
+
 static inline
 struct voluta_sb_info *v_sbi_of(const struct voluta_vnode_info *vi)
 {
@@ -208,7 +230,7 @@ struct voluta_sb_info *v_sbi_of(const struct voluta_vnode_info *vi)
 static inline
 const struct voluta_crypto *v_crypto_of(const struct voluta_vnode_info *vi)
 {
-	return &vi->v_sbi->s_cstore->crypto;
+	return vi->v_sbi->s_crypto;
 }
 
 static inline
@@ -229,9 +251,9 @@ const struct voluta_vaddr *i_vaddr_of(const struct voluta_inode_info *ii)
 }
 
 static inline
-struct voluta_bk_info *i_bki_of(const struct voluta_inode_info *ii)
+struct voluta_seg_info *i_sgi_of(const struct voluta_inode_info *ii)
 {
-	return i_vi(ii)->v_bki;
+	return i_vi(ii)->v_sgi;
 }
 
 static inline
@@ -240,7 +262,7 @@ struct voluta_sb_info *i_sbi_of(const struct voluta_inode_info *ii)
 	return v_sbi_of(i_vi(ii));
 }
 
-static inline struct voluta_sb_info *sbi_of(struct voluta_env *env)
+static inline struct voluta_sb_info *sbi_of(struct voluta_fs_env *env)
 {
 	return env->sbi;
 }
@@ -251,7 +273,7 @@ avl_node_to_vi(const struct voluta_avl_node *an)
 {
 	const struct voluta_vnode_info *vi;
 
-	vi = container_of(an, struct voluta_vnode_info, v_dt_an);
+	vi = container_of2(an, struct voluta_vnode_info, v_dt_an);
 	return unconst(vi);
 }
 

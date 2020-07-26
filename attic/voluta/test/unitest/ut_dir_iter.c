@@ -15,360 +15,311 @@
  * GNU General Public License for more details.
  */
 #define _GNU_SOURCE 1
-#define VOLUTA_TEST 1
 #include "unitest.h"
 
-static void ut_dir_open_release(struct voluta_ut_ctx *ut_ctx)
+
+struct ut_readdir_ctx *ut_new_readdir_ctx(struct ut_env *ut_env)
 {
-	int err;
-	ino_t ino;
-	ino_t parent = ROOT_INO;
-	struct stat st;
-	const char *name = "d1";
+	struct ut_readdir_ctx *readdir_ctx;
 
-	err = voluta_ut_mkdir(ut_ctx, parent, name, 0700, &st);
-	ut_assert_ok(err);
-
-	err = voluta_ut_lookup(ut_ctx, parent, name, &st);
-	ut_assert_ok(err);
-
-	ino = st.st_ino;
-	err = voluta_ut_opendir(ut_ctx, ino);
-	ut_assert_ok(err);
-
-	err = voluta_ut_releasedir(ut_ctx, ino);
-	ut_assert_ok(err);
-
-	err = voluta_ut_rmdir(ut_ctx, parent, name);
-	ut_assert_ok(err);
-
-	err = voluta_ut_opendir(ut_ctx, ino);
-	ut_assert_err(err, -ENOENT);
-
-	err = voluta_ut_releasedir(ut_ctx, ino);
-	ut_assert_err(err, -ENOENT);
-}
-
-/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-
-struct voluta_ut_readdir_ctx *
-voluta_ut_new_readdir_ctx(struct voluta_ut_ctx *ut_ctx)
-{
-	struct voluta_ut_readdir_ctx *readdir_ctx;
-
-	readdir_ctx = voluta_ut_zerobuf(ut_ctx, sizeof(*readdir_ctx));
+	readdir_ctx = ut_zerobuf(ut_env, sizeof(*readdir_ctx));
 	return readdir_ctx;
 }
 
-static const char *make_name(struct voluta_ut_ctx *ut_ctx, size_t idx)
+
+static const struct ut_dirent_info *
+ut_find_not_dot(const struct ut_dirent_info *deis, size_t n, size_t start_pos)
 {
-	char name[UT_NAME_MAX + 1] = "";
-
-	snprintf(name, sizeof(name) - 1, "%lx", idx + 1);
-	return voluta_ut_strdup(ut_ctx, name);
-}
-
-static bool isname(const struct dirent64 *dent, const char *name)
-{
-	return !strcmp(dent->d_name, name);
-}
-
-static bool isdot(const struct dirent64 *dent)
-{
-	return isname(dent, ".");
-}
-
-static bool isdotdot(const struct dirent64 *dent)
-{
-	return isname(dent, "..");
-}
-
-static const struct dirent64 *
-find_first_not_dot(const struct dirent64 *dents, size_t n)
-{
-	const struct dirent64 *dent = dents;
-
-	for (size_t i = 0; i < n; ++i) {
-		if (!isdot(dent) && !isdotdot(dent)) {
-			return dent;
-		}
-		++dent;
-	}
-	return NULL;
-}
-
-static const struct dirent64 *
-find_any_not_dot(const struct dirent64 *dents, size_t n)
-{
-	size_t pos = n / 2;
-	const struct dirent64 *dent;
+	size_t pos = start_pos;
+	const struct ut_dirent_info *dei = NULL;
 
 	for (size_t i = 0; i < n; ++i) {
 		if (pos >= n) {
 			pos = 0;
 		}
-		dent = dents + pos;
-		if (!isdot(dent) && !isdotdot(dent)) {
-			return dent;
+		dei = deis + pos;
+		if (ut_not_dot_or_dotdot(dei->de.d_name)) {
+			break;
 		}
 		++pos;
+		dei = NULL;
 	}
-	return NULL;
+	ut_assert_not_null(dei);
+	return dei;
 }
 
-static const struct dirent64 *
-find_by_name(const struct dirent64 *dents, size_t n, const char *name)
+static const struct ut_dirent_info *
+ut_find_first_not_dot(const struct ut_dirent_info *dei, size_t n)
 {
-	const struct dirent64 *dent = dents;
-
-	while (n-- > 0) {
-		if (!isname(dent, name)) {
-			return dent;
-		}
-		++dent;
-	}
-	return NULL;
+	return ut_find_not_dot(dei, n, 0);
 }
 
-static void verify_iter_simple(struct voluta_ut_ctx *ut_ctx,
-			       const struct voluta_ut_readdir_ctx *readdir_ctx)
+static const struct ut_dirent_info *
+ut_find_any_not_dot(const struct ut_dirent_info *dei, size_t n)
 {
-	const char *name;
-	const struct dirent64 *dent;
-	const struct dirent64 *dents = readdir_ctx->dents;
-	const size_t ndents = readdir_ctx->ndents;
-
-	ut_assert_ge(readdir_ctx->ndents, 2);
-	ut_assert(isdot(&dents[0]));
-	ut_assert(isdotdot(&dents[1]));
-
-	for (size_t i = 0; i < ndents - 2; ++i) {
-		name = make_name(ut_ctx, i);
-		dent = find_by_name(dents, ndents, name);
-		ut_assert_notnull(dent);
-	}
+	return ut_find_not_dot(dei, n, n / 2);
 }
 
-static void ut_dir_iter_simple(struct voluta_ut_ctx *ut_ctx)
+static void ut_assert_name_exists(const struct ut_dirent_info *dei,
+				  size_t n, const char *name)
 {
-	int err;
-	ino_t dino;
-	ino_t root_ino = ROOT_INO;
-	const char *name;
-	const char *dirname = T_NAME;
+	bool name_exists = false;
+
+	while ((n-- > 0) && !name_exists) {
+		name_exists = (strcmp(dei->de.d_name, name) == 0);
+		++dei;
+	}
+	ut_assert(name_exists);
+}
+
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
+
+static void ut_dir_open_release(struct ut_env *ut_env)
+{
+	ino_t ino;
 	struct stat st;
-	struct voluta_ut_readdir_ctx *readdir_ctx;
-	const size_t count = ARRAY_SIZE(readdir_ctx->dents) - 2;
+	const char *name = UT_NAME;
+	const ino_t parent = UT_ROOT_INO;
 
-	readdir_ctx = voluta_ut_new_readdir_ctx(ut_ctx);
-	voluta_ut_mkdir_ok(ut_ctx, root_ino, dirname, &dino);
-	voluta_ut_opendir_ok(ut_ctx, dino);
+	ut_mkdir_ok(ut_env, parent, name, &st);
+	ut_lookup_ok(ut_env, parent, name, &st);
+	ino = st.st_ino;
+	ut_opendir_ok(ut_env, ino);
+	ut_releasedir_ok(ut_env, ino);
+	ut_rmdir_ok(ut_env, parent, name);
+	ut_opendir_err(ut_env, ino, -ENOENT);
+	ut_releasedir_err(ut_env, ino, -ENOENT);
+}
 
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
+
+static void ut_verify_iter_simple(struct ut_env *ut_env, const char *pre,
+				  const struct ut_readdir_ctx *rd_ctx)
+{
+	const char *name;
+	const struct ut_dirent_info *dei = rd_ctx->dei;
+
+	ut_assert_ge(rd_ctx->nde, 2);
+	ut_assert_eqs(dei[0].de.d_name, ".");
+	ut_assert_eqs(dei[1].de.d_name, "..");
+
+	for (size_t i = 0; i < rd_ctx->nde - 2; ++i) {
+		name = ut_make_name(ut_env, pre, i);
+		ut_assert_name_exists(dei, rd_ctx->nde, name);
+	}
+}
+
+static void ut_dir_iter_simple(struct ut_env *ut_env)
+{
+	ino_t dino;
+	struct stat st;
+	const char *name = NULL;
+	const char *dname = UT_NAME;
+	struct ut_readdir_ctx *rd_ctx = ut_new_readdir_ctx(ut_env);
+	const size_t count = UT_ARRAY_SIZE(rd_ctx->dei) - 2;
+
+	ut_mkdir_at_root(ut_env, dname, &dino);
+	ut_opendir_ok(ut_env, dino);
 	for (size_t i = 0; i < count; ++i) {
-		err = voluta_ut_readdir(ut_ctx, dino, 0, readdir_ctx);
-		ut_assert_ok(err);
-		ut_assert_eq(readdir_ctx->ndents, i + 2);
+		ut_readdir_ok(ut_env, dino, 0, rd_ctx);
+		ut_assert_eq(rd_ctx->nde, i + 2);
 
-		name = make_name(ut_ctx, i);
-		err = voluta_ut_mkdir(ut_ctx, dino, name, 0700, &st);
-		ut_assert_ok(err);
+		name = ut_make_name(ut_env, dname, i);
+		ut_mkdir_ok(ut_env, dino, name, &st);
+		ut_readdir_ok(ut_env, dino, 0, rd_ctx);
+		ut_assert_eq(rd_ctx->nde, i + 3);
 
-		err = voluta_ut_readdir(ut_ctx, dino, 0, readdir_ctx);
-		ut_assert_ok(err);
-		ut_assert_eq(readdir_ctx->ndents, i + 3);
-
-		err = voluta_ut_fsyncdir(ut_ctx, dino, true);
-		ut_assert_ok(err);
-
-		verify_iter_simple(ut_ctx, readdir_ctx);
+		ut_fsyncdir_ok(ut_env, dino);
+		ut_verify_iter_simple(ut_env, dname, rd_ctx);
 	}
 	for (size_t j = count; j > 0; --j) {
-		name = make_name(ut_ctx, j - 1);
-		err = voluta_ut_rmdir(ut_ctx, dino, name);
-		ut_assert_ok(err);
-
-		err = voluta_ut_readdir(ut_ctx, dino, 0, readdir_ctx);
-		ut_assert_ok(err);
-
-		verify_iter_simple(ut_ctx, readdir_ctx);
+		name = ut_make_name(ut_env, dname, j - 1);
+		ut_rmdir_ok(ut_env, dino, name);
+		ut_readdir_ok(ut_env, dino, 0, rd_ctx);
+		ut_verify_iter_simple(ut_env, dname, rd_ctx);
 	}
-	voluta_ut_releasedir_ok(ut_ctx, dino);
-	voluta_ut_rmdir_ok(ut_ctx, root_ino, dirname);
+	ut_releasedir_ok(ut_env, dino);
+	ut_rmdir_at_root(ut_env, dname);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_dir_iter_links_(struct voluta_ut_ctx *ut_ctx, size_t count)
+static void ut_dir_iter_links_(struct ut_env *ut_env, size_t count)
 {
-	int err;
 	loff_t doff;
-	size_t i, ndents;
-	ino_t ino, dino, dino2, root_ino = ROOT_INO;
+	ino_t ino;
+	ino_t dino;
+	ino_t dino2;
 	const char *lname = NULL;
-	const char *fname = T_NAME;
-	const char *dname = T_NAME;
+	const char *fname = UT_NAME;
+	const char *dname = UT_NAME;
 	const char *dname2 = "AAA";
+	const struct ut_dirent_info *dei;
+	struct ut_readdir_ctx *rd_ctx;
 	struct stat st;
-	const struct dirent64 *dirent = NULL;
-	struct voluta_ut_readdir_ctx *readdir_ctx;
 
 	/* TODO: Use comp wrappers */
-	err = voluta_ut_mkdir(ut_ctx, root_ino, dname, 0700, &st);
-	ut_assert_ok(err);
-	dino = st.st_ino;
-	err = voluta_ut_opendir(ut_ctx, dino);
-	ut_assert_ok(err);
-	err = voluta_ut_mkdir(ut_ctx, root_ino, dname2, 0700, &st);
-	ut_assert_ok(err);
-	dino2 = st.st_ino;
-	err = voluta_ut_opendir(ut_ctx, dino2);
-	ut_assert_ok(err);
-	err = voluta_ut_create(ut_ctx, dino2, fname, S_IFREG | 0600, &st);
-	ut_assert_ok(err);
-	ino = st.st_ino;
-	err = voluta_ut_release(ut_ctx, ino);
-	ut_assert_ok(err);
+	ut_mkdir_at_root(ut_env, dname, &dino);
+	ut_opendir_ok(ut_env, dino);
+	ut_mkdir_at_root(ut_env, dname2, &dino2);
+	ut_opendir_ok(ut_env, dino2);
+	ut_create_only(ut_env, dino2, fname, &ino);
 
-	readdir_ctx = voluta_ut_new_readdir_ctx(ut_ctx);
-	for (i = 0; i < count; ++i) {
-		lname = make_name(ut_ctx, i);
-		err = voluta_ut_link(ut_ctx, ino, dino, lname, &st);
-		ut_assert_ok(err);
+	rd_ctx = ut_new_readdir_ctx(ut_env);
+	for (size_t i = 0; i < count; ++i) {
+		lname = ut_make_name(ut_env, dname, i);
+		ut_link_ok(ut_env, ino, dino, lname, &st);
 		ut_assert_eq(ino, st.st_ino);
 		ut_assert_eq(i + 2, st.st_nlink);
-
-		err = voluta_ut_fsyncdir(ut_ctx, dino, true);
-		ut_assert_ok(err);
+		ut_fsyncdir_ok(ut_env, dino);
 	}
 
 	doff = 0;
-	for (i = 0; i < count; ++i) {
-		err = voluta_ut_readdir(ut_ctx, dino, doff, readdir_ctx);
-		ndents = readdir_ctx->ndents;
-		ut_assert_ok(err);
+	for (size_t i = 0; i < count; ++i) {
+		ut_readdir_ok(ut_env, dino, doff, rd_ctx);
+		ut_assert_gt(rd_ctx->nde, 0);
 
-		ut_assert_gt(ndents, 0);
-
-		dirent = find_first_not_dot(readdir_ctx->dents, ndents);
-		ut_assert_notnull(dirent);
-
-		err = voluta_ut_lookup(ut_ctx, dino, dirent->d_name, &st);
-		ut_assert_ok(err);
+		dei = ut_find_first_not_dot(rd_ctx->dei, rd_ctx->nde);
+		ut_lookup_ok(ut_env, dino, dei->de.d_name, &st);
 		ut_assert_eq(ino, st.st_ino);
 
-		doff = dirent->d_off + 1;
+		doff = dei->de.d_off + 1;
 	}
 
 	doff = 0;
-	for (i = 0; i < count; ++i) {
-		err = voluta_ut_readdir(ut_ctx, dino, doff, readdir_ctx);
-		ndents = readdir_ctx->ndents;
-		ut_assert_ok(err);
-		ut_assert_gt(ndents, 0);
+	for (size_t i = 0; i < count; ++i) {
+		ut_readdir_ok(ut_env, dino, doff, rd_ctx);
+		ut_assert_gt(rd_ctx->nde, 0);
 
-		dirent = find_first_not_dot(readdir_ctx->dents, ndents);
-		ut_assert_notnull(dirent);
-		err = voluta_ut_unlink(ut_ctx, dino, dirent->d_name);
-		ut_assert_ok(err);
-		err = voluta_ut_lookup(ut_ctx, dino, dirent->d_name, &st);
-		ut_assert_err(err, -ENOENT);
+		dei = ut_find_first_not_dot(rd_ctx->dei, rd_ctx->nde);
+		ut_unlink_ok(ut_env, dino, dei->de.d_name);
+		ut_lookup_noent(ut_env, dino, dei->de.d_name);
 
-		doff = dirent->d_off;
+		doff = dei->de.d_off;
 	}
 
-	err = voluta_ut_unlink(ut_ctx, dino2, fname);
-	ut_assert_ok(err);
-	err = voluta_ut_releasedir(ut_ctx, dino2);
-	ut_assert_ok(err);
-	err = voluta_ut_releasedir(ut_ctx, dino);
-	ut_assert_ok(err);
-	err = voluta_ut_rmdir(ut_ctx, root_ino, dname2);
-	ut_assert_ok(err);
-	err = voluta_ut_rmdir(ut_ctx, root_ino, dname);
-	ut_assert_ok(err);
+	ut_unlink_ok(ut_env, dino2, fname);
+	ut_releasedir_ok(ut_env, dino2);
+	ut_releasedir_ok(ut_env, dino);
+	ut_rmdir_at_root(ut_env, dname2);
+	ut_rmdir_at_root(ut_env, dname);
 }
 
-static void ut_dir_iter_links(struct voluta_ut_ctx *ut_ctx)
+static void ut_dir_iter_links(struct ut_env *ut_env)
 {
-	ut_dir_iter_links_(ut_ctx, 10);
-	ut_dir_iter_links_(ut_ctx, 100);
-	ut_dir_iter_links_(ut_ctx, 1000);
-	ut_dir_iter_links_(ut_ctx, 10000);
+	ut_dir_iter_links_(ut_env, 10);
+	ut_dir_iter_links_(ut_env, 100);
+	ut_dir_iter_links_(ut_env, 1000);
+	ut_dir_iter_links_(ut_env, 10000);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_dir_iter_unlink_(struct voluta_ut_ctx *ut_ctx, size_t count)
+static void ut_dir_iter_unlink_(struct ut_env *ut_env, size_t count)
 {
-	int err;
 	loff_t doff = 0;
 	size_t ndents;
 	ino_t ino;
 	ino_t dino;
-	const ino_t root_ino = ROOT_INO;
-	mode_t mode = S_IFREG | 0600;
 	const char *fname = NULL;
-	const char *dname = T_NAME;
+	const char *dname = UT_NAME;
 	struct stat st;
-	const struct dirent64 *dirent1 = NULL;
-	const struct dirent64 *dirent2 = NULL;
-	struct voluta_ut_readdir_ctx *readdir_ctx;
+	const struct ut_dirent_info *dei = NULL;
+	struct ut_readdir_ctx *rd_ctx = ut_new_readdir_ctx(ut_env);
 
-	voluta_ut_mkdir_ok(ut_ctx, root_ino, dname, &dino);
-	voluta_ut_opendir_ok(ut_ctx, dino);
+	ut_mkdir_at_root(ut_env, dname, &dino);
+	ut_opendir_ok(ut_env, dino);
 
 	for (size_t i = 0; i < count; ++i) {
-		fname = make_name(ut_ctx, i);
-		err = voluta_ut_create(ut_ctx, dino, fname, mode, &st);
-		ut_assert_ok(err);
-		ino = st.st_ino;
-
-		err = voluta_ut_release(ut_ctx, ino);
-		ut_assert_ok(err);
+		fname = ut_make_name(ut_env, dname, i);
+		ut_create_only(ut_env, dino, fname, &ino);
 	}
-
-	readdir_ctx = voluta_ut_new_readdir_ctx(ut_ctx);
 	for (size_t i = 0; i < count; ++i) {
-		err = voluta_ut_readdir(ut_ctx, dino, doff, readdir_ctx);
-		ndents = readdir_ctx->ndents;
-		ut_assert_ok(err);
+		ut_readdir_ok(ut_env, dino, doff, rd_ctx);
+		ndents = rd_ctx->nde;
 		ut_assert_gt(ndents, 0);
 
-		dirent1 = find_first_not_dot(readdir_ctx->dents, ndents);
-		ut_assert_notnull(dirent1);
+		dei = ut_find_any_not_dot(rd_ctx->dei, ndents);
+		ut_lookup_ok(ut_env, dino, dei->de.d_name, &st);
+		ut_unlink_ok(ut_env, dino, dei->de.d_name);
 
-		dirent2 = find_any_not_dot(readdir_ctx->dents, ndents);
-		ut_assert_notnull(dirent2);
-
-		err = voluta_ut_lookup(ut_ctx, dino, dirent2->d_name, &st);
-		ut_assert_ok(err);
-
-		err = voluta_ut_unlink(ut_ctx, dino, dirent2->d_name);
-		ut_assert_ok(err);
-
-		err = voluta_ut_lookup(ut_ctx, dino, dirent2->d_name, &st);
-		ut_assert_err(err, -ENOENT);
-
-		doff = dirent1->d_off;
+		dei = ut_find_first_not_dot(rd_ctx->dei, ndents);
+		doff = dei->de.d_off;
 	}
 
-	voluta_ut_releasedir_ok(ut_ctx, dino);
-	voluta_ut_rmdir_ok(ut_ctx, root_ino, dname);
+	ut_releasedir_ok(ut_env, dino);
+	ut_rmdir_at_root(ut_env, dname);
 }
 
-static void ut_dir_iter_unlink(struct voluta_ut_ctx *ut_ctx)
+static void ut_dir_iter_unlink(struct ut_env *ut_env)
 {
-	ut_dir_iter_unlink_(ut_ctx, 10000);
+	ut_dir_iter_unlink_(ut_env, 10000);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static const struct voluta_ut_testdef ut_local_tests[] = {
+static void ut_dir_iter_plus_(struct ut_env *ut_env, size_t count)
+{
+	ino_t ino;
+	ino_t dino;
+	uint8_t x = 1;
+	loff_t doff = 0;
+	struct stat st;
+	const char *name = NULL;
+	const char *dname = UT_NAME;
+	const struct ut_dirent_info *dei;
+	struct ut_readdir_ctx *rd_ctx = ut_new_readdir_ctx(ut_env);
+
+	/* TODO: Use comp wrappers */
+	ut_mkdir_at_root(ut_env, dname, &dino);
+	ut_opendir_ok(ut_env, dino);
+
+	for (size_t i = 0; i < count; ++i) {
+		name = ut_make_name(ut_env, dname, i);
+		ut_create_file(ut_env, dino, name, &ino);
+		ut_write_read(ut_env, ino, &x, 1, (loff_t)i);
+		ut_release_file(ut_env, ino);
+	}
+	doff = 0;
+	for (size_t i = 0; i < count; ++i) {
+		ut_readdirplus_ok(ut_env, dino, doff, rd_ctx);
+		ut_assert_gt(rd_ctx->nde, 0);
+
+		dei = ut_find_first_not_dot(rd_ctx->dei, rd_ctx->nde);
+		ut_lookup_ok(ut_env, dino, dei->de.d_name, &st);
+		ut_assert_gt(dei->attr.st_size, 0);
+		ut_assert_eq(dei->attr.st_size, st.st_size);
+		ut_assert_eq(dei->attr.st_mode, st.st_mode);
+		doff = dei->de.d_off + 1;
+	}
+	doff = 0;
+	for (size_t i = 0; i < count; ++i) {
+		ut_readdirplus_ok(ut_env, dino, doff, rd_ctx);
+		ut_assert_gt(rd_ctx->nde, 0);
+
+		dei = ut_find_first_not_dot(rd_ctx->dei, rd_ctx->nde);
+		ut_unlink_ok(ut_env, dino, dei->de.d_name);
+		doff = dei->de.d_off;
+	}
+	ut_releasedir_ok(ut_env, dino);
+	ut_rmdir_at_root(ut_env, dname);
+}
+
+static void ut_dir_iter_plus(struct ut_env *ut_env)
+{
+	ut_dir_iter_plus_(ut_env, 10);
+	ut_dir_iter_plus_(ut_env, 100);
+	ut_dir_iter_plus_(ut_env, 1000);
+}
+
+/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
+
+static const struct ut_testdef ut_local_tests[] = {
 	UT_DEFTEST(ut_dir_open_release),
 	UT_DEFTEST(ut_dir_iter_simple),
 	UT_DEFTEST(ut_dir_iter_links),
 	UT_DEFTEST(ut_dir_iter_unlink),
+	UT_DEFTEST(ut_dir_iter_plus),
 };
 
-const struct voluta_ut_tests voluta_ut_test_dir_iter =
-	VOLUTA_UT_MKTESTS(ut_local_tests);
+const struct ut_tests ut_test_dir_iter = UT_MKTESTS(ut_local_tests);

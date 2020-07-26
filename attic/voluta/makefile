@@ -9,7 +9,7 @@
 #
 #  $ make V=1 clean
 #
-# If you want to build in seperate 'build' directory, try:
+# If you want to build in separate 'build' directory, try:
 #
 #  $ make -C <build-dir> VPATH=$(pwd) -f $(pwd)/makefile <make-rule>
 #
@@ -87,9 +87,10 @@ CFLAGS += -Wunknown-pragmas -Wunused-macros -Wendif-labels
 CFLAGS += -Wvla -Waddress -Woverlength-strings -Wconversion -Wsign-conversion
 CFLAGS += -Wunreachable-code -Wwrite-strings -Wlarger-than=4096
 CFLAGS += -Wframe-larger-than=4096 -Wmissing-field-initializers
-CFLAGS += -Wstrict-aliasing=2 -Warray-bounds -Wpadded
+CFLAGS += -Wstrict-aliasing=2 -Warray-bounds -Winline -Wcast-qual
 CFLAGS += -fPIC -fwrapv -fstrict-aliasing
 CFLAGS += -fstack-protector -fstack-protector-strong # -fstack-check
+# CFLAGS += -Wpadded
 
 # C-Dialect compilation flags
 CFLAGS += -Wbad-function-cast -Wmissing-prototypes -Waggregate-return

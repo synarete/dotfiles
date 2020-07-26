@@ -15,29 +15,22 @@
  * GNU General Public License for more details.
  */
 #define _GNU_SOURCE 1
-#define VOLUTA_TEST 1
 #include "unitest.h"
 
 
-static char *make_name(struct voluta_ut_ctx *ut_ctx, const char *prefix,
-		       size_t idx)
+static const char *make_symname(struct ut_env *ut_env, size_t idx)
 {
-	return ut_strfmt(ut_ctx, "%s-%ld", prefix, (long)idx);
+	return ut_make_name(ut_env, "symlink", idx);
 }
 
-static const char *make_symname(struct voluta_ut_ctx *ut_ctx, size_t idx)
-{
-	return make_name(ut_ctx, "symlink", idx);
-}
-
-static char *make_symval(struct voluta_ut_ctx *ut_ctx, char c, size_t len)
+static char *make_symval(struct ut_env *ut_env, char c, size_t len)
 {
 	char *val;
 	const size_t vsz = VOLUTA_PATH_MAX;
-	const size_t name_max = VOLUTA_NAME_MAX;
+	const size_t name_max = UT_NAME_MAX;
 
 	ut_assert_lt(len, vsz);
-	val = voluta_ut_zerobuf(ut_ctx, vsz);
+	val = ut_zerobuf(ut_env, vsz);
 	for (size_t i = 0; i < len; ++i) {
 		if (i % name_max) {
 			val[i] = c;
@@ -50,272 +43,260 @@ static char *make_symval(struct voluta_ut_ctx *ut_ctx, char c, size_t len)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_symlink_simple(struct voluta_ut_ctx *ut_ctx)
+static void ut_symlink_simple(struct ut_env *ut_env)
 {
 	ino_t dino;
 	ino_t tino;
 	ino_t sino;
-	const ino_t root_ino = ROOT_INO;
-	const char *dname = T_NAME;
+	const char *dname = UT_NAME;
 	const char *tname = "target";
 	const char *sname = "symlink";
 
-	voluta_ut_mkdir_ok(ut_ctx, root_ino, dname, &dino);
-	voluta_ut_mkdir_ok(ut_ctx, dino, tname, &tino);
-	voluta_ut_create_symlink(ut_ctx, dino, sname, tname, &sino);
-	voluta_ut_lookup_exists(ut_ctx, dino, sname, sino, S_IFLNK);
-	voluta_ut_readlink_expect(ut_ctx, sino, tname);
-	voluta_ut_rmdir_ok(ut_ctx, dino, tname);
-	voluta_ut_lookup_exists(ut_ctx, dino, sname, sino, S_IFLNK);
-	voluta_ut_readlink_expect(ut_ctx, sino, tname);
-	voluta_ut_rmdir_enotempty(ut_ctx, root_ino, dname);
-	voluta_ut_unlink_exists(ut_ctx, dino, sname);
-	voluta_ut_rmdir_ok(ut_ctx, root_ino, dname);
+	ut_mkdir_at_root(ut_env, dname, &dino);
+	ut_mkdir_oki(ut_env, dino, tname, &tino);
+	ut_symlink_ok(ut_env, dino, sname, tname, &sino);
+	ut_lookup_exists(ut_env, dino, sname, sino, S_IFLNK);
+	ut_readlink_expect(ut_env, sino, tname);
+	ut_rmdir_ok(ut_env, dino, tname);
+	ut_lookup_exists(ut_env, dino, sname, sino, S_IFLNK);
+	ut_readlink_expect(ut_env, sino, tname);
+	ut_rmdir_err(ut_env, UT_ROOT_INO, dname, -ENOTEMPTY);
+	ut_unlink_ok(ut_env, dino, sname);
+	ut_rmdir_at_root(ut_env, dname);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_symlink_length(struct voluta_ut_ctx *ut_ctx)
+static void ut_symlink_length(struct ut_env *ut_env)
 {
 	ino_t dino;
 	ino_t sino;
-	const ino_t root_ino = ROOT_INO;
-	const char *dname = T_NAME;
+	const ino_t root_ino = UT_ROOT_INO;
+	const char *dname = UT_NAME;
 	const char *tname;
 	const char *sname;
 	const size_t nlinks = VOLUTA_PATH_MAX - 1;
 
-	voluta_ut_mkdir_ok(ut_ctx, root_ino, dname, &dino);
+	ut_mkdir_oki(ut_env, root_ino, dname, &dino);
 	for (size_t i = 1; i <= nlinks; ++i) {
-		sname = make_symname(ut_ctx, i);
-		tname = make_symval(ut_ctx, 'A', i);
-		voluta_ut_create_symlink(ut_ctx, dino, sname, tname, &sino);
+		sname = make_symname(ut_env, i);
+		tname = make_symval(ut_env, 'A', i);
+		ut_symlink_ok(ut_env, dino, sname, tname, &sino);
 	}
-	voluta_ut_rmdir_enotempty(ut_ctx, root_ino, dname);
+	ut_rmdir_err(ut_env, root_ino, dname, -ENOTEMPTY);
 	for (size_t j = 1; j <= nlinks; ++j) {
-		sname = make_symname(ut_ctx, j);
-		voluta_ut_unlink_exists(ut_ctx, dino, sname);
+		sname = make_symname(ut_env, j);
+		ut_unlink_ok(ut_env, dino, sname);
 	}
-	voluta_ut_rmdir_ok(ut_ctx, root_ino, dname);
+	ut_rmdir_ok(ut_env, root_ino, dname);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_symlink_nested(struct voluta_ut_ctx *ut_ctx)
+static void ut_symlink_nested(struct ut_env *ut_env)
 {
 	ino_t sino;
 	ino_t dino[128];
 	const char *sname[128];
-	const char *dname = T_NAME;
+	const char *dname = UT_NAME;
 	struct stat st;
 
-	dino[0] = ROOT_INO;
-	for (size_t i = 1; i < ARRAY_SIZE(dino); ++i) {
-		voluta_ut_mkdir_ok(ut_ctx, dino[i - 1], dname, &dino[i]);
-		sname[i] = make_symname(ut_ctx, 8 * i);
-		voluta_ut_create_symlink(ut_ctx, dino[i], sname[i],
-					 make_symval(ut_ctx, 'z', i), &sino);
-		voluta_ut_rmdir_enotempty(ut_ctx, dino[i - 1], dname);
+	dino[0] = UT_ROOT_INO;
+	for (size_t i = 1; i < UT_ARRAY_SIZE(dino); ++i) {
+		ut_mkdir_oki(ut_env, dino[i - 1], dname, &dino[i]);
+		sname[i] = make_symname(ut_env, 8 * i);
+		ut_symlink_ok(ut_env, dino[i], sname[i],
+			      make_symval(ut_env, 'z', i), &sino);
+		ut_rmdir_err(ut_env, dino[i - 1], dname, -ENOTEMPTY);
 	}
-	for (size_t j = ARRAY_SIZE(dino); j > 1; --j) {
-		voluta_ut_unlink_exists(ut_ctx, dino[j - 1], sname[j - 1]);
-		voluta_ut_rmdir_ok(ut_ctx, dino[j - 2], dname);
+	for (size_t j = UT_ARRAY_SIZE(dino); j > 1; --j) {
+		ut_unlink_ok(ut_env, dino[j - 1], sname[j - 1]);
+		ut_rmdir_ok(ut_env, dino[j - 2], dname);
 	}
-	voluta_ut_getattr_exists(ut_ctx, dino[0], &st);
+	ut_getattr_ok(ut_env, dino[0], &st);
 	ut_assert_eq(st.st_size, VOLUTA_DIR_EMPTY_SIZE);
 	ut_assert_eq(st.st_nlink, 2);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static const char *make_regname(struct voluta_ut_ctx *ut_ctx, size_t idx)
-{
-	size_t len;
-	char prefix[VOLUTA_NAME_MAX + 1] = "reg";
-
-	for (size_t i = 0; i < idx; ++i) {
-		len = strlen(prefix);
-		if (len < (sizeof(prefix) - 1)) {
-			prefix[len] = '-';
-			prefix[len + 1] = '\0';
-		}
-	}
-	return make_name(ut_ctx, prefix, idx);
-}
-
-static void ut_symlink_to_reg(struct voluta_ut_ctx *ut_ctx)
+static void ut_symlink_to_reg_(struct ut_env *ut_env, size_t cnt)
 {
 	ino_t dino;
 	ino_t ino;
 	ino_t sino;
-	const ino_t root_ino = ROOT_INO;
-	const char *dname = T_NAME;
+	const char *dname = UT_NAME;
 	const char *fname;
 	const char *sname;
-	const size_t cnt = 128;
 
-	voluta_ut_mkdir_ok(ut_ctx, root_ino, dname, &dino);
+	ut_mkdir_at_root(ut_env, dname, &dino);
 	for (size_t i = 0; i < cnt; ++i) {
-		sname = make_symname(ut_ctx, i);
-		fname = make_regname(ut_ctx, i);
-		voluta_ut_create_only(ut_ctx, dino, fname, &ino);
-		voluta_ut_create_symlink(ut_ctx, dino, sname, fname, &sino);
+		sname = make_symname(ut_env, i);
+		fname = ut_make_name(ut_env, dname, i);
+		ut_create_only(ut_env, dino, fname, &ino);
+		ut_symlink_ok(ut_env, dino, sname, fname, &sino);
 	}
 	for (size_t i = 0; i < cnt; ++i) {
-		sname = make_symname(ut_ctx, i);
-		fname = make_regname(ut_ctx, i);
-		voluta_ut_lookup_ok(ut_ctx, dino, sname, &sino);
-		voluta_ut_lookup_lnk(ut_ctx, dino, sname, sino);
-		voluta_ut_readlink_expect(ut_ctx, sino, fname);
-		voluta_ut_unlink_exists(ut_ctx, dino, sname);
+		sname = make_symname(ut_env, i);
+		fname = ut_make_name(ut_env, dname, i);
+		ut_lookup_ino(ut_env, dino, sname, &sino);
+		ut_lookup_lnk(ut_env, dino, sname, sino);
+		ut_readlink_expect(ut_env, sino, fname);
+		ut_unlink_ok(ut_env, dino, sname);
 	}
 	for (size_t i = 0; i < cnt; ++i) {
-		fname = make_regname(ut_ctx, i);
-		voluta_ut_unlink_exists(ut_ctx, dino, fname);
+		fname = ut_make_name(ut_env, dname, i);
+		ut_unlink_ok(ut_env, dino, fname);
 	}
-	voluta_ut_rmdir_ok(ut_ctx, root_ino, dname);
+	ut_rmdir_at_root(ut_env, dname);
+}
+
+static void ut_symlink_to_reg(struct ut_env *ut_env)
+{
+	ut_symlink_to_reg_(ut_env, 64);
+	ut_symlink_to_reg_(ut_env, 1024);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static char *make_asymval(struct voluta_ut_ctx *ut_ctx, size_t len)
+static char *ut_make_asymval(struct ut_env *ut_env, size_t len)
 {
 	const char *abc = "abcdefghijklmnopqrstuvwxyz";
 
-	return make_symval(ut_ctx, abc[strlen(abc) % len], len);
+	return make_symval(ut_env, abc[strlen(abc) % len], len);
 }
 
-static void ut_symlink_and_io_(struct voluta_ut_ctx *ut_ctx, size_t cnt)
+static void ut_symlink_and_io_(struct ut_env *ut_env, size_t cnt)
 {
 	loff_t off;
 	ino_t dino;
 	ino_t fino;
 	ino_t sino;
-	char *fname;
-	char *sname;
 	char *symval;
+	const char *fname = NULL;
+	const char *sname = NULL;
 	const char *fp = "f";
 	const char *sp = "s";
-	const char *dname = T_NAME;
+	const char *dname = UT_NAME;
 
-	voluta_ut_mkdir_at_root(ut_ctx, dname, &dino);
+	ut_mkdir_at_root(ut_env, dname, &dino);
 	for (size_t i = 0; i < cnt; ++i) {
-		sname = make_name(ut_ctx, sp, i);
-		fname = make_name(ut_ctx, fp, i);
-		symval = make_asymval(ut_ctx, i + 1);
-		voluta_ut_create_file(ut_ctx, dino, fname, &fino);
-		voluta_ut_create_symlink(ut_ctx, dino, sname, symval, &sino);
+		sname = ut_make_name(ut_env, sp, i);
+		fname = ut_make_name(ut_env, fp, i);
+		symval = ut_make_asymval(ut_env, i + 1);
+		ut_create_file(ut_env, dino, fname, &fino);
+		ut_symlink_ok(ut_env, dino, sname, symval, &sino);
 
-		off = (loff_t)(i * UMEGA + i);
-		voluta_ut_write_read_str(ut_ctx, fino, symval, off);
+		off = (loff_t)(i * UT_UMEGA + i);
+		ut_write_read_str(ut_env, fino, symval, off);
 	}
 	for (size_t i = 0; i < cnt; ++i) {
-		sname = make_name(ut_ctx, sp, i);
-		fname = make_name(ut_ctx, fp, i);
-		symval = make_asymval(ut_ctx, i + 1);
-		voluta_ut_lookup_ok(ut_ctx, dino, sname, &sino);
-		voluta_ut_readlink_expect(ut_ctx, sino, symval);
+		sname = ut_make_name(ut_env, sp, i);
+		fname = ut_make_name(ut_env, fp, i);
+		symval = ut_make_asymval(ut_env, i + 1);
+		ut_lookup_ino(ut_env, dino, sname, &sino);
+		ut_readlink_expect(ut_env, sino, symval);
 
-		voluta_ut_lookup_ok(ut_ctx, dino, fname, &fino);
-		off = (loff_t)(i * UMEGA + i);
-		voluta_ut_read_verify_str(ut_ctx, fino, symval, off);
+		ut_lookup_ino(ut_env, dino, fname, &fino);
+		off = (loff_t)(i * UT_UMEGA + i);
+		ut_read_verify_str(ut_env, fino, symval, off);
 	}
 	for (size_t i = 0; i < cnt; ++i) {
-		sname = make_name(ut_ctx, sp, i);
-		fname = make_name(ut_ctx, fp, i);
+		sname = ut_make_name(ut_env, sp, i);
+		fname = ut_make_name(ut_env, fp, i);
 
-		voluta_ut_lookup_ok(ut_ctx, dino, fname, &fino);
-		voluta_ut_release_file(ut_ctx, fino);
-		voluta_ut_unlink_exists(ut_ctx, dino, sname);
-		voluta_ut_unlink_exists(ut_ctx, dino, fname);
+		ut_lookup_ino(ut_env, dino, fname, &fino);
+		ut_release_file(ut_env, fino);
+		ut_unlink_ok(ut_env, dino, sname);
+		ut_unlink_ok(ut_env, dino, fname);
 	}
-	voluta_ut_rmdir_at_root(ut_ctx, dname);
+	ut_rmdir_at_root(ut_env, dname);
 }
 
-static void ut_symlink_and_io(struct voluta_ut_ctx *ut_ctx)
+static void ut_symlink_and_io(struct ut_env *ut_env)
 {
-	ut_symlink_and_io_(ut_ctx, 100);
-	ut_symlink_and_io_(ut_ctx, 4000);
+	ut_symlink_and_io_(ut_env, 100);
+	ut_symlink_and_io_(ut_env, 4000);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_symlink_and_io2_(struct voluta_ut_ctx *ut_ctx, size_t cnt)
+static void ut_symlink_and_io2_(struct ut_env *ut_env, size_t cnt)
 {
 	loff_t off;
 	ino_t dino;
 	ino_t fino;
 	ino_t sino;
-	char *fname;
-	char *sname;
 	char *symval;
-	const char *dname = T_NAME;
+	const char *fname = NULL;
+	const char *sname = NULL;
+	const char *dname = UT_NAME;
 	const char *ff = "ff";
 	const char *s1 = "s1";
 	const char *s2 = "s2";
-	const ino_t root_ino = ROOT_INO;
+	const ino_t root_ino = UT_ROOT_INO;
 
-	voluta_ut_mkdir_ok(ut_ctx, root_ino, dname, &dino);
+	ut_mkdir_oki(ut_env, root_ino, dname, &dino);
 	for (size_t i = 0; i < cnt; ++i) {
-		sname = make_name(ut_ctx, s1, i);
-		fname = make_name(ut_ctx, ff, i);
-		symval = make_asymval(ut_ctx, cnt);
-		voluta_ut_create_file(ut_ctx, dino, fname, &fino);
-		voluta_ut_create_symlink(ut_ctx, dino, sname, symval, &sino);
+		sname = ut_make_name(ut_env, s1, i);
+		fname = ut_make_name(ut_env, ff, i);
+		symval = ut_make_asymval(ut_env, cnt);
+		ut_create_file(ut_env, dino, fname, &fino);
+		ut_symlink_ok(ut_env, dino, sname, symval, &sino);
 
 		off = (loff_t)(i * cnt);
-		voluta_ut_write_read_str(ut_ctx, fino, symval, off);
-		voluta_ut_release_file(ut_ctx, fino);
+		ut_write_read_str(ut_env, fino, symval, off);
+		ut_release_file(ut_env, fino);
 	}
-	voluta_ut_drop_caches_fully(ut_ctx);
+	ut_drop_caches_fully(ut_env);
 	for (size_t j = cnt; j > 0; --j) {
-		sname = make_name(ut_ctx, s1, j - 1);
-		fname = make_name(ut_ctx, ff, j - 1);
-		symval = make_asymval(ut_ctx, cnt);
-		voluta_ut_lookup_ok(ut_ctx, dino, sname, &sino);
-		voluta_ut_readlink_expect(ut_ctx, sino, symval);
-		voluta_ut_lookup_ok(ut_ctx, dino, fname, &fino);
+		sname = ut_make_name(ut_env, s1, j - 1);
+		fname = ut_make_name(ut_env, ff, j - 1);
+		symval = ut_make_asymval(ut_env, cnt);
+		ut_lookup_ino(ut_env, dino, sname, &sino);
+		ut_readlink_expect(ut_env, sino, symval);
+		ut_lookup_ino(ut_env, dino, fname, &fino);
 
-		voluta_ut_open_rdonly(ut_ctx, fino);
+		ut_open_rdonly(ut_env, fino);
 		off = (loff_t)((j - 1) * cnt);
-		voluta_ut_read_verify_str(ut_ctx, fino, symval, off);
-		voluta_ut_release_file(ut_ctx, fino);
-		voluta_ut_unlink_exists(ut_ctx, dino, fname);
+		ut_read_verify_str(ut_env, fino, symval, off);
+		ut_release_file(ut_env, fino);
+		ut_unlink_ok(ut_env, dino, fname);
 
-		sname = make_name(ut_ctx, s2, j - 1);
-		voluta_ut_create_symlink(ut_ctx, dino, sname, symval, &sino);
+		sname = ut_make_name(ut_env, s2, j - 1);
+		ut_symlink_ok(ut_env, dino, sname, symval, &sino);
 	}
-	voluta_ut_drop_caches_fully(ut_ctx);
+	ut_drop_caches_fully(ut_env);
 	for (size_t i = 0; i < cnt; ++i) {
-		fname = make_name(ut_ctx, ff, i);
-		voluta_ut_create_only(ut_ctx, dino, fname, &fino);
-		sname = make_name(ut_ctx, s1, i);
-		voluta_ut_unlink_exists(ut_ctx, dino, sname);
-		voluta_ut_lookup_file(ut_ctx, dino, fname, fino);
+		fname = ut_make_name(ut_env, ff, i);
+		ut_create_only(ut_env, dino, fname, &fino);
+		sname = ut_make_name(ut_env, s1, i);
+		ut_unlink_ok(ut_env, dino, sname);
+		ut_lookup_file(ut_env, dino, fname, fino);
 	}
-	voluta_ut_drop_caches_fully(ut_ctx);
+	ut_drop_caches_fully(ut_env);
 	for (size_t i = 0; i < cnt; ++i) {
-		fname = make_name(ut_ctx, ff, i);
-		sname = make_name(ut_ctx, s2, i);
-		voluta_ut_unlink_exists(ut_ctx, dino, sname);
-		voluta_ut_unlink_exists(ut_ctx, dino, fname);
+		fname = ut_make_name(ut_env, ff, i);
+		sname = ut_make_name(ut_env, s2, i);
+		ut_unlink_ok(ut_env, dino, sname);
+		ut_unlink_ok(ut_env, dino, fname);
 	}
-	voluta_ut_rmdir_ok(ut_ctx, root_ino, dname);
+	ut_rmdir_ok(ut_env, root_ino, dname);
 }
 
-static void ut_symlink_and_io2(struct voluta_ut_ctx *ut_ctx)
+static void ut_symlink_and_io2(struct ut_env *ut_env)
 {
-	ut_symlink_and_io2_(ut_ctx, 1);
-	ut_symlink_and_io2_(ut_ctx, 2);
-	ut_symlink_and_io2_(ut_ctx, 11);
+	ut_symlink_and_io2_(ut_env, 1);
+	ut_symlink_and_io2_(ut_env, 2);
+	ut_symlink_and_io2_(ut_env, 11);
 
-	ut_symlink_and_io2_(ut_ctx, 111);
-	ut_symlink_and_io2_(ut_ctx, 1111);
+	ut_symlink_and_io2_(ut_env, 111);
+	ut_symlink_and_io2_(ut_env, 1111);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static const struct voluta_ut_testdef ut_local_tests[] = {
+static const struct ut_testdef ut_local_tests[] = {
 	UT_DEFTEST(ut_symlink_simple),
 	UT_DEFTEST(ut_symlink_length),
 	UT_DEFTEST(ut_symlink_nested),
@@ -324,5 +305,4 @@ static const struct voluta_ut_testdef ut_local_tests[] = {
 	UT_DEFTEST(ut_symlink_and_io2),
 };
 
-const struct voluta_ut_tests voluta_ut_test_symlink =
-	UT_MKTESTS(ut_local_tests);
+const struct ut_tests ut_test_symlink = UT_MKTESTS(ut_local_tests);

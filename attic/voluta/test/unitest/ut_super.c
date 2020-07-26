@@ -15,53 +15,38 @@
  * GNU General Public License for more details.
  */
 #define _GNU_SOURCE 1
-#define VOLUTA_TEST 1
 #include "unitest.h"
 
 
-
-static void ut_rootd_getattr(struct voluta_ut_ctx *ut_ctx)
+static void ut_rootd_getattr(struct ut_env *ut_env)
 {
-	int err;
-	const ino_t ino = ROOT_INO;
 	struct stat st;
 
-	err = voluta_ut_getattr(ut_ctx, ino, &st);
-	ut_assert_ok(err);
-
-	ut_assert_eq(ino, st.st_ino);
+	ut_getattr_ok(ut_env, UT_ROOT_INO, &st);
 	ut_assert(S_ISDIR(st.st_mode));
 	ut_assert_eq(st.st_size, VOLUTA_DIR_EMPTY_SIZE);
 	ut_assert_eq(st.st_nlink, 2);
 }
 
-static void ut_rootd_access(struct voluta_ut_ctx *ut_ctx)
+static void ut_rootd_access(struct ut_env *ut_env)
 {
-	int err;
-	const ino_t ino = ROOT_INO;
-
-	err = voluta_ut_access(ut_ctx, ino, R_OK);
-	ut_assert_ok(err);
-
-	err = voluta_ut_access(ut_ctx, ino, X_OK);
-	ut_assert_ok(err);
+	ut_access_ok(ut_env, UT_ROOT_INO, R_OK);
+	ut_access_ok(ut_env, UT_ROOT_INO, X_OK);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_statfs_empty(struct voluta_ut_ctx *ut_ctx)
+static void ut_statfs_empty(struct ut_env *ut_env)
 {
-	int err;
 	size_t fs_size;
 	size_t used_bytes;
 	size_t used_files;
-	const size_t vol_size = (size_t)(ut_ctx->volume_size);
+	const size_t vol_size = (size_t)(ut_env->volume_size);
 	const size_t ag_size = VOLUTA_AG_SIZE;
 	struct statvfs stv;
 
-	err = voluta_ut_statfs(ut_ctx, ROOT_INO, &stv);
-	ut_assert_ok(err);
-	ut_assert_eq(stv.f_frsize, VOLUTA_DS_SIZE);
+	ut_statfs_ok(ut_env, UT_ROOT_INO, &stv);
+	ut_assert_eq(stv.f_frsize, UT_BK_SIZE);
 	ut_assert_gt(stv.f_blocks, 0);
 	ut_assert_gt(stv.f_blocks, stv.f_bfree);
 	ut_assert_gt(stv.f_files, stv.f_ffree);
@@ -79,54 +64,53 @@ static void ut_statfs_empty(struct voluta_ut_ctx *ut_ctx)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_statfs_files_(struct voluta_ut_ctx *ut_ctx, size_t cnt)
+static void ut_statfs_files_(struct ut_env *ut_env, size_t cnt)
 {
 	ino_t ino;
 	ino_t dino;
 	fsfilcnt_t ffree;
-	const char *dname = T_NAME;
+	const char *dname = UT_NAME;
 	const char *fname = NULL;
 	struct statvfs stv;
 
-	voluta_ut_mkdir_at_root(ut_ctx, dname, &dino);
-	voluta_ut_statfs_ok(ut_ctx, dino, &stv);
+	ut_mkdir_at_root(ut_env, dname, &dino);
+	ut_statfs_ok(ut_env, dino, &stv);
 	ffree = stv.f_ffree;
 	ut_assert_gt(ffree, cnt);
 	for (size_t i = 0; i < cnt; ++i) {
-		fname = ut_make_name(ut_ctx, dname, i);
-		voluta_ut_create_only(ut_ctx, dino, fname, &ino);
-		voluta_ut_statfs_ok(ut_ctx, dino, &stv);
+		fname = ut_make_name(ut_env, dname, i);
+		ut_create_only(ut_env, dino, fname, &ino);
+		ut_statfs_ok(ut_env, dino, &stv);
 		ut_assert_eq(ffree, stv.f_ffree + 1);
 		ffree = stv.f_ffree;
 	}
-	voluta_ut_statfs_ok(ut_ctx, dino, &stv);
+	ut_statfs_ok(ut_env, dino, &stv);
 	ffree = stv.f_ffree;
 	ut_assert_gt(ffree, 0);
 	for (size_t i = 0; i < cnt; ++i) {
-		fname = ut_make_name(ut_ctx, dname, i);
-		voluta_ut_unlink_file(ut_ctx, dino, fname);
-		voluta_ut_statfs_ok(ut_ctx, dino, &stv);
+		fname = ut_make_name(ut_env, dname, i);
+		ut_unlink_file(ut_env, dino, fname);
+		ut_statfs_ok(ut_env, dino, &stv);
 		ut_assert_eq(ffree + 1, stv.f_ffree);
 		ffree = stv.f_ffree;
 	}
-	voluta_ut_rmdir_at_root(ut_ctx, dname);
+	ut_rmdir_at_root(ut_env, dname);
 }
 
-static void ut_statfs_files(struct voluta_ut_ctx *ut_ctx)
+static void ut_statfs_files(struct ut_env *ut_env)
 {
-	ut_statfs_files_(ut_ctx, 100);
-	ut_statfs_files_(ut_ctx, 1000);
+	ut_statfs_files_(ut_env, 100);
+	ut_statfs_files_(ut_env, 1000);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static const struct voluta_ut_testdef ut_local_tests[] = {
+static const struct ut_testdef ut_local_tests[] = {
 	UT_DEFTEST(ut_rootd_getattr),
 	UT_DEFTEST(ut_rootd_access),
 	UT_DEFTEST(ut_statfs_empty),
 	UT_DEFTEST(ut_statfs_files),
 };
 
-const struct voluta_ut_tests voluta_ut_test_super =
-	UT_MKTESTS(ut_local_tests);
+const struct ut_tests ut_test_super = UT_MKTESTS(ut_local_tests);
 

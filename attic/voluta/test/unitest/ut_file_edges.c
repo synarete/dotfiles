@@ -15,114 +15,112 @@
  * GNU General Public License for more details.
  */
 #define _GNU_SOURCE 1
-#define VOLUTA_TEST 1
 #include "unitest.h"
 
-
-static uint8_t iobuf_first_byte(const struct voluta_ut_iobuf *iobuf)
+static uint8_t dvec_first_byte(const struct ut_dvec *dvec)
 {
-	return iobuf->buf[0];
+	return dvec->dat[0];
 }
 
-static uint8_t iobuf_last_byte(const struct voluta_ut_iobuf *iobuf)
+static uint8_t dvec_last_byte(const struct ut_dvec *dvec)
 {
-	return iobuf->buf[iobuf->len - 1];
+	return dvec->dat[dvec->len - 1];
 }
 
-static loff_t iobuf_last_off(const struct voluta_ut_iobuf *iobuf)
+static loff_t dvec_last_off(const struct ut_dvec *dvec)
 {
-	return iobuf->off + (loff_t)iobuf->len - 1;
+	return dvec->off + (loff_t)dvec->len - 1;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_rw_plus_minus_1_(struct voluta_ut_ctx *ut_ctx,
+static void ut_rw_plus_minus_1_(struct ut_env *ut_env,
 				ino_t ino, loff_t off, size_t len)
 {
-	uint8_t iob1_first;
-	uint8_t iob2_last;
-	uint8_t iob3_first;
-	struct voluta_ut_iobuf *iob1, *iob2, *iob3, *iob4;
+	uint8_t byte;
+	struct ut_dvec *dv1;
+	struct ut_dvec *dv2;
+	struct ut_dvec *dv3;
+	struct ut_dvec *dv4;
 
-	iob1 = voluta_ut_new_iobuf(ut_ctx, off, len);
-	voluta_ut_write_iobuf(ut_ctx, ino, iob1);
-	iob2 = voluta_ut_new_iobuf(ut_ctx, off + 1, len);
-	voluta_ut_write_iobuf(ut_ctx, ino, iob2);
-	iob1_first = iobuf_first_byte(iob1);
-	voluta_ut_read_only(ut_ctx, ino, &iob1_first, 1, iob1->off);
-	iob3 = voluta_ut_new_iobuf(ut_ctx, off - 1, len);
-	voluta_ut_write_iobuf(ut_ctx, ino, iob3);
-	iob2_last = iobuf_last_byte(iob2);
-	voluta_ut_read_only(ut_ctx, ino, &iob2_last, 1, iobuf_last_off(iob2));
-	voluta_ut_fallocate_punch_hole(ut_ctx, ino, off, (loff_t)len);
-	voluta_ut_read_zeros(ut_ctx, ino, off, len);
-	iob3_first = iobuf_first_byte(iob3);
-	voluta_ut_read_only(ut_ctx, ino, &iob3_first, 1, iob3->off);
-	iob4 = voluta_ut_new_iobuf(ut_ctx, off, len);
-	voluta_ut_write_iobuf(ut_ctx, ino, iob4);
-	voluta_ut_fallocate_punch_hole(ut_ctx, ino, off - 1, (loff_t)len + 2);
-	voluta_ut_read_zeros(ut_ctx, ino, off - 1, len + 2);
+	dv1 = ut_new_dvec(ut_env, off, len);
+	ut_write_dvec(ut_env, ino, dv1);
+	dv2 = ut_new_dvec(ut_env, off + 1, len);
+	ut_write_dvec(ut_env, ino, dv2);
+	byte = dvec_first_byte(dv1);
+	ut_read_ok(ut_env, ino, &byte, 1, dv1->off);
+	dv3 = ut_new_dvec(ut_env, off - 1, len);
+	ut_write_dvec(ut_env, ino, dv3);
+	byte = dvec_last_byte(dv2);
+	ut_read_ok(ut_env, ino, &byte, 1, dvec_last_off(dv2));
+	ut_fallocate_punch_hole(ut_env, ino, off, (loff_t)len);
+	ut_read_zeros(ut_env, ino, off, len);
+	byte = dvec_first_byte(dv3);
+	ut_read_ok(ut_env, ino, &byte, 1, dv3->off);
+	dv4 = ut_new_dvec(ut_env, off, len);
+	ut_write_dvec(ut_env, ino, dv4);
+	ut_fallocate_punch_hole(ut_env, ino, off - 1, (loff_t)len + 2);
+	ut_read_zeros(ut_env, ino, off - 1, len + 2);
 }
 
-static void ut_file_edges_1_(struct voluta_ut_ctx *ut_ctx,
+static void ut_file_edges_1_(struct ut_env *ut_env,
 			     loff_t off, size_t len)
 {
 	ino_t ino;
 	ino_t dino;
-	const char *name = T_NAME;
+	const char *name = UT_NAME;
 
-	voluta_ut_mkdir_at_root(ut_ctx, name, &dino);
-	voluta_ut_create_file(ut_ctx, dino, name, &ino);
-	ut_rw_plus_minus_1_(ut_ctx, ino, off, len);
-	voluta_ut_remove_file(ut_ctx, dino, name, ino);
-	voluta_ut_rmdir_at_root(ut_ctx, name);
+	ut_mkdir_at_root(ut_env, name, &dino);
+	ut_create_file(ut_env, dino, name, &ino);
+	ut_rw_plus_minus_1_(ut_env, ino, off, len);
+	ut_remove_file(ut_env, dino, name, ino);
+	ut_rmdir_at_root(ut_env, name);
 }
 
-static void ut_file_edges_aligned(struct voluta_ut_ctx *ut_ctx)
+static void ut_file_edges_aligned(struct ut_env *ut_env)
 {
-	ut_file_edges_1_(ut_ctx, BK_SIZE, BK_SIZE);
-	ut_file_edges_1_(ut_ctx, MEGA, 4 * BK_SIZE);
-	ut_file_edges_1_(ut_ctx, GIGA, 8 * BK_SIZE);
-	ut_file_edges_1_(ut_ctx, TERA, 16 * BK_SIZE);
+	ut_file_edges_1_(ut_env, UT_BK_SIZE, UT_BK_SIZE);
+	ut_file_edges_1_(ut_env, UT_MEGA, 4 * UT_BK_SIZE);
+	ut_file_edges_1_(ut_env, UT_GIGA, 8 * UT_BK_SIZE);
+	ut_file_edges_1_(ut_env, UT_TERA, 16 * UT_BK_SIZE);
 }
 
-static void ut_file_edges_unaligned(struct voluta_ut_ctx *ut_ctx)
+static void ut_file_edges_unaligned(struct ut_env *ut_env)
 {
-	ut_file_edges_1_(ut_ctx, BK_SIZE + 11, BK_SIZE - 1);
-	ut_file_edges_1_(ut_ctx, MEGA - 1111, 4 * BK_SIZE + 1);
-	ut_file_edges_1_(ut_ctx, GIGA - 11111, 8 * BK_SIZE + 11);
-	ut_file_edges_1_(ut_ctx, TERA - 111111, 16 * BK_SIZE + 111);
+	ut_file_edges_1_(ut_env, UT_BK_SIZE + 11, UT_BK_SIZE - 1);
+	ut_file_edges_1_(ut_env, UT_MEGA - 1111, 4 * UT_BK_SIZE + 1);
+	ut_file_edges_1_(ut_env, UT_GIGA - 11111, 8 * UT_BK_SIZE + 11);
+	ut_file_edges_1_(ut_env, UT_TERA - 111111, 16 * UT_BK_SIZE + 111);
 }
 
-static void ut_file_edges_special(struct voluta_ut_ctx *ut_ctx)
+static void ut_file_edges_special(struct ut_env *ut_env)
 {
-	const size_t bksz = BK_SIZE;
+	const size_t bksz = UT_BK_SIZE;
 	const loff_t bkssz = (loff_t)bksz;
-	const loff_t filemap_sz = (FILEMAP_NCHILD * BK_SIZE);
-	const loff_t filemap_sz2 = filemap_sz * FILEMAP_NCHILD;
-	const loff_t filesize_max = FILESIZE_MAX;
+	const loff_t filemap_sz = (UT_FILEMAP_NCHILD * UT_BK_SIZE);
+	const loff_t filemap_sz2 = filemap_sz * UT_FILEMAP_NCHILD;
+	const loff_t filesize_max = UT_FILESIZE_MAX;
 
-	ut_file_edges_1_(ut_ctx, filemap_sz, bksz);
-	ut_file_edges_1_(ut_ctx, filemap_sz, 2 * bksz);
-	ut_file_edges_1_(ut_ctx, filemap_sz - 11, bksz + 111);
-	ut_file_edges_1_(ut_ctx, filemap_sz - 111, 2 * bksz + 1111);
-	ut_file_edges_1_(ut_ctx, 2 * filemap_sz, 2 * bksz);
-	ut_file_edges_1_(ut_ctx, 2 * filemap_sz - 1, bksz + 2);
-	ut_file_edges_1_(ut_ctx, filemap_sz + filemap_sz2, 2 * bksz);
-	ut_file_edges_1_(ut_ctx, filemap_sz + filemap_sz2 - 2, bksz + 3);
-	ut_file_edges_1_(ut_ctx, filemap_sz2 - 2, bksz + 3);
-	ut_file_edges_1_(ut_ctx, filesize_max / 2, bksz);
-	ut_file_edges_1_(ut_ctx, filesize_max - (2 * bkssz), bksz);
-	ut_file_edges_1_(ut_ctx, filesize_max - bkssz - 1, bksz);
+	ut_file_edges_1_(ut_env, filemap_sz, bksz);
+	ut_file_edges_1_(ut_env, filemap_sz, 2 * bksz);
+	ut_file_edges_1_(ut_env, filemap_sz - 11, bksz + 111);
+	ut_file_edges_1_(ut_env, filemap_sz - 111, 2 * bksz + 1111);
+	ut_file_edges_1_(ut_env, 2 * filemap_sz, 2 * bksz);
+	ut_file_edges_1_(ut_env, 2 * filemap_sz - 1, bksz + 2);
+	ut_file_edges_1_(ut_env, filemap_sz + filemap_sz2, 2 * bksz);
+	ut_file_edges_1_(ut_env, filemap_sz + filemap_sz2 - 2, bksz + 3);
+	ut_file_edges_1_(ut_env, filemap_sz2 - 2, bksz + 3);
+	ut_file_edges_1_(ut_env, filesize_max / 2, bksz);
+	ut_file_edges_1_(ut_env, filesize_max - (2 * bkssz), bksz);
+	ut_file_edges_1_(ut_env, filesize_max - bkssz - 1, bksz);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static const struct voluta_ut_testdef ut_local_tests[] = {
+static const struct ut_testdef ut_local_tests[] = {
 	UT_DEFTEST(ut_file_edges_aligned),
 	UT_DEFTEST(ut_file_edges_unaligned),
 	UT_DEFTEST(ut_file_edges_special),
 };
 
-const struct voluta_ut_tests voluta_ut_test_file_edges =
-	UT_MKTESTS(ut_local_tests);
+const struct ut_tests ut_test_file_edges = UT_MKTESTS(ut_local_tests);

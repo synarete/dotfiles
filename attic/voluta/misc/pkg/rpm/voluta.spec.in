@@ -12,6 +12,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}.%{_arch}
 Requires: libcap
 Requires: libuuid
 Requires: libunwind
+Requires: liburing
 Requires: libgcrypt
 Requires: haveged
 
@@ -26,6 +27,7 @@ Requires: haveged
 # BuildRequires: libuuid-devel
 # BuildRequires: libgcrypt-devel
 # BuildRequires: libunwind-devel
+# BuildRequires: liburing-devel
 # BuildRequires: python3-docutils
 
 %{?systemd_requires}
@@ -54,8 +56,8 @@ Voluta secure archiver
 %files
 %defattr(-, root, root)
 %{_bindir}/%{name}
-%{_bindir}/%{name}-fsstest
 %{_sbindir}/%{name}-mountd
+%{_bindir}/%{name}-vfstest
 %exclude %{_bindir}/%{name}-unitest
 %{_includedir}/%{name}/*.h
 %exclude %{_libdir}/lib%{name}*.so*

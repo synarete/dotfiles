@@ -15,34 +15,32 @@
  * GNU General Public License for more details.
  */
 #define _GNU_SOURCE 1
-#define VOLUTA_TEST 1
 #include "unitest.h"
 
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_ioctl_inquiry(struct voluta_ut_ctx *ut_ctx)
+static void ut_ioctl_inquiry(struct ut_env *ut_env)
 {
 	ino_t ino;
 	ino_t dino;
-	const char *name = T_NAME;
-	struct voluta_inquiry inq = { .version = 0 };
+	const char *name = UT_NAME;
+	struct voluta_query inq = { .version = 0 };
 
-	voluta_ut_mkdir_at_root(ut_ctx, name, &dino);
-	voluta_ut_inquiry_ok(ut_ctx, dino, &inq);
+	ut_mkdir_at_root(ut_env, name, &dino);
+	ut_query_ok(ut_env, dino, &inq);
 	ut_assert_eq(inq.version, VOLUTA_VERSION);
-	voluta_ut_create_file(ut_ctx, dino, name, &ino);
-	voluta_ut_inquiry_ok(ut_ctx, ino, &inq);
+	ut_create_file(ut_env, dino, name, &ino);
+	ut_query_ok(ut_env, ino, &inq);
 	ut_assert_eq(inq.version, VOLUTA_VERSION);
-	voluta_ut_remove_file(ut_ctx, dino, name, ino);
-	voluta_ut_rmdir_at_root(ut_ctx, name);
+	ut_remove_file(ut_env, dino, name, ino);
+	ut_rmdir_at_root(ut_env, name);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static const struct voluta_ut_testdef ut_local_tests[] = {
+static const struct ut_testdef ut_local_tests[] = {
 	UT_DEFTEST(ut_ioctl_inquiry),
 };
 
-const struct voluta_ut_tests voluta_ut_test_ioctl =
-	UT_MKTESTS(ut_local_tests);
+const struct ut_tests ut_test_ioctl = UT_MKTESTS(ut_local_tests);

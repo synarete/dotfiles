@@ -34,60 +34,37 @@
 #include "voluta-prog.h"
 
 
-static void halt_by_signal(int signum)
+static void mount_halt_by_signal(int signum)
 {
-	struct voluta_env *env = voluta_get_instance();
+	struct voluta_fs_env *fs_env = voluta_fs_env_inst();
 
-	if (env) {
-		voluta_env_halt(env, signum);
+	if (fs_env) {
+		voluta_fs_env_halt(fs_env, signum);
 	}
 }
 
 static void mount_enable_signals(void)
 {
-	voluta_signal_callback_hook = halt_by_signal;
+	voluta_signal_callback_hook = mount_halt_by_signal;
 	voluta_register_sigactions();
 }
 
-static int mount_execute_fs(void)
+static void mount_execute_fs(void)
 {
 	int err;
-	struct voluta_env *env = voluta_get_instance();
+	struct voluta_fs_env *fs_env = voluta_fs_env_inst();
 
-	err = voluta_env_load(env);
+	err = voluta_fs_env_serve(fs_env);
 	if (err) {
-		/* XXX no here -- do it in main */
-		voluta_die(err, "load failure: %s",
-			   voluta_globals.mount_volume);
-		return err;
+		voluta_die(err, "fs failure: %s %s",
+			   voluta_globals.mount_volume,
+			   voluta_globals.mount_point_real);
 	}
-	err = voluta_env_exec(env);
-	if (err) {
-		/* XXX no here -- do it in main */
-		voluta_die(err, "mount failure: %s",
-			   voluta_globals.mount_point);
-		return err;
-	}
-	err = voluta_env_shut(env);
-	if (err) {
-		/* XXX no here -- do it in main */
-		voluta_die(err, "shutdown error: %s",
-			   voluta_globals.mount_volume);
-		return err;
-	}
-	err = voluta_env_term(env);
-	if (err) {
-		/* XXX no here -- do it in main */
-		voluta_die(err, "shutdown error: %s",
-			   voluta_globals.mount_volume);
-		return err;
-	}
-	return 0;
 }
 
-static void mount_cleanup_all(void)
+static void mount_finalize(void)
 {
-	voluta_delete_instance();
+	voluta_fini_fs_env();
 	voluta_pfree_string(&voluta_globals.mount_point_real);
 	voluta_pfree_string(&voluta_globals.mount_subopts);
 	voluta_pfree_string(&voluta_globals.mount_fstype);
@@ -187,23 +164,35 @@ static void check_tmpfs_backend(void)
 static void check_volume_backend(void)
 {
 	int err;
+	struct voluta_iv_key iv_key;
+	struct voluta_vboot_record vbr;
 	const char *path = voluta_globals.mount_volume;
+	const char *pass = voluta_globals.mount_passphrase;
+	const char *salt = voluta_globals.mount_salt;
 
 	err = voluta_require_volume_path(path);
 	if (err) {
 		voluta_die(err, "illegal volume: %s", path);
 	}
-	err = voluta_require_exclusive_volume(path, true);
-	if (err) {
-		if (err == -EUCLEAN) {
-			voluta_die(0, "illegal voluta volume: %s", path);
-		} else {
-			voluta_die(err, "failed to lock volume: %s", path);
+	err = voluta_read_vboot_record(path, &vbr);
+	if (err == -EUCLEAN) {
+		voluta_die(0, "illegal voluta volume: %s", path);
+	} else if (err) {
+		voluta_die(err, "failed to lock volume: %s", path);
+	}
+	if (pass && strlen(pass)) {
+		err = voluta_derive_iv_key_of(pass, salt, &iv_key);
+		if (err) {
+			voluta_die(err, "passphrase error");
+		}
+		err = voluta_check_vboot_record(&vbr, &iv_key);
+		if (err) {
+			voluta_die(0, "illegal passphrase: %s", path);
 		}
 	}
 }
 
-static void mount_check_backend_storage(void)
+static void mount_check_volume(void)
 {
 	if (voluta_globals.mount_tmpfs_size) {
 		check_tmpfs_backend();
@@ -301,7 +290,7 @@ static void mount_boostrap_process(void)
 static void mount_create_setup_env(void)
 {
 	int err;
-	struct voluta_env *env;
+	struct voluta_fs_env *fs_env = NULL;
 	const bool tmpfs = voluta_globals.mount_tmpfs;
 	struct voluta_params params = {
 		.ucred = {
@@ -319,12 +308,14 @@ static void mount_create_setup_env(void)
 		.pedantic = false
 	};
 
-	env = voluta_new_instance();
-	err = voluta_env_setparams(env, &params);
+	voluta_init_fs_env();
+
+	fs_env = voluta_fs_env_inst();
+	err = voluta_fs_env_setparams(fs_env, &params);
 	if (err) {
 		voluta_die(err, "illegal params");
 	}
-	err = voluta_env_verify(env);
+	err = voluta_fs_env_verify(fs_env);
 	if (err == -EUCLEAN) {
 		voluta_die(0, "not a voluta volume: %s", params.volume_path);
 	} else if (err == -EKEYEXPIRED) {
@@ -344,12 +335,10 @@ static void mount_create_setup_env(void)
  */
 static void mount_trace_start(void)
 {
-	voluta_log_info("program: %s", voluta_globals.prog);
-	voluta_log_info("version: %s", voluta_globals.version);
+	voluta_log_process_info();
 	voluta_log_info("mount-point: %s", voluta_globals.mount_point_real);
 	if (voluta_globals.mount_volume) {
-		voluta_log_info("backend-storage: %s",
-				voluta_globals.mount_volume);
+		voluta_log_info("volume: %s", voluta_globals.mount_volume);
 	}
 }
 
@@ -365,7 +354,7 @@ static void mount_trace_finish(void)
 void voluta_execute_mount(void)
 {
 	/* Do all cleanups upon exits */
-	atexit(mount_cleanup_all);
+	atexit(mount_finalize);
 
 	/* Prepare and resolve mount settings */
 	mount_setup_params();
@@ -373,16 +362,19 @@ void voluta_execute_mount(void)
 	/* Require empty valid mount-point */
 	mount_check_mntpoint();
 
-	/* Require valid back-end storage device */
-	mount_check_backend_storage();
+	/* Require valid back-end storage volume */
+	mount_check_volume();
 
 	/* Ask user to provide passphrase */
 	mount_grab_passphrase();
 
+	/* Re-check volume with provided passphrase */
+	mount_check_volume();
+
 	/* Become daemon process */
 	mount_boostrap_process();
 
-	/* Setup volume & mount path */
+	/* Setup enviroment instance */
 	mount_create_setup_env();
 
 	/* Report beginning-of-mount */
@@ -398,14 +390,14 @@ void voluta_execute_mount(void)
 	mount_trace_finish();
 
 	/* Post execution cleanups */
-	mount_cleanup_all();
+	mount_finalize();
 
 	/* Return to main for global cleanups */
 }
 
 /*: : : : : : : : : : : : : : : : : : : : : : : : : : : : : : : : : : : : : :*/
 
-static const char *g_mount_usage =
+static const char *voluta_mount_usage =
 	"[options] <storage-path> <mount-point> \n\n" \
 	"options: \n" \
 	"  -M, --tmpfs=N                Memory only file-system\n" \
@@ -422,7 +414,7 @@ void voluta_getopt_mount(void)
 	int opt_index;
 	int argc;
 	char **argv;
-	const struct option mount_options[] = {
+	const struct option opts[] = {
 		{ "options", required_argument, NULL, 'o' },
 		{ "tmpfs", required_argument, NULL, 'M' },
 		{ "nodaemon", no_argument, NULL, 'D' },
@@ -438,8 +430,7 @@ void voluta_getopt_mount(void)
 	argv = voluta_globals.cmd_argv;
 	while (c > 0) {
 		opt_index = 0;
-		c = getopt_long(argc, argv, "o:t:M:P:S:DCh",
-				mount_options, &opt_index);
+		c = getopt_long(argc, argv, "o:t:M:P:S:DCh", opts, &opt_index);
 		if (c == -1) {
 			break;
 		}
@@ -463,23 +454,23 @@ void voluta_getopt_mount(void)
 		} else if (c == 'C') {
 			voluta_globals.allow_coredump = true;
 		} else if (c == 'h') {
-			voluta_show_help_and_exit(0, g_mount_usage);
+			voluta_show_help_and_exit(0, voluta_mount_usage);
 		} else {
 			voluta_die_unsupported_opt();
 		}
 	}
 	if (voluta_globals.mount_tmpfs != NULL) {
 		if (optind >= argc) {
-			voluta_die(0, "missing mount-point");
+			voluta_die_no_mount_point();
 		}
 		voluta_globals.mount_point = argv[optind++];
 	} else {
 		if (optind >= argc) {
-			voluta_die(0, "missing storage path");
+			voluta_die_no_volume_path();
 		}
 		voluta_globals.mount_volume = argv[optind++];
 		if (optind >= argc) {
-			voluta_die(0, "missing mount-point");
+			voluta_die_no_mount_point();
 		}
 		voluta_globals.mount_point = argv[optind++];
 	}
@@ -489,8 +480,6 @@ void voluta_getopt_mount(void)
 				   voluta_globals.mount_fstype);
 		}
 	}
-	if (optind < argc) {
-		voluta_die_redundant_arg(argv[optind]);
-	}
+	voluta_check_no_redundant_arg();
 }
 

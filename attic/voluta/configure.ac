@@ -51,8 +51,8 @@ AC_CONFIG_FILES([misc/Makefile])
 AC_CONFIG_FILES([test/Makefile])
 AC_CONFIG_FILES([test/mountd/Makefile])
 AC_CONFIG_FILES([test/dstress/Makefile])
-AC_CONFIG_FILES([test/fsstest/Makefile])
 AC_CONFIG_FILES([test/unitest/Makefile])
+AC_CONFIG_FILES([test/vfstest/Makefile])
 AC_OUTPUT
 
 AC_MSG_NOTICE([Package........: $pkg_name])

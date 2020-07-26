@@ -7,12 +7,13 @@ libvoluta_prog_a_SOURCES += archive.c
 libvoluta_prog_a_SOURCES += common.c
 libvoluta_prog_a_SOURCES += fsck.c
 libvoluta_prog_a_SOURCES += getpass.c
-libvoluta_prog_a_SOURCES += inquiry.c
 libvoluta_prog_a_SOURCES += mkfs.c
 libvoluta_prog_a_SOURCES += mount.c
+libvoluta_prog_a_SOURCES += query.c
 libvoluta_prog_a_SOURCES += voluta-prog.h
 libvoluta_prog_a_SOURCES += restore.c
 libvoluta_prog_a_SOURCES += scrub.c
+libvoluta_prog_a_SOURCES += show.c
 
 bin_PROGRAMS = voluta
 voluta_CPPFLAGS = -I$(top_srcdir)/include

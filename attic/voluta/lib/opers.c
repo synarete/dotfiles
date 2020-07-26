@@ -31,47 +31,71 @@
 	do { if ((err_) != 0) goto out; } while (0)
 
 
-
-static void current_realtime_clock(struct timespec *ts)
+static void op_try_relax(struct voluta_sb_info *sbi, time_t now)
 {
-	int err;
-	const clockid_t clk = CLOCK_REALTIME;
+	size_t rate;
+	size_t nops;
+	size_t diff;
+	size_t nrelax = 0;
+	const struct voluta_qalloc *qal = sbi->s_qalloc;
+	struct voluta_oper_stat *op_st = &sbi->s_opstat;
 
-	err = voluta_sys_clock_gettime(clk, ts);
-	if (err) {
-		voluta_panic("clk=%ld err=%d", (long)clk, err);
+	/* Low-activity case */
+	nops = op_st->op_count - op_st->op_count_mark;
+	if ((nops > 1) && (now > op_st->op_time)) {
+		diff = (size_t)(now - op_st->op_time);
+		rate = nops / diff;
+
+		if (now > (op_st->op_time + 1)) {
+			nrelax += min(16, diff);
+		}
+		if (rate && (rate < 10)) {
+			nrelax += 1;
+		}
+	}
+
+	/* Memory pressure case */
+	if ((qal->st.npages_used * 4) > qal->st.npages) {
+		nrelax += 1;
+	}
+	if ((qal->st.npages_used * 2) > qal->st.npages) {
+		nrelax += 1;
+	}
+
+	if (nrelax) {
+		voluta_cache_relax(sbi->s_cache, nrelax);
+		op_st->op_count_mark = op_st->op_count;
 	}
 }
 
-static void voluta_op_start(struct voluta_env *env, bool with_xtime_now)
+static void op_start(struct voluta_sb_info *sbi,
+		     const struct voluta_oper *op_const, bool realtime)
 {
-	struct voluta_cache *cache = env->cache;
-	const time_t last = env->op_ctx.xtime.start;
+	const time_t now = time(NULL);
+	struct voluta_oper *op = unconst(op_const);
 
-	env->op_ctx.xtime.start = time(NULL);
-	voluta_cache_relax(cache, env->op_ctx.xtime.start > (last + 8));
+	/* XXX crap, remove after fuseq */
+	voluta_ts_gettime(&op->xtime, realtime);
 
-	if (with_xtime_now) {
-		current_realtime_clock(&env->op_ctx.xtime.now);
-	}
+	op_try_relax(sbi, now);
+	sbi->s_opstat.op_time = now;
+	sbi->s_opstat.op_count++;
 }
 
-static void voluta_op_finish(struct voluta_env *env)
+static void op_finish(struct voluta_sb_info *sbi,
+		      const struct voluta_oper *op)
 {
-	struct voluta_oper_ctx *op_ctx = &env->op_ctx;
+	struct voluta_oper *op2 = unconst(op);
 
-	op_ctx->xtime.now.tv_sec = 0;
-	op_ctx->xtime.now.tv_nsec = 0;
+	/* XXX crap, remove after fuseq */
+	op2->xtime.tv_sec = 0;
+
+	unused(sbi);
 }
 
 static int voluta_op_flush(struct voluta_sb_info *sbi)
 {
 	return voluta_commit_dirty(sbi, 0);
-}
-
-static const struct voluta_oper_ctx *op_ctx_of(struct voluta_env *env)
-{
-	return &env->op_ctx;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -103,206 +127,203 @@ static int symval_to_str(const char *symval, struct voluta_str *str)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-int voluta_fs_forget(struct voluta_env *env, ino_t ino)
+int voluta_fs_forget(struct voluta_sb_info *sbi,
+		     const struct voluta_oper *op,
+		     ino_t ino, size_t nlookup)
 {
 	int err;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, false);
+	op_start(sbi, op, false);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
-	err = voluta_do_evict_inode(sbi, ino);
+	err = voluta_do_forget_inode(sbi, ino, nlookup);
 	ok_or_goto_out(err);
 
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_statfs(struct voluta_env *env, ino_t ino, struct statvfs *stvfs)
+int voluta_fs_statfs(struct voluta_sb_info *sbi,
+		     const struct voluta_oper *op,
+		     ino_t ino, struct statvfs *stvfs)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, false);
+	op_start(sbi, op, false);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_statvfs(op_ctx, ii, stvfs);
+	err = voluta_do_statvfs(op, ii, stvfs);
 	ok_or_goto_out(err);
 
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_lookup(struct voluta_env *env, ino_t parent_ino,
+int voluta_fs_lookup(struct voluta_sb_info *sbi,
+		     const struct voluta_oper *op, ino_t parent,
 		     const char *name, struct stat *out_stat)
 {
 	int err;
 	struct voluta_qstr qstr;
 	struct voluta_inode_info *ii = NULL;
 	struct voluta_inode_info *dir_ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, false);
+	op_start(sbi, op, false);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
-	err = voluta_stage_inode(sbi_of(env), parent_ino, &dir_ii);
+	err = voluta_stage_inode(sbi, parent, &dir_ii);
 	ok_or_goto_out(err);
 
 	err = voluta_name_to_qstr(dir_ii, name, &qstr);
 	ok_or_goto_out(err);
 
-	err = voluta_do_lookup(op_ctx, dir_ii, &qstr, &ii);
+	err = voluta_do_lookup(op, dir_ii, &qstr, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_getattr(op_ctx, ii, out_stat);
+	err = voluta_do_getattr(op, ii, out_stat);
 	ok_or_goto_out(err);
 
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_getattr(struct voluta_env *env, ino_t ino, struct stat *out_stat)
+int voluta_fs_getattr(struct voluta_sb_info *sbi,
+		      const struct voluta_oper *op,
+		      ino_t ino, struct stat *out_stat)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, false);
+	op_start(sbi, op, false);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_getattr(op_ctx, ii, out_stat);
+	err = voluta_do_getattr(op, ii, out_stat);
 	ok_or_goto_out(err);
 
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_access(struct voluta_env *env, ino_t ino, int mode)
+int voluta_fs_access(struct voluta_sb_info *sbi,
+		     const struct voluta_oper *op, ino_t ino, int mode)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, false);
+	op_start(sbi, op, false);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_access(op_ctx, ii, mode);
+	err = voluta_do_access(op, ii, mode);
 	ok_or_goto_out(err);
 
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_mkdir(struct voluta_env *env, ino_t parent_ino,
+int voluta_fs_mkdir(struct voluta_sb_info *sbi,
+		    const struct voluta_oper *op, ino_t parent,
 		    const char *name, mode_t mode, struct stat *out_stat)
 {
 	int err;
 	struct voluta_qstr qstr;
 	struct voluta_inode_info *ii = NULL;
 	struct voluta_inode_info *dir_ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
-	err = voluta_stage_inode(sbi, parent_ino, &dir_ii);
+	err = voluta_stage_inode(sbi, parent, &dir_ii);
 	ok_or_goto_out(err);
 
 	err = voluta_name_to_qstr(dir_ii, name, &qstr);
 	ok_or_goto_out(err);
 
-	err = voluta_do_mkdir(op_ctx, dir_ii, &qstr, mode, &ii);
+	err = voluta_do_mkdir(op, dir_ii, &qstr, mode, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_getattr(op_ctx, ii, out_stat);
+	err = voluta_do_getattr(op, ii, out_stat);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_rmdir(struct voluta_env *env, ino_t parent_ino, const char *name)
+int voluta_fs_rmdir(struct voluta_sb_info *sbi,
+		    const struct voluta_oper *op,
+		    ino_t parent, const char *name)
 {
 	int err;
 	struct voluta_qstr qstr;
 	struct voluta_inode_info *dir_ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
-	err = voluta_stage_inode(sbi_of(env), parent_ino, &dir_ii);
+	err = voluta_stage_inode(sbi, parent, &dir_ii);
 	ok_or_goto_out(err);
 
 	err = voluta_name_to_qstr(dir_ii, name, &qstr);
 	ok_or_goto_out(err);
 
-	err = voluta_do_rmdir(op_ctx, dir_ii, &qstr);
+	err = voluta_do_rmdir(op, dir_ii, &qstr);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_symlink(struct voluta_env *env, ino_t parent_ino,
-		      const char *name, const char *symval, struct stat *out)
+int voluta_fs_symlink(struct voluta_sb_info *sbi,
+		      const struct voluta_oper *op, ino_t parent,
+		      const char *name, const char *symval,
+		      struct stat *out_stat)
 {
 	int err;
 	struct voluta_str str;
 	struct voluta_qstr qstr;
 	struct voluta_inode_info *ii = NULL;
 	struct voluta_inode_info *dir_ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
-	err = voluta_stage_inode(sbi, parent_ino, &dir_ii);
+	err = voluta_stage_inode(sbi, parent, &dir_ii);
 	ok_or_goto_out(err);
 
 	err = voluta_name_to_qstr(dir_ii, name, &qstr);
@@ -311,90 +332,87 @@ int voluta_fs_symlink(struct voluta_env *env, ino_t parent_ino,
 	err = symval_to_str(symval, &str);
 	ok_or_goto_out(err);
 
-	err = voluta_do_symlink(op_ctx, dir_ii, &qstr, &str, &ii);
+	err = voluta_do_symlink(op, dir_ii, &qstr, &str, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_getattr(op_ctx, ii, out);
+	err = voluta_do_getattr(op, ii, out_stat);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_readlink(struct voluta_env *env, ino_t ino,
-		       char *ptr, size_t lim)
+int voluta_fs_readlink(struct voluta_sb_info *sbi,
+		       const struct voluta_oper *op,
+		       ino_t ino, char *ptr, size_t lim)
 {
 	int err;
 	struct voluta_buf buf;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
+	op_start(sbi, op, true);
 	buf_init(&buf, ptr, lim);
-	voluta_op_start(env, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_readlink(op_ctx, ii, &buf);
+	err = voluta_do_readlink(op, ii, &buf);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_unlink(struct voluta_env *env, ino_t parent_ino,
-		     const char *name)
+int voluta_fs_unlink(struct voluta_sb_info *sbi,
+		     const struct voluta_oper *op,
+		     ino_t parent, const char *name)
 {
 	int err;
 	struct voluta_qstr qstr;
 	struct voluta_inode_info *dir_ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
-	err = voluta_stage_inode(sbi, parent_ino, &dir_ii);
+	err = voluta_stage_inode(sbi, parent, &dir_ii);
 	ok_or_goto_out(err);
 
 	err = voluta_name_to_qstr(dir_ii, name, &qstr);
 	ok_or_goto_out(err);
 
-	err = voluta_do_unlink(op_ctx, dir_ii, &qstr);
+	err = voluta_do_unlink(op, dir_ii, &qstr);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_link(struct voluta_env *env, ino_t ino, ino_t parent_ino,
+int voluta_fs_link(struct voluta_sb_info *sbi,
+		   const struct voluta_oper *op, ino_t ino, ino_t parent,
 		   const char *name, struct stat *out_stat)
 {
 	int err;
 	struct voluta_qstr qstr;
 	struct voluta_inode_info *ii = NULL;
 	struct voluta_inode_info *dir_ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
-	err = voluta_stage_inode(sbi, parent_ino, &dir_ii);
+	err = voluta_stage_inode(sbi, parent, &dir_ii);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
@@ -403,251 +421,265 @@ int voluta_fs_link(struct voluta_env *env, ino_t ino, ino_t parent_ino,
 	err = voluta_name_to_qstr(dir_ii, name, &qstr);
 	ok_or_goto_out(err);
 
-	err = voluta_do_link(op_ctx, dir_ii, &qstr, ii);
+	err = voluta_do_link(op, dir_ii, &qstr, ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_getattr(op_ctx, ii, out_stat);
-	ok_or_goto_out(err);
-
-	err = voluta_op_flush(sbi);
-	ok_or_goto_out(err);
-out:
-	voluta_op_finish(env);
-	return err;
-}
-
-int voluta_fs_opendir(struct voluta_env *env, ino_t ino)
-{
-	int err;
-	struct voluta_inode_info *dir_ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
-
-	voluta_op_start(env, true);
-
-	err = voluta_authorize(sbi, op_ctx);
-	ok_or_goto_out(err);
-
-	err = voluta_stage_inode(sbi, ino, &dir_ii);
-	ok_or_goto_out(err);
-
-	err = voluta_do_opendir(op_ctx, dir_ii);
-	ok_or_goto_out(err);
-
-out:
-	voluta_op_finish(env);
-	return err;
-}
-
-int voluta_fs_releasedir(struct voluta_env *env, ino_t ino)
-{
-	int err;
-	struct voluta_inode_info *dir_ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
-
-	voluta_op_start(env, true);
-
-	err = voluta_authorize(sbi, op_ctx);
-	ok_or_goto_out(err);
-
-	err = voluta_stage_inode(sbi, ino, &dir_ii);
-	ok_or_goto_out(err);
-
-	err = voluta_do_releasedir(op_ctx, dir_ii);
+	err = voluta_do_getattr(op, ii, out_stat);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_readdir(struct voluta_env *env, ino_t ino,
+int voluta_fs_opendir(struct voluta_sb_info *sbi,
+		      const struct voluta_oper *op, ino_t ino)
+{
+	int err;
+	struct voluta_inode_info *dir_ii = NULL;
+
+	op_start(sbi, op, true);
+
+	err = voluta_authorize(sbi, op);
+	ok_or_goto_out(err);
+
+	err = voluta_stage_inode(sbi, ino, &dir_ii);
+	ok_or_goto_out(err);
+
+	err = voluta_do_opendir(op, dir_ii);
+	ok_or_goto_out(err);
+out:
+	op_finish(sbi, op);
+	return err;
+}
+
+int voluta_fs_releasedir(struct voluta_sb_info *sbi,
+			 const struct voluta_oper *op, ino_t ino, int o_flags)
+{
+	int err;
+	struct voluta_inode_info *dir_ii = NULL;
+
+	unused(o_flags);
+	op_start(sbi, op, true);
+
+	err = voluta_authorize(sbi, op);
+	ok_or_goto_out(err);
+
+	err = voluta_stage_inode(sbi, ino, &dir_ii);
+	ok_or_goto_out(err);
+
+	err = voluta_do_releasedir(op, dir_ii);
+	ok_or_goto_out(err);
+
+	err = voluta_op_flush(sbi);
+	ok_or_goto_out(err);
+out:
+	op_finish(sbi, op);
+	return err;
+}
+
+int voluta_fs_readdir(struct voluta_sb_info *sbi,
+		      const struct voluta_oper *op, ino_t ino,
 		      struct voluta_readdir_ctx *rd_ctx)
 {
 	int err;
 	struct voluta_inode_info *dir_ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, false);
+	op_start(sbi, op, false);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &dir_ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_readdir(op_ctx, dir_ii, rd_ctx);
+	err = voluta_do_readdir(op, dir_ii, rd_ctx);
 	ok_or_goto_out(err);
-
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_fsyncdir(struct voluta_env *env, ino_t ino, int datasync)
+int voluta_fs_readdirplus(struct voluta_sb_info *sbi,
+			  const struct voluta_oper *op, ino_t ino,
+			  struct voluta_readdir_ctx *rd_ctx)
 {
 	int err;
 	struct voluta_inode_info *dir_ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, false);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &dir_ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_fsyncdir(op_ctx, dir_ii, datasync);
+	err = voluta_do_readdirplus(op, dir_ii, rd_ctx);
+	ok_or_goto_out(err);
+out:
+	op_finish(sbi, op);
+	return err;
+}
+
+int voluta_fs_fsyncdir(struct voluta_sb_info *sbi,
+		       const struct voluta_oper *op, ino_t ino, bool datasync)
+{
+	int err;
+	struct voluta_inode_info *dir_ii = NULL;
+
+	op_start(sbi, op, true);
+
+	err = voluta_authorize(sbi, op);
+	ok_or_goto_out(err);
+
+	err = voluta_stage_inode(sbi, ino, &dir_ii);
+	ok_or_goto_out(err);
+
+	err = voluta_do_fsyncdir(op, dir_ii, datasync);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_chmod(struct voluta_env *env, ino_t ino, mode_t mode,
+int voluta_fs_chmod(struct voluta_sb_info *sbi,
+		    const struct voluta_oper *op, ino_t ino, mode_t mode,
 		    const struct stat *st, struct stat *out_stat)
 {
 	int err;
 	struct voluta_itimes itimes;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
 	stat_to_itimes(st, &itimes);
-	err = voluta_do_chmod(op_ctx, ii, mode, &itimes);
+	err = voluta_do_chmod(op, ii, mode, &itimes);
 	ok_or_goto_out(err);
 
-	err = voluta_do_getattr(op_ctx, ii, out_stat);
+	err = voluta_do_getattr(op, ii, out_stat);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_chown(struct voluta_env *env, ino_t ino, uid_t uid, gid_t gid,
-		    const struct stat *st, struct stat *out_stat)
+int voluta_fs_chown(struct voluta_sb_info *sbi,
+		    const struct voluta_oper *op, ino_t ino, uid_t uid,
+		    gid_t gid, const struct stat *st, struct stat *out_stat)
 {
 	int err;
 	struct voluta_itimes itimes;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
 	stat_to_itimes(st, &itimes);
-	err = voluta_do_chown(op_ctx, ii, uid, gid, &itimes);
+	err = voluta_do_chown(op, ii, uid, gid, &itimes);
 	ok_or_goto_out(err);
 
-	err = voluta_do_getattr(op_ctx, ii, out_stat);
+	err = voluta_do_getattr(op, ii, out_stat);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_utimens(struct voluta_env *env, ino_t ino,
+int voluta_fs_utimens(struct voluta_sb_info *sbi,
+		      const struct voluta_oper *op, ino_t ino,
 		      const struct stat *times, struct stat *out_stat)
 {
 	int err;
 	struct voluta_itimes itimes;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
 	stat_to_itimes(times, &itimes);
-	err = voluta_do_utimens(op_ctx, ii, &itimes);
+	err = voluta_do_utimens(op, ii, &itimes);
 	ok_or_goto_out(err);
 
-	err = voluta_do_getattr(op_ctx, ii, out_stat);
+	err = voluta_do_getattr(op, ii, out_stat);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_truncate(struct voluta_env *env, ino_t ino, loff_t len,
+int voluta_fs_truncate(struct voluta_sb_info *sbi,
+		       const struct voluta_oper *op, ino_t ino, loff_t len,
 		       struct stat *out_stat)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_truncate(op_ctx, ii, len);
+	err = voluta_do_truncate(op, ii, len);
 	ok_or_goto_out(err);
 
-	err = voluta_do_getattr(op_ctx, ii, out_stat);
+	err = voluta_do_getattr(op, ii, out_stat);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_create(struct voluta_env *env, ino_t parent,
-		     const char *name, mode_t mode, struct stat *out_stat)
+int voluta_fs_create(struct voluta_sb_info *sbi,
+		     const struct voluta_oper *op, ino_t parent,
+		     const char *name, int o_flags, mode_t mode,
+		     struct stat *out_stat)
 {
 	int err;
 	struct voluta_qstr qstr;
 	struct voluta_inode_info *ii = NULL;
 	struct voluta_inode_info *dir_ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	unused(o_flags); /* XXX use me */
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, parent, &dir_ii);
@@ -656,57 +688,55 @@ int voluta_fs_create(struct voluta_env *env, ino_t parent,
 	err = voluta_name_to_qstr(dir_ii, name, &qstr);
 	ok_or_goto_out(err);
 
-	err = voluta_do_create(op_ctx, dir_ii, &qstr, mode, &ii);
+	err = voluta_do_create(op, dir_ii, &qstr, mode, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_getattr(op_ctx, ii, out_stat);
+	err = voluta_do_getattr(op, ii, out_stat);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_open(struct voluta_env *env, ino_t ino, int flags)
+int voluta_fs_open(struct voluta_sb_info *sbi,
+		   const struct voluta_oper *op, ino_t ino, int o_flags)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_open(op_ctx, ii, flags);
+	err = voluta_do_open(op, ii, o_flags);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_mknod(struct voluta_env *env, ino_t parent, const char *name,
-		    mode_t mode, dev_t rdev, struct stat *out_stat)
+int voluta_fs_mknod(struct voluta_sb_info *sbi, const struct voluta_oper *op,
+		    ino_t parent, const char *name, mode_t mode, dev_t rdev,
+		    struct stat *out_stat)
 {
 	int err;
 	struct voluta_qstr qstr;
 	struct voluta_inode_info *ii = NULL;
 	struct voluta_inode_info *dir_ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, parent, &dir_ii);
@@ -715,96 +745,100 @@ int voluta_fs_mknod(struct voluta_env *env, ino_t parent, const char *name,
 	err = voluta_name_to_qstr(dir_ii, name, &qstr);
 	ok_or_goto_out(err);
 
-	err = voluta_do_mknod(op_ctx, dir_ii, &qstr, mode, rdev, &ii);
+	err = voluta_do_mknod(op, dir_ii, &qstr, mode, rdev, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_getattr(op_ctx, ii, out_stat);
+	err = voluta_do_getattr(op, ii, out_stat);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_release(struct voluta_env *env, ino_t ino)
+int voluta_fs_release(struct voluta_sb_info *sbi,
+		      const struct voluta_oper *op,
+		      ino_t ino, int o_flags, bool flush)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	/* TODO: useme */
+	unused(flush);
+	unused(o_flags);
 
-	err = voluta_authorize(sbi, op_ctx);
+	op_start(sbi, op, true);
+
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_release(op_ctx, ii);
+	err = voluta_do_release(op, ii);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_flush(struct voluta_env *env, ino_t ino)
+int voluta_fs_flush(struct voluta_sb_info *sbi,
+		    const struct voluta_oper *op, ino_t ino)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_flush(op_ctx, ii);
+	err = voluta_do_flush(op, ii);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_fsync(struct voluta_env *env, ino_t ino, int datasync)
+int voluta_fs_fsync(struct voluta_sb_info *sbi,
+		    const struct voluta_oper *op,
+		    ino_t ino, bool datasync)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_fsync(op_ctx, ii, datasync);
+	err = voluta_do_fsync(op, ii, datasync);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_rename(struct voluta_env *env, ino_t parent_ino,
-		     const char *name, ino_t newparent_ino,
+int voluta_fs_rename(struct voluta_sb_info *sbi,
+		     const struct voluta_oper *op, ino_t parent,
+		     const char *name, ino_t newparent,
 		     const char *newname, int flags)
 {
 	int err;
@@ -812,18 +846,16 @@ int voluta_fs_rename(struct voluta_env *env, ino_t parent_ino,
 	struct voluta_qstr newqstr;
 	struct voluta_inode_info *dir_ii = NULL;
 	struct voluta_inode_info *newdir_ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
-	err = voluta_stage_inode(sbi, parent_ino, &dir_ii);
+	err = voluta_stage_inode(sbi, parent, &dir_ii);
 	ok_or_goto_out(err);
 
-	err = voluta_stage_inode(sbi, newparent_ino, &newdir_ii);
+	err = voluta_stage_inode(sbi, newparent, &newdir_ii);
 	ok_or_goto_out(err);
 
 	err = voluta_name_to_qstr(dir_ii, name, &qstr);
@@ -832,176 +864,170 @@ int voluta_fs_rename(struct voluta_env *env, ino_t parent_ino,
 	err = voluta_name_to_qstr(dir_ii, newname, &newqstr);
 	ok_or_goto_out(err);
 
-	err = voluta_do_rename(op_ctx, dir_ii, &qstr,
+	err = voluta_do_rename(op, dir_ii, &qstr,
 			       newdir_ii, &newqstr, flags);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_read(struct voluta_env *env, ino_t ino, void *buf,
+int voluta_fs_read(struct voluta_sb_info *sbi,
+		   const struct voluta_oper *op, ino_t ino, void *buf,
 		   size_t len, loff_t off, size_t *out_len)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, false);
+	op_start(sbi, op, false);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_read(op_ctx, ii, buf, len, off, out_len);
+	err = voluta_do_read(op, ii, buf, len, off, out_len);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_read_iter(struct voluta_env *env, ino_t ino,
+int voluta_fs_read_iter(struct voluta_sb_info *sbi,
+			const struct voluta_oper *op, ino_t ino,
 			struct voluta_rw_iter *rwi)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, false);
+	op_start(sbi, op, false);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_read_iter(op_ctx, ii, rwi);
+	err = voluta_do_read_iter(op, ii, rwi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_write(struct voluta_env *env, ino_t ino, const void *buf,
-		    size_t len, off_t off, size_t *out)
+int voluta_fs_write(struct voluta_sb_info *sbi,
+		    const struct voluta_oper *op, ino_t ino,
+		    const void *buf, size_t len, off_t off, size_t *out_len)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_write(op_ctx, ii, buf, len, off, out);
+	err = voluta_do_write(op, ii, buf, len, off, out_len);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_write_iter(struct voluta_env *env, ino_t ino,
+int voluta_fs_write_iter(struct voluta_sb_info *sbi,
+			 const struct voluta_oper *op, ino_t ino,
 			 struct voluta_rw_iter *rwi)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_write_iter(op_ctx, ii, rwi);
+	err = voluta_do_write_iter(op, ii, rwi);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_fallocate(struct voluta_env *env, ino_t ino,
+int voluta_fs_fallocate(struct voluta_sb_info *sbi,
+			const struct voluta_oper *op, ino_t ino,
 			int mode, loff_t offset, loff_t length)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_fallocate(op_ctx, ii, mode, offset, length);
+	err = voluta_do_fallocate(op, ii, mode, offset, length);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_lseek(struct voluta_env *env, ino_t ino,
+int voluta_fs_lseek(struct voluta_sb_info *sbi,
+		    const struct voluta_oper *op, ino_t ino,
 		    loff_t off, int whence, loff_t *out_off)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_lseek(op_ctx, ii, off, whence, out_off);
+	err = voluta_do_lseek(op, ii, off, whence, out_off);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_setxattr(struct voluta_env *env, ino_t ino, const char *name,
-		       const char *value, size_t size, int flags)
+int voluta_fs_setxattr(struct voluta_sb_info *sbi,
+		       const struct voluta_oper *op, ino_t ino,
+		       const char *name, const void *value,
+		       size_t size, int flags)
 {
 	int err;
 	struct voluta_str str;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
@@ -1010,28 +1036,28 @@ int voluta_fs_setxattr(struct voluta_env *env, ino_t ino, const char *name,
 	err = voluta_name_to_str(ii, name, &str);
 	ok_or_goto_out(err);
 
-	err = voluta_do_setxattr(op_ctx, ii, &str, value, size, flags);
+	err = voluta_do_setxattr(op, ii, &str, value, size, flags);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_getxattr(struct voluta_env *env, ino_t ino, const char *name,
-		       void *buf, size_t size, size_t *out_size)
+int voluta_fs_getxattr(struct voluta_sb_info *sbi,
+		       const struct voluta_oper *op, ino_t ino,
+		       const char *name, void *buf, size_t size,
+		       size_t *out_size)
 {
 	int err;
 	struct voluta_str str;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
@@ -1040,47 +1066,46 @@ int voluta_fs_getxattr(struct voluta_env *env, ino_t ino, const char *name,
 	err = voluta_name_to_str(ii, name, &str);
 	ok_or_goto_out(err);
 
-	err = voluta_do_getxattr(op_ctx, ii, &str, buf, size, out_size);
+	err = voluta_do_getxattr(op, ii, &str, buf, size, out_size);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_listxattr(struct voluta_env *env, ino_t ino,
-			struct voluta_listxattr_ctx *listxattr_ctx)
+int voluta_fs_listxattr(struct voluta_sb_info *sbi,
+			const struct voluta_oper *op, ino_t ino,
+			struct voluta_listxattr_ctx *lxa_ctx)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, false);
+	op_start(sbi, op, false);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_listxattr(op_ctx, ii, listxattr_ctx);
+	err = voluta_do_listxattr(op, ii, lxa_ctx);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_removexattr(struct voluta_env *env, ino_t ino, const char *name)
+int voluta_fs_removexattr(struct voluta_sb_info *sbi,
+			  const struct voluta_oper *op,
+			  ino_t ino, const char *name)
 {
 	int err;
 	struct voluta_str str;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, true);
+	op_start(sbi, op, true);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
@@ -1089,79 +1114,78 @@ int voluta_fs_removexattr(struct voluta_env *env, ino_t ino, const char *name)
 	err = voluta_name_to_str(ii, name, &str);
 	ok_or_goto_out(err);
 
-	err = voluta_do_removexattr(op_ctx, ii, &str);
+	err = voluta_do_removexattr(op, ii, &str);
 	ok_or_goto_out(err);
 
 	err = voluta_op_flush(sbi);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_statx(struct voluta_env *env, ino_t ino, struct statx *out_statx)
+int voluta_fs_statx(struct voluta_sb_info *sbi,
+		    const struct voluta_oper *op, ino_t ino,
+		    struct statx *out_stx)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, false);
+	op_start(sbi, op, false);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_statx(op_ctx, ii, out_statx);
+	err = voluta_do_statx(op, ii, out_stx);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_fiemap(struct voluta_env *env, ino_t ino, struct fiemap *fm)
+int voluta_fs_fiemap(struct voluta_sb_info *sbi,
+		     const struct voluta_oper *op,
+		     ino_t ino, struct fiemap *fm)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, false);
+	op_start(sbi, op, false);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_fiemap(op_ctx, ii, fm);
+	err = voluta_do_fiemap(op, ii, fm);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }
 
-int voluta_fs_inquiry(struct voluta_env *env, ino_t ino,
-		      struct voluta_inquiry *out_inq)
+int voluta_fs_query(struct voluta_sb_info *sbi,
+		    const struct voluta_oper *op, ino_t ino,
+		    struct voluta_query *out_qry)
 {
 	int err;
 	struct voluta_inode_info *ii = NULL;
-	struct voluta_sb_info *sbi = sbi_of(env);
-	const struct voluta_oper_ctx *op_ctx = op_ctx_of(env);
 
-	voluta_op_start(env, false);
+	op_start(sbi, op, false);
 
-	err = voluta_authorize(sbi, op_ctx);
+	err = voluta_authorize(sbi, op);
 	ok_or_goto_out(err);
 
 	err = voluta_stage_inode(sbi, ino, &ii);
 	ok_or_goto_out(err);
 
-	err = voluta_do_inquiry(op_ctx, ii, out_inq);
+	err = voluta_do_query(op, ii, out_qry);
 	ok_or_goto_out(err);
 out:
-	voluta_op_finish(env);
+	op_finish(sbi, op);
 	return err;
 }

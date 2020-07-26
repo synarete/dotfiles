@@ -37,457 +37,402 @@
 
 #include <voluta/voluta.h>
 #include <voluta/syscall.h>
-#include <voluta/test.h>
+#include <voluta/types.h>
 #include <voluta/list.h>
 #include <voluta/avl.h>
+#include <voluta/socket.h>
+#include <voluta/infra.h>
 #include <voluta/error.h>
+#include <voluta/fuse.h>
 #include <voluta/core.h>
 
 #ifndef VOLUTA_UNITEST
 #error "this header must not be included out-side of unitest"
 #endif
 
-#define VOLUTA_UT_NAME __func__
 
-
-struct voluta_ut_range {
+struct ut_range {
 	loff_t off;
 	size_t len;
 };
 
-struct voluta_ut_ranges {
-	const struct voluta_ut_range *arr;
+struct ut_ranges {
+	const struct ut_range *arr;
 	size_t cnt;
 };
 
-struct voluta_ut_keyval {
+struct ut_keyval {
 	const char *name;
 	const void *value;
 	size_t size;
 };
 
-struct voluta_ut_kvl {
-	struct voluta_ut_ctx *ut_ctx;
-	struct voluta_ut_keyval **list;
+struct ut_kvl {
+	struct ut_env *ut_env;
+	struct ut_keyval **list;
 	size_t limit;
 	size_t count;
 };
 
-struct voluta_ut_readdir_ctx {
-	struct voluta_readdir_ctx readdir_ctx;
-	struct dirent64 dents[64];
-	size_t ndents;
+struct ut_dirent_info {
+	struct dirent64 de;
+	struct stat attr;
 };
 
-struct voluta_ut_listxattr_ctx {
-	struct voluta_ut_ctx *ut_ctx;
-	struct voluta_listxattr_ctx listxattr_ctx;
+struct ut_readdir_ctx {
+	struct voluta_readdir_ctx rd_ctx;
+	struct ut_dirent_info dei[64];
+	unsigned int nde;
+	int plus;
+};
+
+struct ut_listxattr_ctx {
+	struct ut_env *ut_env;
+	struct voluta_listxattr_ctx lxa_ctx;
 	size_t count;
 	char *names[64];
 };
 
-struct voluta_ut_malloc_chunk {
-	struct voluta_ut_malloc_chunk *next;
+struct ut_malloc_chunk {
+	struct ut_malloc_chunk *next;
 	size_t  size;
 	uint8_t data[32];
 };
 
-struct voluta_ut_ctx {
+struct ut_env {
 	char pass[VOLUTA_PASSPHRASE_MAX + 1];
 	char salt[VOLUTA_PASSPHRASE_MAX + 1];
-	struct voluta_env *env;
+	struct voluta_fs_env *fs_env;
+	struct voluta_oper oper;
 	struct timespec ts_start;
 	struct statvfs stvfs_start;
 	size_t ualloc_start;
 	loff_t volume_size;
 	size_t nbytes_alloc;
-	struct voluta_ut_malloc_chunk *malloc_list;
+	size_t unique_count;
+	struct ut_malloc_chunk *malloc_list;
 	const char *test_name;
 	int silent;
 	int pad;
 };
 
-struct voluta_ut_iobuf {
+struct ut_dvec {
 	loff_t  off;
 	size_t  len;
-	uint8_t buf[8];
+	uint8_t dat[8];
 };
 
-typedef void (*voluta_ut_hook_fn)(struct voluta_ut_ctx *);
+typedef void (*ut_hook_fn)(struct ut_env *);
 
-struct voluta_ut_testdef {
-	voluta_ut_hook_fn hook;
+struct ut_testdef {
+	ut_hook_fn hook;
 	const char *name;
 };
 
-struct voluta_ut_tests {
-	const struct voluta_ut_testdef *arr;
+struct ut_tests {
+	const struct ut_testdef *arr;
 	size_t len;
 };
 
-struct voluta_ut_tgroup {
-	const struct voluta_ut_tests *tests;
+struct ut_tgroup {
+	const struct ut_tests *tests;
 	const char *name;
 };
 
 
-#define VOLUTA_UT_MKTESTS(arr_) \
-	{ arr_, VOLUTA_ARRAY_SIZE(arr_) }
-
-#define VOLUTA_UT_DEFTEST(fn_) \
-	{ .hook = fn_, .name = VOLUTA_STR(fn_) }
-
-
 /* modules unit-tests entry-points */
-extern const struct voluta_ut_tests voluta_ut_test_avl;
-extern const struct voluta_ut_tests voluta_ut_test_qalloc;
-extern const struct voluta_ut_tests voluta_ut_test_super;
-extern const struct voluta_ut_tests voluta_ut_test_dir;
-extern const struct voluta_ut_tests voluta_ut_test_dir_iter;
-extern const struct voluta_ut_tests voluta_ut_test_dir_list;
-extern const struct voluta_ut_tests voluta_ut_test_namei;
-extern const struct voluta_ut_tests voluta_ut_test_rename;
-extern const struct voluta_ut_tests voluta_ut_test_symlink;
-extern const struct voluta_ut_tests voluta_ut_test_xattr;
-extern const struct voluta_ut_tests voluta_ut_test_ioctl;
-extern const struct voluta_ut_tests voluta_ut_test_file_basic;
-extern const struct voluta_ut_tests voluta_ut_test_file_ranges;
-extern const struct voluta_ut_tests voluta_ut_test_file_truncate;
-extern const struct voluta_ut_tests voluta_ut_test_file_records;
-extern const struct voluta_ut_tests voluta_ut_test_file_random;
-extern const struct voluta_ut_tests voluta_ut_test_file_edges;
-extern const struct voluta_ut_tests voluta_ut_test_file_fallocate;
-extern const struct voluta_ut_tests voluta_ut_test_file_fiemap;
-extern const struct voluta_ut_tests voluta_ut_test_reload;
-extern const struct voluta_ut_tests voluta_ut_test_fillfs;
+extern const struct ut_tests ut_test_avl;
+extern const struct ut_tests ut_test_qalloc;
+extern const struct ut_tests ut_test_super;
+extern const struct ut_tests ut_test_dir;
+extern const struct ut_tests ut_test_dir_iter;
+extern const struct ut_tests ut_test_dir_list;
+extern const struct ut_tests ut_test_namei;
+extern const struct ut_tests ut_test_rename;
+extern const struct ut_tests ut_test_symlink;
+extern const struct ut_tests ut_test_xattr;
+extern const struct ut_tests ut_test_ioctl;
+extern const struct ut_tests ut_test_file_basic;
+extern const struct ut_tests ut_test_file_ranges;
+extern const struct ut_tests ut_test_file_truncate;
+extern const struct ut_tests ut_test_file_records;
+extern const struct ut_tests ut_test_file_random;
+extern const struct ut_tests ut_test_file_edges;
+extern const struct ut_tests ut_test_file_fallocate;
+extern const struct ut_tests ut_test_file_fiemap;
+extern const struct ut_tests ut_test_file_lseek;
+extern const struct ut_tests ut_test_fs_reload;
+extern const struct ut_tests ut_test_fs_fill;
 
-/* common */
-void voluta_ut_execute(const char *test_name);
-void voluta_ut_freeall(struct voluta_ut_ctx *ut_ctx);
-void *voluta_ut_malloc(struct voluta_ut_ctx *ut_ctx, size_t nbytes);
-void *voluta_ut_zalloc(struct voluta_ut_ctx *ut_ctx, size_t nbytes);
-char *voluta_ut_strdup(struct voluta_ut_ctx *ut_ctx, const char *str);
-char *voluta_ut_strndup(struct voluta_ut_ctx *ut_ctx, const char *str, size_t);
-char *voluta_ut_make_name(struct voluta_ut_ctx *ut_ctx,
-			  const char *prefix, size_t idx);
+/* exec */
+void ut_execute(const char *test_name);
 
-struct voluta_ut_ctx *voluta_ut_new_ctx(void);
-void voluta_ut_del_ctx(struct voluta_ut_ctx *ut_ctx);
+void ut_freeall(struct ut_env *ut_env);
 
-void *voluta_ut_zerobuf(struct voluta_ut_ctx *, size_t bsz);
-void voluta_ut_randfill(struct voluta_ut_ctx *, void *, size_t);
-void *voluta_ut_randbuf(struct voluta_ut_ctx *, size_t bsz);
-long *voluta_ut_randseq(struct voluta_ut_ctx *, size_t len, long base);
-char *voluta_ut_randstr(struct voluta_ut_ctx *, size_t len);
-char *voluta_ut_strfmt(struct voluta_ut_ctx *ut_ctx, const char *fmt, ...);
-struct voluta_ut_readdir_ctx *
-voluta_ut_new_readdir_ctx(struct voluta_ut_ctx *);
-struct voluta_ut_iobuf *
-voluta_ut_new_iobuf(struct voluta_ut_ctx *, loff_t, size_t);
+void *ut_malloc(struct ut_env *ut_env, size_t nbytes);
 
-/* operations wrappers */
-int voluta_ut_load(struct voluta_ut_ctx *ut_ctx);
+void *ut_zalloc(struct ut_env *ut_env, size_t nbytes);
 
-int voluta_ut_reload(struct voluta_ut_ctx *ut_ctx);
+char *ut_strdup(struct ut_env *ut_env, const char *str);
 
-int voluta_ut_statfs(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-		     struct statvfs *st);
+char *ut_strndup(struct ut_env *ut_env, const char *str, size_t);
 
-int voluta_ut_getattr(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-		      struct stat *st);
+const char *ut_make_name(struct ut_env *ut_env, const char *pre, size_t idx);
 
-int voluta_ut_statx(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-		    struct statx *stx);
+struct ut_env *ut_new_ctx(void);
 
-int voluta_ut_utimens(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-		      const struct stat *utimes, struct stat *st);
+void ut_del_ctx(struct ut_env *ut_env);
 
-int voluta_ut_access(struct voluta_ut_ctx *ut_ctx, ino_t ino, int mode);
+void *ut_zerobuf(struct ut_env *ut_env, size_t bsz);
 
-int voluta_ut_lookup(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		     const char *name, struct stat *out_stat);
+void ut_randfill(struct ut_env *ut_env, void *buf, size_t bsz);
 
-int voluta_ut_mkdir(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		    const char *name, mode_t mode, struct stat *out);
+void *ut_randbuf(struct ut_env *ut_env, size_t bsz);
 
-int voluta_ut_rmdir(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		    const char *name);
+long *ut_randseq(struct ut_env *, size_t len, long base);
 
-int voluta_ut_opendir(struct voluta_ut_ctx *ut_ctx, ino_t ino);
+char *ut_randstr(struct ut_env *, size_t len);
 
-int voluta_ut_releasedir(struct voluta_ut_ctx *ut_ctx, ino_t ino);
+char *ut_strfmt(struct ut_env *ut_env, const char *fmt, ...);
 
-int voluta_ut_fsyncdir(struct voluta_ut_ctx *ut_ctx, ino_t ino, bool datasync);
+struct ut_readdir_ctx *ut_new_readdir_ctx(struct ut_env *ut_env);
 
-int voluta_ut_readdir(struct voluta_ut_ctx *ut_ctx, ino_t ino, loff_t doff,
-		      struct voluta_ut_readdir_ctx *ut_rdir_ctx);
+struct ut_dvec *ut_new_dvec(struct ut_env *, loff_t, size_t);
 
-int voluta_ut_symlink(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		      const char *name, const char *linkpath,
-		      struct stat *out_stat);
 
-int voluta_ut_readlink(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-		       char *buf, size_t bufsz);
-
-int voluta_ut_link(struct voluta_ut_ctx *ut_ctx, ino_t ino, ino_t parent,
-		   const char *name, struct stat *out);
-
-int voluta_ut_unlink(struct voluta_ut_ctx *ut_ctx,
-		     ino_t parent, const char *name);
-
-int voluta_ut_rename(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		     const char *name, ino_t newparent,
-		     const char *newname, int flags);
-
-int voluta_ut_create(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		     const char *name, mode_t mode, struct stat *out_stat);
-
-int voluta_ut_mknod(struct voluta_ut_ctx *ut_ctx, ino_t parent,
-		    const char *name, mode_t mode, dev_t rdev,
-		    struct stat *out_stat);
-
-int voluta_ut_open(struct voluta_ut_ctx *ut_ctx, ino_t ino, int flags);
-
-int voluta_ut_release(struct voluta_ut_ctx *ut_ctx, ino_t ino);
-
-int voluta_ut_fsync(struct voluta_ut_ctx *ut_ctx, ino_t ino, bool datasync);
-
-int voluta_ut_read(struct voluta_ut_ctx *ut_ctx, ino_t ino, void *buf,
-		   size_t len, loff_t off, size_t *out_len);
-
-int voluta_ut_write(struct voluta_ut_ctx *ut_ctx, ino_t ino, const void *buf,
-		    size_t len, off_t off, size_t *out_len);
-
-int voluta_ut_truncate(struct voluta_ut_ctx *ut_ctx, ino_t ino, loff_t length);
-
-int voluta_ut_fallocate(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			int mode, loff_t offset, loff_t len);
-
-int voluta_ut_setxattr(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-		       const char *name, const void *value,
-		       size_t size, int flags);
-
-int voluta_ut_getxattr(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-		       const char *name, void *buf, size_t size, size_t *out);
-
-int voluta_ut_removexattr(struct voluta_ut_ctx *ut_ctx,
-			  ino_t ino, const char *name);
-
-int voluta_ut_listxattr(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			struct voluta_ut_listxattr_ctx *ut_listxattr_ctx);
-
-int voluta_ut_inquiry(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-		      struct voluta_inquiry *out_inq);
-
-int voluta_ut_fiemap(struct voluta_ut_ctx *ut_ctx,
-		     ino_t ino, struct fiemap *fm);
-
-int voluta_ut_lseek(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-		    loff_t off, int whence, loff_t *out_off);
 
 /* no-fail operations wrappers */
-void voluta_ut_statfs_ok(struct voluta_ut_ctx *ut_ctx,
-			 ino_t ino, struct statvfs *st);
+void ut_access_ok(struct ut_env *ut_env, ino_t ino, int mode);
 
-void voluta_ut_statfs_rootd(struct voluta_ut_ctx *ut_ctx, struct statvfs *st);
+void ut_statfs_ok(struct ut_env *ut_env, ino_t ino, struct statvfs *st);
 
-void voluta_ut_statx_exists(struct voluta_ut_ctx *ut_ctx,
-			    ino_t ino, struct statx *stx);
+void ut_statfs_rootd(struct ut_env *ut_env, struct statvfs *st);
 
-void voluta_ut_getattr_exists(struct voluta_ut_ctx *ut_ctx,
-			      ino_t ino, struct stat *st);
+void ut_statx_exists(struct ut_env *ut_env, ino_t ino, struct statx *stx);
 
-void voluta_ut_getattr_noent(struct voluta_ut_ctx *ut_ctx, ino_t ino);
+void ut_getattr_ok(struct ut_env *ut_env, ino_t ino, struct stat *st);
 
-void voluta_ut_getattr_file(struct voluta_ut_ctx *ut_ctx,
-			    ino_t ino, struct stat *st);
+void ut_getattr_noent(struct ut_env *ut_env, ino_t ino);
 
-void voluta_ut_getattr_lnk(struct voluta_ut_ctx *ut_ctx,
-			   ino_t ino, struct stat *st);
+void ut_getattr_file(struct ut_env *ut_env, ino_t ino, struct stat *st);
 
-void voluta_ut_getattr_dir(struct voluta_ut_ctx *ut_ctx,
-			   ino_t ino, struct stat *st);
+void ut_getattr_lnk(struct ut_env *ut_env, ino_t ino, struct stat *st);
 
-void voluta_ut_getattr_dirsize(struct voluta_ut_ctx *ut_ctx,
-			       ino_t ino, loff_t size);
+void ut_getattr_dir(struct ut_env *ut_env, ino_t ino, struct stat *st);
 
-void voluta_ut_utimens_atime(struct voluta_ut_ctx *ut_ctx,
-			     ino_t ino, const struct timespec *atime);
+void ut_getattr_dirsize(struct ut_env *ut_env, ino_t ino, loff_t size);
 
-void voluta_ut_utimens_mtime(struct voluta_ut_ctx *ut_ctx,
-			     ino_t ino, const struct timespec *mtime);
+void ut_utimens_atime(struct ut_env *ut_env,
+		      ino_t ino, const struct timespec *atime);
 
-void voluta_ut_lookup_noent(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			    const char *name);
+void ut_utimens_mtime(struct ut_env *ut_env,
+		      ino_t ino, const struct timespec *mtime);
 
-void voluta_ut_mkdir_ok(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
-			const char *name, ino_t *out_ino);
+void ut_lookup_ok(struct ut_env *ut_env, ino_t parent,
+		  const char *name, struct stat *out_st);
 
-void voluta_ut_mkdir_at_root(struct voluta_ut_ctx *ut_ctx,
-			     const char *name, ino_t *out_ino);
+void ut_lookup_ino(struct ut_env *ut_env, ino_t parent,
+		   const char *name, ino_t *out_ino);
 
-void voluta_ut_mkdir_fail(struct voluta_ut_ctx *ut_ctx,
-			  ino_t parent_ino, const char *name);
+void ut_lookup_exists(struct ut_env *ut_env, ino_t parent,
+		      const char *name, ino_t ino, mode_t mode);
 
-void voluta_ut_rmdir_ok(struct voluta_ut_ctx *ut_ctx,
-			ino_t parent_ino, const char *name);
+void ut_lookup_dir(struct ut_env *ut_env, ino_t parent,
+		   const char *name, ino_t dino);
 
-void voluta_ut_rmdir_at_root(struct voluta_ut_ctx *ut_ctx, const char *name);
+void ut_lookup_file(struct ut_env *ut_env, ino_t parent,
+		    const char *name, ino_t ino);
 
-void voluta_ut_rmdir_enotempty(struct voluta_ut_ctx *ut_ctx,
-			       ino_t parent_ino, const char *name);
+void ut_lookup_lnk(struct ut_env *ut_env, ino_t parent,
+		   const char *name, ino_t ino);
 
-void voluta_ut_opendir_ok(struct voluta_ut_ctx *ut_ctx, ino_t dino);
+void ut_lookup_noent(struct ut_env *ut_env, ino_t ino, const char *name);
 
-void voluta_ut_releasedir_ok(struct voluta_ut_ctx *ut_ctx, ino_t dino);
+void ut_mkdir_ok(struct ut_env *ut_env, ino_t parent,
+		 const char *name, struct stat *out_st);
 
-void voluta_ut_lookup_ok(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
-			 const char *name, ino_t *out_ino);
+void ut_mkdir_oki(struct ut_env *ut_env, ino_t parent,
+		  const char *name, ino_t *out_ino);
 
-void voluta_ut_lookup_exists(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
-			     const char *name, ino_t ino, mode_t mode);
+void ut_mkdir_at_root(struct ut_env *ut_env, const char *name, ino_t *out_ino);
 
-void voluta_ut_lookup_dir(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
-			  const char *name, ino_t dino);
+void ut_mkdir_err(struct ut_env *ut_env,
+		  ino_t parent, const char *name, int err);
 
-void voluta_ut_lookup_file(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
-			   const char *name, ino_t ino);
+void ut_rmdir_ok(struct ut_env *ut_env, ino_t parent, const char *name);
 
-void voluta_ut_lookup_lnk(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
-			  const char *name, ino_t ino);
-void voluta_ut_link_new(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			ino_t parent_ino, const char *name);
+void ut_rmdir_err(struct ut_env *ut_env, ino_t parent,
+		  const char *name, int err);
 
-void voluta_ut_unlink_exists(struct voluta_ut_ctx *ut_ctx,
-			     ino_t parent_ino, const char *name);
+void ut_rmdir_at_root(struct ut_env *ut_env, const char *name);
 
-void voluta_ut_unlink_file(struct voluta_ut_ctx *ut_ctx,
-			   ino_t parent_ino, const char *name);
+void ut_opendir_ok(struct ut_env *ut_env, ino_t ino);
 
-void voluta_ut_rename_move(struct voluta_ut_ctx *ut_ctx,
-			   ino_t parent_ino, const char *name,
-			   ino_t newparent_ino, const char *newname);
-void voluta_ut_rename_replace(struct voluta_ut_ctx *ut_ctx,
-			      ino_t parent_ino, const char *name,
-			      ino_t newparent_ino, const char *newname);
-void voluta_ut_rename_exchange(struct voluta_ut_ctx *ut_ctx,
-			       ino_t parent_ino, const char *name,
-			       ino_t newparent_ino, const char *newname);
-void voluta_ut_create_symlink(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
-			      const char *name, const char *value, ino_t *out);
-void voluta_ut_readlink_expect(struct voluta_ut_ctx *ut_ctx,
-			       ino_t ino, const char *symval);
-void voluta_ut_create_special(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
-			      const char *name, mode_t mode, ino_t *out_ino);
-void voluta_ut_create_file(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
-			   const char *name, ino_t *out_ino);
+void ut_opendir_err(struct ut_env *ut_env, ino_t ino, int err);
 
-void voluta_ut_create_noent(struct voluta_ut_ctx *ut_ctx,
-			    ino_t parent_ino, const char *name);
+void ut_releasedir_ok(struct ut_env *ut_env, ino_t ino);
 
-void voluta_ut_release_ok(struct voluta_ut_ctx *ut_ctx, ino_t ino);
+void ut_releasedir_err(struct ut_env *ut_env, ino_t ino, int err);
 
-void voluta_ut_release_file(struct voluta_ut_ctx *ut_ctx, ino_t ino);
+void ut_fsyncdir_ok(struct ut_env *ut_env, ino_t ino);
 
-void voluta_ut_fsync_file(struct voluta_ut_ctx *ut_ctx, ino_t ino, bool);
-void voluta_ut_remove_file(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
-			   const char *, ino_t ino);
-void voluta_ut_create_only(struct voluta_ut_ctx *ut_ctx, ino_t parent_ino,
-			   const char *name, ino_t *out_ino);
+void ut_readdir_ok(struct ut_env *ut_env, ino_t ino, loff_t doff,
+		   struct ut_readdir_ctx *ut_rd_ctx);
 
-void voluta_ut_open_rdonly(struct voluta_ut_ctx *ut_ctx, ino_t ino);
+void ut_readdirplus_ok(struct ut_env *ut_env, ino_t ino, loff_t doff,
+		       struct ut_readdir_ctx *ut_rd_ctx);
 
-void voluta_ut_open_rdwr(struct voluta_ut_ctx *ut_ctx, ino_t ino);
+void ut_link_ok(struct ut_env *ut_env, ino_t ino,
+		ino_t parent, const char *name, struct stat *out_st);
 
-void voluta_ut_remove_link(struct voluta_ut_ctx *ut_ctx,
-			   ino_t parent_ino, const char *name);
+void ut_link_err(struct ut_env *ut_env, ino_t ino,
+		 ino_t parent, const char *name, int err);
 
-void voluta_ut_write_read(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			  const void *buf, size_t bsz, loff_t off);
+void ut_unlink_ok(struct ut_env *ut_env, ino_t parent, const char *name);
 
-void voluta_ut_write_read1(struct voluta_ut_ctx *ut_ctx,
-			   ino_t ino, loff_t off);
+void ut_unlink_err(struct ut_env *ut_env, ino_t parent,
+		   const char *name, int err);
 
-void voluta_ut_write_read_str(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			      const char *str, loff_t off);
+void ut_unlink_file(struct ut_env *ut_env, ino_t parent, const char *name);
 
-void voluta_ut_read_verify(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			   const void *buf, size_t bsz, loff_t off);
+void ut_rename_move(struct ut_env *ut_env, ino_t parent, const char *name,
+		    ino_t newparent, const char *newname);
 
-void voluta_ut_read_verify_str(struct voluta_ut_ctx *ut_ctx,
-			       ino_t ino, const char *str, loff_t off);
+void ut_rename_replace(struct ut_env *ut_env, ino_t parent, const char *name,
+		       ino_t newparent, const char *newname);
 
-void voluta_ut_read_zero(struct voluta_ut_ctx *ut_ctx, ino_t ino, loff_t off);
+void ut_rename_exchange(struct ut_env *ut_env, ino_t parent, const char *name,
+			ino_t newparent, const char *newname);
 
-void voluta_ut_read_zeros(struct voluta_ut_ctx *ut_ctx,
-			  ino_t ino, loff_t off, size_t len);
+void ut_symlink_ok(struct ut_env *ut_env, ino_t parent,
+		   const char *name, const char *value, ino_t *out_ino);
 
-void voluta_ut_read_only(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			 void *buf, size_t bsz, loff_t off);
+void ut_readlink_expect(struct ut_env *ut_env,
+			ino_t ino, const char *symval);
 
-void voluta_ut_trunacate_file(struct voluta_ut_ctx *ut_ctx,
-			      ino_t ino, loff_t len);
+void ut_create_ok(struct ut_env *ut_env, ino_t parent,
+		  const char *name, mode_t mode, struct stat *out_st);
 
-void voluta_ut_fallocate_reserve(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-				 loff_t offset, loff_t len);
+void ut_create_file(struct ut_env *ut_env, ino_t parent,
+		    const char *name, ino_t *out_ino);
 
-void voluta_ut_fallocate_punch_hole(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-				    loff_t offset, loff_t len);
+void ut_create_noent(struct ut_env *ut_env,
+		     ino_t parent, const char *name);
 
-void voluta_ut_setxattr_create(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			       const struct voluta_ut_keyval *kv);
+void ut_create_special(struct ut_env *ut_env, ino_t parent,
+		       const char *name, mode_t mode, ino_t *out_ino);
 
-void voluta_ut_setxattr_replace(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-				const struct voluta_ut_keyval *kv);
 
-void voluta_ut_setxattr_rereplace(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-				  const struct voluta_ut_keyval *kv);
+void ut_release_ok(struct ut_env *ut_env, ino_t ino);
 
-void voluta_ut_getxattr_value(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			      const struct voluta_ut_keyval *kv);
+void ut_release_file(struct ut_env *ut_env, ino_t ino);
 
-void voluta_ut_getxattr_nodata(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			       const struct voluta_ut_keyval *);
+void ut_fsync_ok(struct ut_env *ut_env, ino_t ino, bool datasync);
 
-void voluta_ut_removexattr_exists(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-				  const struct voluta_ut_keyval *);
+void ut_remove_file(struct ut_env *ut_env, ino_t parent,
+		    const char *, ino_t ino);
 
-void voluta_ut_listxattr_exists(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-				const struct voluta_ut_kvl *kvl);
+void ut_create_only(struct ut_env *ut_env, ino_t parent,
+		    const char *name, ino_t *out_ino);
 
-void voluta_ut_setxattr_all(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			    const struct voluta_ut_kvl *kvl);
+void ut_open_rdonly(struct ut_env *ut_env, ino_t ino);
 
-void voluta_ut_removexattr_all(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			       const struct voluta_ut_kvl *kvl);
+void ut_open_rdwr(struct ut_env *ut_env, ino_t ino);
 
-void voluta_ut_inquiry_ok(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			  struct voluta_inquiry *out_inq);
+void ut_remove_link(struct ut_env *ut_env,
+		    ino_t parent, const char *name);
 
-void voluta_ut_fiemap_ok(struct voluta_ut_ctx *ut_ctx,
-			 ino_t ino, struct fiemap *fm);
+void ut_write_ok(struct ut_env *ut_env, ino_t ino,
+		 const void *buf, size_t bsz, loff_t off);
 
-void voluta_ut_lseek_data(struct voluta_ut_ctx *ut_ctx,
-			  ino_t ino, loff_t off, loff_t *out_off);
+void ut_write_nospc(struct ut_env *ut_env, ino_t ino,
+		    const void *buf, size_t bsz,
+		    loff_t off, size_t *out_nwr);
 
-void voluta_ut_write_iobuf(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			   const struct voluta_ut_iobuf *iobuf);
+void ut_write_read(struct ut_env *ut_env, ino_t ino,
+		   const void *buf, size_t bsz, loff_t off);
 
-void voluta_ut_read_iobuf(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			  const struct voluta_ut_iobuf *iobuf);
+void ut_write_read1(struct ut_env *ut_env, ino_t ino, loff_t off);
 
-void voluta_ut_sync_drop(struct voluta_ut_ctx *ut_ctx);
+void ut_write_read_str(struct ut_env *ut_env, ino_t ino,
+		       const char *str, loff_t off);
 
-void voluta_ut_drop_caches_fully(struct voluta_ut_ctx *ut_ctx);
+void ut_read_verify(struct ut_env *ut_env, ino_t ino,
+		    const void *buf, size_t bsz, loff_t off);
 
-void voluta_ut_reload_ok(struct voluta_ut_ctx *ut_ctx, ino_t ino);
+void ut_read_verify_str(struct ut_env *ut_env,
+			ino_t ino, const char *str, loff_t off);
+
+void ut_read_zero(struct ut_env *ut_env, ino_t ino, loff_t off);
+
+void ut_read_zeros(struct ut_env *ut_env,
+		   ino_t ino, loff_t off, size_t len);
+
+void ut_read_ok(struct ut_env *ut_env, ino_t ino,
+		void *buf, size_t bsz, loff_t off);
+
+void ut_trunacate_file(struct ut_env *ut_env, ino_t ino, loff_t len);
+
+void ut_fallocate_reserve(struct ut_env *ut_env, ino_t ino,
+			  loff_t offset, loff_t len);
+
+void ut_fallocate_punch_hole(struct ut_env *ut_env, ino_t ino,
+			     loff_t offset, loff_t len);
+
+void ut_setxattr_create(struct ut_env *ut_env, ino_t ino,
+			const struct ut_keyval *kv);
+
+void ut_setxattr_replace(struct ut_env *ut_env, ino_t ino,
+			 const struct ut_keyval *kv);
+
+void ut_setxattr_rereplace(struct ut_env *ut_env, ino_t ino,
+			   const struct ut_keyval *kv);
+
+void ut_getxattr_value(struct ut_env *ut_env, ino_t ino,
+		       const struct ut_keyval *kv);
+
+void ut_getxattr_nodata(struct ut_env *ut_env, ino_t ino,
+			const struct ut_keyval *);
+
+void ut_removexattr_ok(struct ut_env *ut_env, ino_t ino,
+		       const struct ut_keyval *);
+
+void ut_listxattr_ok(struct ut_env *ut_env, ino_t ino,
+		     const struct ut_kvl *kvl);
+
+void ut_setxattr_all(struct ut_env *ut_env, ino_t ino,
+		     const struct ut_kvl *kvl);
+
+void ut_removexattr_all(struct ut_env *ut_env, ino_t ino,
+			const struct ut_kvl *kvl);
+
+void ut_query_ok(struct ut_env *ut_env, ino_t ino,
+		 struct voluta_query *out_inq);
+
+void ut_fiemap_ok(struct ut_env *ut_env, ino_t ino, struct fiemap *fm);
+
+void ut_lseek_data(struct ut_env *ut_env,
+		   ino_t ino, loff_t off, loff_t *out_off);
+
+void ut_lseek_hole(struct ut_env *ut_env,
+		   ino_t ino, loff_t off, loff_t *out_off);
+
+void ut_write_dvec(struct ut_env *ut_env, ino_t ino,
+		   const struct ut_dvec *dvec);
+
+void ut_read_dvec(struct ut_env *ut_env, ino_t ino,
+		  const struct ut_dvec *dvec);
+
+void ut_sync_drop(struct ut_env *ut_env);
+
+void ut_drop_caches_fully(struct ut_env *ut_env);
+
+void ut_reload_ok(struct ut_env *ut_env, ino_t ino);
 
 /* utilities */
-void *voluta_ut_mmap_memory(size_t msz);
-
-void voluta_ut_munmap_memory(void *mem, size_t msz);
-
-void voluta_ut_prandom_seq(long *arr, size_t len, long base);
+void ut_prandom_seq(long *arr, size_t len, long base);
+bool ut_dot_or_dotdot(const char *s);
+bool ut_not_dot_or_dotdot(const char *s);
 
 /* assertions */
 #define ut_assert(cond)         voluta_assert(cond)
@@ -502,25 +447,64 @@ void voluta_ut_prandom_seq(long *arr, size_t len, long base);
 #define ut_assert_ok(err)       voluta_assert_ok(err)
 #define ut_assert_err(err, val) voluta_assert_err(err, val)
 #define ut_assert_null(ptr)     voluta_assert_null(ptr)
-#define ut_assert_notnull(ptr)  voluta_assert_not_null(ptr)
+#define ut_assert_not_null(ptr)  voluta_assert_not_null(ptr)
 
-#define ut_zerobuf(ut_ctx, n)   voluta_ut_zerobuf(ut_ctx, n)
-#define ut_biovec(ut_ctx, n)    voluta_ut_new_biovec(ut_ctx, n)
-#define ut_randbuf(ut_ctx, n)   voluta_ut_randbuf(ut_ctx, n)
-#define ut_randstr(ut_ctx, n)   voluta_ut_randstr(ut_ctx, n)
-#define ut_strfmt(ut_ctx, fmt, ...) \
-	voluta_ut_strfmt(ut_ctx, fmt, __VA_ARGS__)
+#define ut_zerobuf(ut_env, n)   ut_zerobuf(ut_env, n)
+#define ut_randbuf(ut_env, n)   ut_randbuf(ut_env, n)
+#define ut_randstr(ut_env, n)   ut_randstr(ut_env, n)
+#define ut_strfmt(ut_env, fmt, ...) \
+	ut_strfmt(ut_env, fmt, __VA_ARGS__)
+
+void ut_assert_eq_ts(const struct timespec *ts1, const struct timespec *ts2);
+
+void ut_assert_eq_stat(const struct stat *st1, const struct stat *st2);
+
+void ut_assert_eq_statvfs(const struct statvfs *s1, const struct statvfs *s2);
+
+void ut_assert_valid_statvfs(const struct statvfs *stv);
 
 /* aliases */
-#define UT_DEFTEST(hook)        VOLUTA_UT_DEFTEST(hook)
-#define UT_MKTESTS(tag)         VOLUTA_UT_MKTESTS(tag)
+#define UT_KILO                 VOLUTA_KILO
+#define UT_MEGA                 VOLUTA_MEGA
+#define UT_GIGA                 VOLUTA_GIGA
+#define UT_TERA                 VOLUTA_TERA
+#define UT_UMEGA                VOLUTA_UMEGA
+#define UT_UGIGA                VOLUTA_UGIGA
+#define UT_UTERA                VOLUTA_UTERA
+#define UT_ARRAY_SIZE(x)        VOLUTA_ARRAY_SIZE(x)
 #define UT_NAME_MAX             VOLUTA_NAME_MAX
+#define UT_BK_SIZE              VOLUTA_BK_SIZE
+#define UT_FILESIZE_MAX         VOLUTA_FILE_SIZE_MAX
+#define UT_IOSIZE_MAX           VOLUTA_IO_SIZE_MAX
+#define UT_FILEMAP_NCHILD       VOLUTA_FILE_MAP_NCHILD
+#define UT_ROOT_INO             VOLUTA_INO_ROOT
+#define UT_NAME                 __func__
+
+#define ut_container_of(ptr_, type_, member_) \
+	voluta_container_of(ptr_, type_, member_)
+
+#define ut_container_of2(ptr_, type_, member_) \
+	voluta_container_of2(ptr_, type_, member_)
+
+#define UT_DEFTEST(fn_) \
+	{ .hook = fn_, .name = VOLUTA_STR(fn_) }
+#define UT_MKTESTS(arr_) \
+	{ arr_, VOLUTA_ARRAY_SIZE(arr_) }
 
 /* inlines */
-static inline char *ut_make_name(struct voluta_ut_ctx *ut_ctx,
-				 const char *prefix, size_t idx)
+static inline loff_t ut_off_aligned(loff_t off, loff_t align)
 {
-	return voluta_ut_make_name(ut_ctx, prefix, idx);
+	return (off / align) * align;
+}
+
+static inline loff_t ut_off_baligned(loff_t off)
+{
+	return ut_off_aligned(off, VOLUTA_BK_SIZE);
+}
+
+static inline size_t ut_off_len(loff_t beg, loff_t end)
+{
+	return (size_t)(end - beg);
 }
 
 #endif /* VOLUTA_UNITEST_H_ */

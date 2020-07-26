@@ -86,14 +86,14 @@ static void inode_set_ino(struct voluta_inode *inode, ino_t ino)
 	inode->i_ino = ino_to_cpu(ino);
 }
 
-static ino_t inode_parent_ino(const struct voluta_inode *inode)
+static ino_t inode_parent(const struct voluta_inode *inode)
 {
-	return cpu_to_ino(inode->i_parent_ino);
+	return cpu_to_ino(inode->i_parent);
 }
 
-static void inode_set_parent_ino(struct voluta_inode *inode, ino_t ino)
+static void inode_set_parent(struct voluta_inode *inode, ino_t ino)
 {
-	inode->i_parent_ino = cpu_to_ino(ino);
+	inode->i_parent = cpu_to_ino(ino);
 }
 
 static uid_t inode_uid(const struct voluta_inode *inode)
@@ -256,9 +256,9 @@ ino_t voluta_xino_of(const struct voluta_inode_info *ii)
 	return i_isrootd(ii) ? VOLUTA_INO_ROOT : i_ino_of(ii);
 }
 
-ino_t voluta_parent_ino_of(const struct voluta_inode_info *ii)
+ino_t voluta_parent_of(const struct voluta_inode_info *ii)
 {
-	return inode_parent_ino(ii->inode);
+	return inode_parent(ii->inode);
 }
 
 uid_t voluta_uid_of(const struct voluta_inode_info *ii)
@@ -349,7 +349,7 @@ void voluta_fixup_rootd(struct voluta_inode_info *ii)
 {
 	struct voluta_inode *inode = ii->inode;
 
-	inode_set_parent_ino(inode, i_ino_of(ii));
+	inode_set_parent(inode, i_ino_of(ii));
 	inode_set_nlink(inode, 2);
 	inode_set_flags(inode, VOLUTA_INODEF_ROOTD | VOLUTA_INODEF_NAME_UTF8);
 }
@@ -391,10 +391,10 @@ int voluta_setup_ispecial(struct voluta_inode_info *ii, dev_t rdev)
  * TODO-0010: Store timezone in inode
  */
 static void fill_inode(struct voluta_inode *inode, ino_t ino, mode_t mode,
-		       const struct voluta_ucred *ucred, ino_t parent_ino)
+		       const struct voluta_ucred *ucred, ino_t parent)
 {
 	inode_set_ino(inode, ino);
-	inode_set_parent_ino(inode, parent_ino);
+	inode_set_parent(inode, parent);
 	inode_set_uid(inode, ucred->uid);
 	inode_set_gid(inode, ucred->gid);
 	inode_set_mode(inode, mode & ~ucred->umask);
@@ -407,10 +407,10 @@ static void fill_inode(struct voluta_inode *inode, ino_t ino, mode_t mode,
 }
 
 void voluta_setup_new_inode(struct voluta_inode_info *ii,
-			    const struct voluta_oper_ctx *op_ctx,
-			    mode_t mode, ino_t parent_ino)
+			    const struct voluta_oper *op,
+			    mode_t mode, ino_t parent)
 {
-	fill_inode(ii->inode, i_ino_of(ii), mode, &op_ctx->ucred, parent_ino);
+	fill_inode(ii->inode, i_ino_of(ii), mode, &op->ucred, parent);
 	voluta_setup_inode_xattr(ii);
 	if (i_isdir(ii)) {
 		voluta_setup_new_dir(ii);
@@ -421,17 +421,23 @@ void voluta_setup_new_inode(struct voluta_inode_info *ii,
 	} else if (i_isfifo(ii) || i_issock(ii)) {
 		voluta_setup_ispecial(ii, 0);
 	}
-	update_itimes(op_ctx, ii, VOLUTA_IATTR_TIMES);
+	update_itimes(op, ii, VOLUTA_IATTR_TIMES);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
+static void ts_setup_now(struct timespec *ts)
+{
+	ts->tv_sec = 0;
+	ts->tv_nsec = UTIME_NOW;
+}
+
 static void itimes_setup(struct voluta_itimes *itimes)
 {
-	ts_now(&itimes->atime);
-	ts_now(&itimes->ctime);
-	ts_now(&itimes->mtime);
-	ts_now(&itimes->btime);
+	ts_setup_now(&itimes->atime);
+	ts_setup_now(&itimes->ctime);
+	ts_setup_now(&itimes->mtime);
+	ts_setup_now(&itimes->btime);
 }
 
 static void itimes_copy(struct voluta_itimes *itimes,
@@ -515,37 +521,37 @@ static bool has_itype(const struct voluta_inode_info *ii, mode_t mode)
 	return (itype_of(imode) == itype_of(mode));
 }
 
-static int check_raccess(const struct voluta_oper_ctx *op_ctx,
+static int check_raccess(const struct voluta_oper *op,
 			 const struct voluta_inode_info *ii)
 {
-	return voluta_do_access(op_ctx, ii, R_OK);
+	return voluta_do_access(op, ii, R_OK);
 }
 
-static int check_waccess(const struct voluta_oper_ctx *op_ctx,
+static int check_waccess(const struct voluta_oper *op,
 			 const struct voluta_inode_info *ii)
 {
-	return voluta_do_access(op_ctx, ii, W_OK);
+	return voluta_do_access(op, ii, W_OK);
 }
 
-static int check_xaccess_parent(const struct voluta_oper_ctx *op_ctx,
+static int check_xaccess_parent(const struct voluta_oper *op,
 				const struct voluta_inode_info *ii)
 {
 	int err;
-	ino_t parent_ino;
+	ino_t parent;
 	struct voluta_inode_info *parent_ii = NULL;
 
 	if (!i_isdir(ii) || i_isrootd(ii)) {
 		return 0;
 	}
-	parent_ino = i_parent_ino_of(ii);
-	err = voluta_stage_inode(i_sbi_of(ii), parent_ino, &parent_ii);
+	parent = i_parent_of(ii);
+	err = voluta_stage_inode(i_sbi_of(ii), parent, &parent_ii);
 	if (err) {
 		return err;
 	}
 	if (!i_isdir(parent_ii)) {
 		return -EFSCORRUPTED; /* XXX */
 	}
-	err = voluta_do_access(op_ctx, parent_ii, X_OK);
+	err = voluta_do_access(op, parent_ii, X_OK);
 	if (err) {
 		return err;
 	}
@@ -558,12 +564,12 @@ static void i_unset_mode(struct voluta_inode_info *ii, mode_t mask)
 	i_dirtify(ii);
 }
 
-static void i_kill_priv(const struct voluta_oper_ctx *op_ctx,
+static void i_kill_priv(const struct voluta_oper *op,
 			struct voluta_inode_info *ii)
 {
 	mode_t mode;
 	mode_t mask = 0;
-	const struct voluta_ucred *ucred = &op_ctx->ucred;
+	const struct voluta_ucred *ucred = &op->ucred;
 
 	if (i_isreg(ii)) {
 		mode = i_mode_of(ii);
@@ -587,10 +593,10 @@ static mode_t new_mode_of(const struct voluta_inode_info *ii, mode_t mask)
 	return (i_mode_of(ii) & fmt_mask) | (mask & ~fmt_mask);
 }
 
-static int check_chmod(const struct voluta_oper_ctx *op_ctx,
+static int check_chmod(const struct voluta_oper *op,
 		       struct voluta_inode_info *ii, mode_t mode)
 {
-	const struct voluta_ucred *ucred = &op_ctx->ucred;
+	const struct voluta_ucred *ucred = &op->ucred;
 
 	/* TODO: Check chmod allowed and allow root (or CAP_FOWNER) */
 	if (!capable_fowner(ucred) && !isowner(ucred, ii)) {
@@ -603,7 +609,7 @@ static int check_chmod(const struct voluta_oper_ctx *op_ctx,
 	return 0;
 }
 
-static void update_times_attr(const struct voluta_oper_ctx *op_ctx,
+static void update_times_attr(const struct voluta_oper *op,
 			      struct voluta_inode_info *ii,
 			      enum voluta_iattr_flags attr_flags,
 			      const struct voluta_itimes *itimes)
@@ -613,7 +619,7 @@ static void update_times_attr(const struct voluta_oper_ctx *op_ctx,
 	iattr_setup(&iattr, i_ino_of(ii));
 	memcpy(&iattr.ia_t, itimes, sizeof(iattr.ia_t));
 	iattr.ia_flags = attr_flags;
-	update_iattrs(op_ctx, ii, &iattr);
+	update_iattrs(op, ii, &iattr);
 }
 
 /*
@@ -621,18 +627,18 @@ static void update_times_attr(const struct voluta_oper_ctx *op_ctx,
  *
  * Support special mode for file as read-only permanently (immutable).
  */
-static int do_chmod(const struct voluta_oper_ctx *op_ctx,
+static int do_chmod(const struct voluta_oper *op,
 		    struct voluta_inode_info *ii, mode_t mode,
 		    const struct voluta_itimes *itimes)
 {
 	int err;
 	struct voluta_iattr iattr;
 
-	err = check_chmod(op_ctx, ii, mode);
+	err = check_chmod(op, ii, mode);
 	if (err) {
 		return err;
 	}
-	err = check_xaccess_parent(op_ctx, ii);
+	err = check_xaccess_parent(op, ii);
 	if (err) {
 		return err;
 	}
@@ -640,28 +646,28 @@ static int do_chmod(const struct voluta_oper_ctx *op_ctx,
 	iattr_setup3(&iattr, i_ino_of(ii), itimes);
 	iattr.ia_mode = new_mode_of(ii, mode);
 	iattr.ia_flags |= VOLUTA_IATTR_MODE | VOLUTA_IATTR_CTIME;
-	update_iattrs(op_ctx, ii, &iattr);
+	update_iattrs(op, ii, &iattr);
 
 	return 0;
 }
 
-int voluta_do_chmod(const struct voluta_oper_ctx *op_ctx,
+int voluta_do_chmod(const struct voluta_oper *op,
 		    struct voluta_inode_info *ii, mode_t mode,
 		    const struct voluta_itimes *itimes)
 {
 	int err;
 
 	i_incref(ii);
-	err = do_chmod(op_ctx, ii, mode, itimes);
+	err = do_chmod(op, ii, mode, itimes);
 	i_decref(ii);
 
 	return err;
 }
 
-static int check_chown_uid(const struct voluta_oper_ctx *op_ctx,
+static int check_chown_uid(const struct voluta_oper *op,
 			   const struct voluta_inode_info *ii, uid_t uid)
 {
-	const struct voluta_ucred *ucred = &op_ctx->ucred;
+	const struct voluta_ucred *ucred = &op->ucred;
 
 	if (uid_eq(uid, i_uid_of(ii))) {
 		return 0;
@@ -672,10 +678,10 @@ static int check_chown_uid(const struct voluta_oper_ctx *op_ctx,
 	return -EPERM;
 }
 
-static int check_chown_gid(const struct voluta_oper_ctx *op_ctx,
+static int check_chown_gid(const struct voluta_oper *op,
 			   const struct voluta_inode_info *ii, gid_t gid)
 {
-	const struct voluta_ucred *ucred = &op_ctx->ucred;
+	const struct voluta_ucred *ucred = &op->ucred;
 
 	if (gid_eq(gid, i_gid_of(ii))) {
 		return 0;
@@ -689,22 +695,22 @@ static int check_chown_gid(const struct voluta_oper_ctx *op_ctx,
 	return -EPERM;
 }
 
-static int check_chown(const struct voluta_oper_ctx *op_ctx,
+static int check_chown(const struct voluta_oper *op,
 		       const struct voluta_inode_info *ii,
 		       uid_t uid, gid_t gid)
 {
 	int err = 0;
 
 	if (!uid_isnull(uid)) {
-		err = check_chown_uid(op_ctx, ii, uid);
+		err = check_chown_uid(op, ii, uid);
 	}
 	if (!gid_isnull(gid) && !err) {
-		err = check_chown_gid(op_ctx, ii, gid);
+		err = check_chown_gid(op, ii, gid);
 	}
 	return err;
 }
 
-static int do_chown(const struct voluta_oper_ctx *op_ctx,
+static int do_chown(const struct voluta_oper *op,
 		    struct voluta_inode_info *ii, uid_t uid, gid_t gid,
 		    const struct voluta_itimes *itimes)
 {
@@ -716,7 +722,7 @@ static int do_chown(const struct voluta_oper_ctx *op_ctx,
 	if (!chown_uid && !chown_gid) {
 		return 0; /* no-op */
 	}
-	err = check_chown(op_ctx, ii, uid, gid);
+	err = check_chown(op, ii, uid, gid);
 	if (err) {
 		return err;
 	}
@@ -730,18 +736,18 @@ static int do_chown(const struct voluta_oper_ctx *op_ctx,
 		iattr.ia_flags |= VOLUTA_IATTR_GID;
 	}
 	iattr.ia_flags |= VOLUTA_IATTR_KILL_PRIV | VOLUTA_IATTR_CTIME;
-	update_iattrs(op_ctx, ii, &iattr);
+	update_iattrs(op, ii, &iattr);
 	return 0;
 }
 
-int voluta_do_chown(const struct voluta_oper_ctx *op_ctx,
+int voluta_do_chown(const struct voluta_oper *op,
 		    struct voluta_inode_info *ii, uid_t uid, gid_t gid,
 		    const struct voluta_itimes *itimes)
 {
 	int err;
 
 	i_incref(ii);
-	err = do_chown(op_ctx, ii, uid, gid, itimes);
+	err = do_chown(op, ii, uid, gid, itimes);
 	i_decref(ii);
 
 	return err;
@@ -757,24 +763,24 @@ static bool is_utime_omit(const struct timespec *tv)
 	return (tv->tv_nsec == UTIME_OMIT);
 }
 
-static int check_utimens(const struct voluta_oper_ctx *op_ctx,
+static int check_utimens(const struct voluta_oper *op,
 			 const struct voluta_inode_info *ii)
 {
 	int err;
 
-	if (isowner(&op_ctx->ucred, ii)) {
+	if (isowner(&op->ucred, ii)) {
 		return 0;
 	}
 	/* TODO: check VOLUTA_CAPF_FOWNER */
 	/* TODO: Follow "Permissions requirements" in UTIMENSAT(2) */
-	err = check_waccess(op_ctx, ii);
+	err = check_waccess(op, ii);
 	if (err) {
 		return err;
 	}
 	return 0;
 }
 
-static int do_utimens(const struct voluta_oper_ctx *op_ctx,
+static int do_utimens(const struct voluta_oper *op,
 		      struct voluta_inode_info *ii,
 		      const struct voluta_itimes *itimes)
 {
@@ -783,54 +789,54 @@ static int do_utimens(const struct voluta_oper_ctx *op_ctx,
 	const struct timespec *atime = &itimes->atime;
 	const struct timespec *mtime = &itimes->mtime;
 
-	err = check_utimens(op_ctx, ii);
+	err = check_utimens(op, ii);
 	if (err) {
 		return err;
 	}
 	if (is_utime_now(atime)) {
-		update_itimes(op_ctx, ii, VOLUTA_IATTR_ATIME);
+		update_itimes(op, ii, VOLUTA_IATTR_ATIME);
 	} else if (!is_utime_omit(atime)) {
-		update_times_attr(op_ctx, ii, VOLUTA_IATTR_ATIME, itimes);
+		update_times_attr(op, ii, VOLUTA_IATTR_ATIME, itimes);
 	}
 	if (is_utime_now(mtime)) {
-		update_itimes(op_ctx, ii, VOLUTA_IATTR_MTIME);
+		update_itimes(op, ii, VOLUTA_IATTR_MTIME);
 	} else if (!is_utime_omit(mtime)) {
-		update_times_attr(op_ctx, ii, VOLUTA_IATTR_MTIME, itimes);
+		update_times_attr(op, ii, VOLUTA_IATTR_MTIME, itimes);
 	}
 	if (!is_utime_omit(ctime)) {
-		update_times_attr(op_ctx, ii, VOLUTA_IATTR_CTIME, itimes);
+		update_times_attr(op, ii, VOLUTA_IATTR_CTIME, itimes);
 	}
 	return 0;
 }
 
 
-int voluta_do_utimens(const struct voluta_oper_ctx *op_ctx,
+int voluta_do_utimens(const struct voluta_oper *op,
 		      struct voluta_inode_info *ii,
 		      const struct voluta_itimes *itimes)
 {
 	int err;
 
 	i_incref(ii);
-	err = do_utimens(op_ctx, ii, itimes);
+	err = do_utimens(op, ii, itimes);
 	i_decref(ii);
 
 	return err;
 }
 
-static int check_parent_dir(const struct voluta_inode_info *ii)
+static int check_parent_dir_ii(const struct voluta_inode_info *ii)
 {
 	int err;
-	ino_t parent_ino;
+	ino_t parent;
 	struct voluta_inode_info *parent_ii = NULL;
 
 	if (!i_isdir(ii) || i_isrootd(ii)) {
 		return 0;
 	}
-	parent_ino = i_parent_ino_of(ii);
-	if (ino_isnull(parent_ino)) {
+	parent = i_parent_of(ii);
+	if (ino_isnull(parent)) {
 		return ii->i_nopen ? 0 : -ENOENT;
 	}
-	err = voluta_stage_inode(i_sbi_of(ii), parent_ino, &parent_ii);
+	err = voluta_stage_inode(i_sbi_of(ii), parent, &parent_ii);
 	if (err) {
 		return err;
 	}
@@ -851,64 +857,69 @@ static int check_parent_dir(const struct voluta_inode_info *ii)
  */
 static blksize_t stat_blksize_of(const struct voluta_inode_info *ii)
 {
-	return i_isdir(ii) ? VOLUTA_BK_SIZE : VOLUTA_DS_SIZE;
+	return i_isdir(ii) ? VOLUTA_SEG_SIZE : VOLUTA_BK_SIZE;
 }
 
 static blkcnt_t stat_blocks_of(const struct voluta_inode_info *ii)
 {
 	blkcnt_t nbytes;
 	const blkcnt_t align = 512;
-	const blkcnt_t ds_size = (blkcnt_t)(VOLUTA_DS_SIZE);
+	const blkcnt_t ds_size = (blkcnt_t)(VOLUTA_BK_SIZE);
 
 	nbytes = ds_size * i_blocks_of(ii);
 	return (nbytes + align - 1) / align;
 }
 
-static void i_stat(const struct voluta_inode_info *ii, struct stat *st)
+void voluta_stat_of(const struct voluta_inode_info *ii, struct stat *st)
 {
-	voluta_memzero(st, sizeof(*st));
-	st->st_ino = i_xino_of(ii);
-	st->st_mode = i_mode_of(ii);
-	st->st_nlink = i_nlink_of(ii);
-	st->st_uid = i_uid_of(ii);
-	st->st_gid = i_gid_of(ii);
-	st->st_rdev = i_rdev_of(ii);
-	st->st_size = i_size_of(ii);
-	st->st_blocks = stat_blocks_of(ii);
-	st->st_blksize = stat_blksize_of(ii);
-	assign_ts(&st->st_atim, &ii->i_atime_lazy);
-	inode_mtime(ii->inode, &st->st_mtim);
-	inode_ctime(ii->inode, &st->st_ctim);
+	if (st != NULL) {
+		voluta_memzero(st, sizeof(*st));
+		st->st_ino = i_xino_of(ii);
+		st->st_mode = i_mode_of(ii);
+		st->st_nlink = i_nlink_of(ii);
+		st->st_uid = i_uid_of(ii);
+		st->st_gid = i_gid_of(ii);
+		st->st_rdev = i_rdev_of(ii);
+		st->st_size = i_size_of(ii);
+		st->st_blocks = stat_blocks_of(ii);
+		st->st_blksize = stat_blksize_of(ii);
+		assign_ts(&st->st_atim, &ii->i_atime_lazy);
+		inode_mtime(ii->inode, &st->st_mtim);
+		inode_ctime(ii->inode, &st->st_ctim);
+	}
 }
 
 static void i_statx(const struct voluta_inode_info *ii, struct statx *stx)
 {
 	struct timespec ts;
 
-	voluta_memzero(stx, sizeof(*stx));
-	stx->stx_mask = STATX_ALL;
-	stx->stx_blksize = VOLUTA_BK_SIZE;
-	stx->stx_nlink = (uint32_t)i_nlink_of(ii);
-	stx->stx_uid = i_uid_of(ii);
-	stx->stx_gid = i_gid_of(ii);
-	stx->stx_mode = (uint16_t)i_mode_of(ii);
-	stx->stx_ino = i_xino_of(ii);
-	stx->stx_size = (uint64_t)i_size_of(ii);
-	stx->stx_blocks = (uint64_t)stat_blocks_of(ii);
-	stx->stx_blksize = (uint32_t)stat_blksize_of(ii);
-	stx->stx_rdev_minor =  i_rdev_minor_of(ii);
-	stx->stx_rdev_major =  i_rdev_major_of(ii);
+	if (stx != NULL) {
+		voluta_memzero(stx, sizeof(*stx));
+		stx->stx_mask = STATX_ALL;
+		stx->stx_blksize = VOLUTA_SEG_SIZE;
+		stx->stx_nlink = (uint32_t)i_nlink_of(ii);
+		stx->stx_uid = i_uid_of(ii);
+		stx->stx_gid = i_gid_of(ii);
+		stx->stx_mode = (uint16_t)i_mode_of(ii);
+		stx->stx_ino = i_xino_of(ii);
+		stx->stx_size = (uint64_t)i_size_of(ii);
+		stx->stx_blocks = (uint64_t)stat_blocks_of(ii);
+		stx->stx_blksize = (uint32_t)stat_blksize_of(ii);
+		stx->stx_rdev_minor =  i_rdev_minor_of(ii);
+		stx->stx_rdev_major =  i_rdev_major_of(ii);
 
-	stx->stx_attributes_mask = STATX_ATTR_IMMUTABLE | STATX_ATTR_ENCRYPTED;
-	stx->stx_attributes = STATX_ATTR_ENCRYPTED;
+		stx->stx_attributes_mask =
+			STATX_ATTR_IMMUTABLE | STATX_ATTR_ENCRYPTED;
+		stx->stx_attributes = STATX_ATTR_ENCRYPTED;
 
-	inode_btime(ii->inode, &ts);
-	assign_statx_ts(&stx->stx_btime, &ts);
-	assign_statx_ts(&stx->stx_atime, &ii->i_atime_lazy);
-	inode_mtime(ii->inode, &ts);
-	assign_statx_ts(&stx->stx_mtime, &ts);
-	inode_ctime(ii->inode, &ts);
-	assign_statx_ts(&stx->stx_ctime, &ts);
+		inode_btime(ii->inode, &ts);
+		assign_statx_ts(&stx->stx_btime, &ts);
+		assign_statx_ts(&stx->stx_atime, &ii->i_atime_lazy);
+		inode_mtime(ii->inode, &ts);
+		assign_statx_ts(&stx->stx_mtime, &ts);
+		inode_ctime(ii->inode, &ts);
+		assign_statx_ts(&stx->stx_ctime, &ts);
+	}
 }
 
 /*
@@ -916,27 +927,27 @@ static void i_statx(const struct voluta_inode_info *ii, struct statx *stx)
  *
  * Have special mode where only root & self may read inode's attributes.
  */
-static int check_getattr(const struct voluta_oper_ctx *op_ctx,
+static int check_getattr(const struct voluta_oper *op,
 			 const struct voluta_inode_info *ii)
 {
 	int err;
 
-	voluta_unused(op_ctx);
+	unused(op);
 
-	err = check_parent_dir(ii);
+	err = check_parent_dir_ii(ii);
 	if (err) {
 		return err;
 	}
 	return 0;
 }
 
-static int do_getattr(const struct voluta_oper_ctx *op_ctx,
+static int do_getattr(const struct voluta_oper *op,
 		      const struct voluta_inode_info *ii,
 		      struct stat *out_st)
 {
 	int err;
 
-	err = check_getattr(op_ctx, ii);
+	err = check_getattr(op, ii);
 	if (err) {
 		return err;
 	}
@@ -944,26 +955,26 @@ static int do_getattr(const struct voluta_oper_ctx *op_ctx,
 	return 0;
 }
 
-int voluta_do_getattr(const struct voluta_oper_ctx *op_ctx,
+int voluta_do_getattr(const struct voluta_oper *op,
 		      const struct voluta_inode_info *ii,
 		      struct stat *out_st)
 {
 	int err;
 
 	i_incref(ii);
-	err = do_getattr(op_ctx, ii, out_st);
+	err = do_getattr(op, ii, out_st);
 	i_decref(ii);
 
 	return err;
 }
 
-static int do_statx(const struct voluta_oper_ctx *op_ctx,
+static int do_statx(const struct voluta_oper *op,
 		    const struct voluta_inode_info *ii,
 		    struct statx *out_stx)
 {
 	int err;
 
-	err = check_getattr(op_ctx, ii);
+	err = check_getattr(op, ii);
 	if (err) {
 		return err;
 	}
@@ -971,32 +982,32 @@ static int do_statx(const struct voluta_oper_ctx *op_ctx,
 	return 0;
 }
 
-int voluta_do_statx(const struct voluta_oper_ctx *op_ctx,
+int voluta_do_statx(const struct voluta_oper *op,
 		    const struct voluta_inode_info *ii,
 		    struct statx *out_stx)
 {
 	int err;
 
 	i_incref(ii);
-	err = do_statx(op_ctx, ii, out_stx);
+	err = do_statx(op, ii, out_stx);
 	i_decref(ii);
 
 	return err;
 }
 
-static void fill_inquiry(struct voluta_inquiry *inq)
+static void fill_inquiry(struct voluta_query *inq)
 {
 	inq->version = VOLUTA_VERSION;
 	/* TODO: fill more */
 }
 
-static int do_inquiry(const struct voluta_oper_ctx *op_ctx,
+static int do_inquiry(const struct voluta_oper *op,
 		      const struct voluta_inode_info *ii,
-		      struct voluta_inquiry *out_inq)
+		      struct voluta_query *out_inq)
 {
 	int err;
 
-	err = check_raccess(op_ctx, ii);
+	err = check_raccess(op, ii);
 	if (err) {
 		return err;
 	}
@@ -1004,14 +1015,14 @@ static int do_inquiry(const struct voluta_oper_ctx *op_ctx,
 	return 0;
 }
 
-int voluta_do_inquiry(const struct voluta_oper_ctx *op_ctx,
-		      const struct voluta_inode_info *ii,
-		      struct voluta_inquiry *out_inq)
+int voluta_do_query(const struct voluta_oper *op,
+		    const struct voluta_inode_info *ii,
+		    struct voluta_query *out_inq)
 {
 	int err;
 
 	i_incref(ii);
-	err = do_inquiry(op_ctx, ii, out_inq);
+	err = do_inquiry(op, ii, out_inq);
 	i_decref(ii);
 
 	return err;
@@ -1019,19 +1030,14 @@ int voluta_do_inquiry(const struct voluta_oper_ctx *op_ctx,
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static const struct timespec *time_now(const struct voluta_oper_ctx *op_ctx)
-{
-	return &op_ctx->xtime.now;
-}
-
 static const struct timespec *
-timespec_of(const struct voluta_oper_ctx *op_ctx, const struct timespec *ts_in)
+timespec_of(const struct voluta_oper *op, const struct timespec *ts_in)
 {
 	const struct timespec *ts = ts_in;
 
 	voluta_assert_not_null(ts_in);
 	if (ts_in->tv_nsec == UTIME_NOW) {
-		ts = time_now(op_ctx);
+		ts = &op->xtime;
 	} else if (ts_in->tv_nsec == UTIME_OMIT) {
 		ts = NULL;
 	}
@@ -1047,7 +1053,7 @@ static void i_update_atime(struct voluta_inode_info *ii,
 }
 
 static void update_inode_attr(struct voluta_inode_info *ii,
-			      const struct voluta_oper_ctx *op_ctx,
+			      const struct voluta_oper *op,
 			      enum voluta_iattr_flags attr_flags,
 			      const struct voluta_iattr *iattr)
 {
@@ -1059,7 +1065,7 @@ static void update_inode_attr(struct voluta_inode_info *ii,
 		return; /* e.g., rename */
 	}
 	if (flags & (VOLUTA_IATTR_LAZY | VOLUTA_IATTR_ATIME)) {
-		ts = timespec_of(op_ctx, &iattr->ia_t.atime);
+		ts = timespec_of(op, &iattr->ia_t.atime);
 		i_update_atime(ii, ts);
 		flags &= ~VOLUTA_IATTR_ATIME;
 	}
@@ -1069,7 +1075,7 @@ static void update_inode_attr(struct voluta_inode_info *ii,
 	}
 	inode = ii->inode;
 	if (flags & VOLUTA_IATTR_PARENT) {
-		inode_set_parent_ino(inode, iattr->ia_parent_ino);
+		inode_set_parent(inode, iattr->ia_parent);
 	}
 	if (flags & VOLUTA_IATTR_SIZE) {
 		inode_set_size(inode, iattr->ia_size);
@@ -1091,39 +1097,39 @@ static void update_inode_attr(struct voluta_inode_info *ii,
 		inode_set_gid(inode, iattr->ia_gid);
 	}
 	if (flags & VOLUTA_IATTR_BTIME) {
-		ts = timespec_of(op_ctx, &iattr->ia_t.btime);
+		ts = timespec_of(op, &iattr->ia_t.btime);
 		inode_set_btime(inode, ts);
 	}
 	if (flags & VOLUTA_IATTR_MTIME) {
-		ts = timespec_of(op_ctx, &iattr->ia_t.mtime);
+		ts = timespec_of(op, &iattr->ia_t.mtime);
 		inode_set_mtime(inode, ts);
 	}
 	if (flags & VOLUTA_IATTR_CTIME) {
-		ts = timespec_of(op_ctx, &iattr->ia_t.ctime);
+		ts = timespec_of(op, &iattr->ia_t.ctime);
 		inode_set_ctime(inode, ts);
 	}
 	if (flags & VOLUTA_IATTR_ATIME) {
-		ts = timespec_of(op_ctx, &iattr->ia_t.atime);
+		ts = timespec_of(op, &iattr->ia_t.atime);
 		inode_set_atime(inode, ts);
 		voluta_refresh_atime(ii, true);
 	} else if (flags & VOLUTA_IATTR_TIMES) {
 		voluta_refresh_atime(ii, false);
 	}
 	if (flags & VOLUTA_IATTR_KILL_PRIV) {
-		i_kill_priv(op_ctx, ii);
+		i_kill_priv(op, ii);
 	}
 	inode_inc_revision(inode);
 	i_dirtify(ii);
 }
 
-void voluta_update_iattrs(const struct voluta_oper_ctx *op_ctx,
+void voluta_update_iattrs(const struct voluta_oper *op,
 			  struct voluta_inode_info *ii,
 			  const struct voluta_iattr *iattr)
 {
-	update_inode_attr(ii, op_ctx, iattr->ia_flags, iattr);
+	update_inode_attr(ii, op, iattr->ia_flags, iattr);
 }
 
-void voluta_update_itimes(const struct voluta_oper_ctx *op_ctx,
+void voluta_update_itimes(const struct voluta_oper *op,
 			  struct voluta_inode_info *ii,
 			  enum voluta_iattr_flags attr_flags)
 {
@@ -1131,7 +1137,7 @@ void voluta_update_itimes(const struct voluta_oper_ctx *op_ctx,
 	const enum voluta_iattr_flags mask = VOLUTA_IATTR_TIMES;
 
 	iattr_setup(&iattr, i_ino_of(ii));
-	update_inode_attr(ii, op_ctx, attr_flags & mask, &iattr);
+	update_inode_attr(ii, op, attr_flags & mask, &iattr);
 }
 
 void voluta_refresh_atime(struct voluta_inode_info *ii, bool to_volatile)

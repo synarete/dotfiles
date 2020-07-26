@@ -23,9 +23,9 @@
 #include <gcrypt.h>
 #include "libvoluta.h"
 
-#define VOLUTA_SECMEM_SIZE (65536)
+#define SECMEM_SIZE     (64L * VOLUTA_KILO)
 
-#define ARRAY_SIZE(x) VOLUTA_ARRAY_SIZE(x)
+#define ARRAY_SIZE(x)   VOLUTA_ARRAY_SIZE(x)
 
 #define voluta_trace_gcrypt_err(fn, err) \
 	do { voluta_log_error("%s: %s", fn, gcry_strerror(err)); } while (0)
@@ -56,7 +56,7 @@ int voluta_init_gcrypt(void)
 		goto out_control_err;
 	}
 	cmd = GCRYCTL_INIT_SECMEM;
-	err = gcry_control(cmd, VOLUTA_SECMEM_SIZE, 0);
+	err = gcry_control(cmd, SECMEM_SIZE, 0);
 	if (err) {
 		goto out_control_err;
 	}
@@ -245,12 +245,12 @@ static int prepare_cipher(const struct voluta_crypto *crypto,
 }
 
 static int encrypt_data(const struct voluta_crypto *crypto,
-			const void *in_dat, void *out_dat, size_t len)
+			const void *in_dat, void *out_dat, size_t dat_len)
 {
 	gcry_error_t err;
 
 	err = gcry_cipher_encrypt(crypto->chiper_hd,
-				  out_dat, len, in_dat, len);
+				  out_dat, dat_len, in_dat, dat_len);
 	if (err) {
 		voluta_trace_gcrypt_err("gcry_cipher_encrypt", err);
 		return gcrypt_err(err);
@@ -263,16 +263,9 @@ static int encrypt_data(const struct voluta_crypto *crypto,
 	return 0;
 }
 
-static int encrypt_kb(const struct voluta_crypto *crypto,
-		      const union voluta_kb *in_kb, union voluta_kb *out_kb)
-{
-	return encrypt_data(crypto, in_kb, out_kb, sizeof(*out_kb));
-}
-
-int voluta_encrypt_nkbs(const struct voluta_crypto *crypto,
+int voluta_encrypt_data(const struct voluta_crypto *crypto,
 			const struct voluta_iv_key *iv_key,
-			const union voluta_kb *in_kbs,
-			union voluta_kb *out_kbs, size_t nkbs)
+			const void *in_dat, void *out_dat, size_t dat_len)
 {
 	int err;
 
@@ -280,22 +273,20 @@ int voluta_encrypt_nkbs(const struct voluta_crypto *crypto,
 	if (err) {
 		return err;
 	}
-	for (size_t i = 0; i < nkbs; ++i) {
-		err = encrypt_kb(crypto, &in_kbs[i], &out_kbs[i]);
-		if (err) {
-			return err;
-		}
+	err = encrypt_data(crypto, in_dat, out_dat, dat_len);
+	if (err) {
+		return err;
 	}
 	return 0;
 }
 
 static int decrypt_data(const struct voluta_crypto *crypto,
-			const void *in_dat, void *out_dat, size_t len)
+			const void *in_dat, void *out_dat, size_t dat_len)
 {
 	gcry_error_t err;
 
 	err = gcry_cipher_decrypt(crypto->chiper_hd,
-				  out_dat, len, in_dat, len);
+				  out_dat, dat_len, in_dat, dat_len);
 	if (err) {
 		voluta_trace_gcrypt_err("gcry_cipher_decrypt", err);
 		return gcrypt_err(err);
@@ -308,16 +299,9 @@ static int decrypt_data(const struct voluta_crypto *crypto,
 	return 0;
 }
 
-static int decrypt_kb(const struct voluta_crypto *crypto,
-		      const union voluta_kb *in_kb, union voluta_kb *out_kb)
-{
-	return decrypt_data(crypto, in_kb, out_kb, sizeof(*out_kb));
-}
-
-int voluta_decrypt_kbs(const struct voluta_crypto *crypto,
-		       const struct voluta_iv_key *iv_key,
-		       const union voluta_kb *in_kbs,
-		       union voluta_kb *out_kbs, size_t nkbs)
+int voluta_decrypt_data(const struct voluta_crypto *crypto,
+			const struct voluta_iv_key *iv_key,
+			const void *in_dat, void *out_dat, size_t dat_len)
 {
 	int err;
 
@@ -325,31 +309,19 @@ int voluta_decrypt_kbs(const struct voluta_crypto *crypto,
 	if (err) {
 		return err;
 	}
-	for (size_t i = 0; i < nkbs; ++i) {
-		err = decrypt_kb(crypto, &in_kbs[i], &out_kbs[i]);
-		if (err) {
-			return err;
-		}
+	err = decrypt_data(crypto, in_dat, out_dat, dat_len);
+	if (err) {
+		return err;
 	}
 	return 0;
 }
 
-int voluta_decrypt_bk(const struct voluta_crypto *crypto,
-		      const struct voluta_iv_key *iv_key,
-		      const union voluta_bk *bk,
-		      union voluta_bk *dec_bk)
-{
-	const size_t nkbs = ARRAY_SIZE(bk->kb);
-
-	return voluta_decrypt_kbs(crypto, iv_key, bk->kb, dec_bk->kb, nkbs);
-}
-
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-int voluta_derive_iv_key(const struct voluta_crypto *crypto,
-			 const void *passphrase, size_t passphraselen,
-			 const void *salt, size_t saltlen,
-			 struct voluta_iv_key *iv_key)
+static int derive_iv_key_of(const struct voluta_crypto *crypto,
+			    const void *pass, size_t passlen,
+			    const void *salt, size_t saltlen,
+			    struct voluta_iv_key *iv_key)
 {
 	int err;
 	gpg_error_t gcry_err;
@@ -363,14 +335,14 @@ int voluta_derive_iv_key(const struct voluta_crypto *crypto,
 	if (err) {
 		return err;
 	}
-	gcry_err = gcry_kdf_derive(passphrase, passphraselen, GCRY_KDF_PBKDF2,
+	gcry_err = gcry_kdf_derive(pass, passlen, GCRY_KDF_PBKDF2,
 				   GCRY_MD_SHA256, sha.hash, sizeof(sha.hash),
 				   iterations, sizeof(iv->iv), iv->iv);
 	if (gcry_err) {
 		voluta_trace_gcrypt_err("gcry_kdf_derive", gcry_err);
 		return gcrypt_err(gcry_err);
 	}
-	gcry_err = gcry_kdf_derive(passphrase, passphraselen, GCRY_KDF_SCRYPT,
+	gcry_err = gcry_kdf_derive(pass, passlen, GCRY_KDF_SCRYPT,
 				   8, sha.hash, sizeof(sha.hash),
 				   iterations, sizeof(key->key), key->key);
 	if (gcry_err) {
@@ -378,6 +350,45 @@ int voluta_derive_iv_key(const struct voluta_crypto *crypto,
 		return gcrypt_err(gcry_err);
 	}
 	return 0;
+}
+
+int voluta_derive_iv_key(const struct voluta_crypto *crypto,
+			 const void *pass, const void *salt,
+			 struct voluta_iv_key *iv_key)
+{
+	struct voluta_passphrase pp;
+	const size_t passlen = pass ? strlen(pass) : 0;
+	const size_t saltlen = salt ? strlen(salt) : 0;
+
+	if (!passlen || (passlen >= sizeof(pp.pass))) {
+		return -EINVAL;
+	}
+	if (saltlen >= sizeof(pp.salt)) {
+		return -EINVAL;
+	}
+
+	voluta_memzero(&pp, sizeof(pp));
+	memcpy(pp.pass, pass, passlen);
+	if (salt != NULL) { /* makes clangscan happy */
+		memcpy(pp.salt, salt, saltlen);
+	}
+
+	return derive_iv_key_of(crypto, pp.pass, passlen,
+				pp.salt, saltlen, iv_key);
+}
+
+int voluta_derive_iv_key_of(const void *pass, const void *salt,
+			    struct voluta_iv_key *iv_key)
+{
+	int err;
+	struct voluta_crypto crypto;
+
+	err = voluta_crypto_init(&crypto);
+	if (!err) {
+		err = voluta_derive_iv_key(&crypto, pass, salt, iv_key);
+		voluta_crypto_fini(&crypto);
+	}
+	return err;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -392,11 +403,11 @@ void voluta_fill_random(void *buf, size_t len, bool very_strong)
 
 void voluta_fill_random_ascii(char *str, size_t len)
 {
-	uint32_t print_ch;
-	size_t nrands = 0;
-	uint32_t rands[64];
-	const uint32_t base = 0x21;
-	const uint32_t last = 0x7e;
+	int nrands = 0;
+	int print_ch;
+	int rands[64];
+	const int base = 0x21;
+	const int last = 0x7e;
 
 	for (size_t i = 0; i < len; ++i) {
 		if (nrands == 0) {
@@ -436,13 +447,42 @@ void voluta_crypto_fini(struct voluta_crypto *crypto)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-void voluta_fill_random_key(struct voluta_key *key)
+int voluta_decrypt_inplace(const struct voluta_vnode_info *vi)
 {
-	voluta_getentropy(key->key, sizeof(key->key));
+	int err;
+	struct voluta_iv_key iv_key;
+	struct voluta_view *view = vi->view;
+	const struct voluta_vaddr *vaddr = v_vaddr_of(vi);
+	const struct voluta_crypto *crypto = v_crypto_of(vi);
+
+	voluta_iv_key_of(vi, &iv_key);
+	err = voluta_decrypt_data(crypto, &iv_key, view, view, vaddr->len);
+	if (err) {
+		log_err("decrypt error: vtype=%d off=0x%lx len=%lu err=%d",
+			vaddr->vtype, vaddr->off, vaddr->len, err);
+
+		/* narrow to file-system error type */
+		err = vaddr_isdata(vaddr) ? -EIO : -EFSCORRUPTED;
+	}
+	return err;
 }
 
-void voluta_fill_random_iv(struct voluta_iv *iv)
+int voluta_encrypt_intobuf(const struct voluta_vnode_info *vi,
+			   void *buf, size_t bsz)
 {
-	voluta_getentropy(iv->iv, sizeof(iv->iv));
-}
+	int err;
+	struct voluta_iv_key iv_key;
+	const struct voluta_view *view = vi->view;
+	const struct voluta_vaddr *vaddr = v_vaddr_of(vi);
+	const struct voluta_crypto *crypto = v_crypto_of(vi);
 
+	voluta_assert_eq(vaddr->len, bsz);
+
+	voluta_iv_key_of(vi, &iv_key);
+	err = voluta_encrypt_data(crypto, &iv_key, view, buf, bsz);
+	if (err) {
+		log_err("encrypt error: vtype=%d off=0x%lx len=%lu err=%d",
+			vaddr->vtype, vaddr->off, vaddr->len, err);
+	}
+	return err;
+}

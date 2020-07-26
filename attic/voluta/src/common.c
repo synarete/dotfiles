@@ -74,11 +74,32 @@ void voluta_die_redundant_arg(const char *s)
 	voluta_die(0, "redundant argument: %s", s);
 }
 
+__attribute__((__noreturn__))
+void voluta_die_no_volume_path(void)
+{
+	voluta_die(0, "missing volume path");
+}
+
+__attribute__((__noreturn__))
+void voluta_die_no_mount_point(void)
+{
+	voluta_die(0, "missing mount-point");
+}
 
 __attribute__((__noreturn__))
 void voluta_die_unsupported_opt(void)
 {
 	exit(EXIT_FAILURE);
+}
+
+void voluta_check_no_redundant_arg(void)
+{
+	int argc = voluta_globals.cmd_argc;
+	char **argv = voluta_globals.cmd_argv;
+
+	if (optind < argc) {
+		voluta_die_redundant_arg(argv[optind]);
+	}
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -233,7 +254,7 @@ static const struct voluta_fsinfo fsinfo_whitelist[] = {
 	MKFSINFO(EXT234_SUPER_MAGIC, "EXT234", 1),
 	MKFSINFO(ZFS_SUPER_MAGIC, "ZFS", 1),
 	MKFSINFO(BTRFS_SUPER_MAGIC, "BTRFS", 1),
-	MKFSINFO(CEPH_SUPER_MAGIC, "CEPTH", 1),
+	MKFSINFO(CEPH_SUPER_MAGIC, "CEPH", 1),
 	MKFSINFO(CIFS_MAGIC_NUMBER, "CIFS", 1),
 	MKFSINFO(ECRYPTFS_SUPER_MAGIC, "ECRYPTFS", 0),
 	MKFSINFO(F2FS_SUPER_MAGIC, "F2FS", 1),
@@ -320,9 +341,7 @@ void voluta_daemonize(void)
 	if (err) {
 		voluta_die(0, "failed to daemonize");
 	}
-	voluta_g_log_mask |= VOLUTA_LOG_SYSLOG;
-	voluta_g_log_mask |= VOLUTA_LOG_STDOUT;
-	voluta_burnstack();
+	voluta_log_mask_add(VOLUTA_LOG_SYSLOG | VOLUTA_LOG_STDOUT);
 }
 
 void voluta_fork_daemon(void)
@@ -340,15 +359,15 @@ void voluta_fork_daemon(void)
 
 void voluta_open_syslog(void)
 {
-	voluta_g_log_mask |= VOLUTA_LOG_SYSLOG;
+	voluta_log_mask_add(VOLUTA_LOG_SYSLOG);
 	openlog(voluta_globals.name, LOG_CONS | LOG_NDELAY, 0);
 }
 
 void voluta_close_syslog(void)
 {
-	if (voluta_g_log_mask & VOLUTA_LOG_SYSLOG) {
+	if (voluta_log_mask_test(VOLUTA_LOG_SYSLOG)) {
 		closelog();
-		voluta_g_log_mask &= ~VOLUTA_LOG_SYSLOG;
+		voluta_log_mask_clear(VOLUTA_LOG_SYSLOG);
 	}
 }
 
@@ -399,34 +418,61 @@ void voluta_pfree_string(char **pp)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-/* Server singleton instance */
-static struct voluta_env *g_ctx_instance;
+/* Singleton instances */
+static struct voluta_fs_env *g_fs_env_inst;
+static struct voluta_ms_env *g_ms_env_inst;
 
-struct voluta_env *voluta_new_instance(void)
+void voluta_init_fs_env(void)
 {
 	int err;
 
-	if (g_ctx_instance) {
+	if (g_fs_env_inst) {
 		voluta_die(0, "internal error: instance exists");
 	}
-	err = voluta_env_new(&g_ctx_instance);
+	err = voluta_fs_env_new(&g_fs_env_inst);
 	if (err) {
 		voluta_die(err, "failed to create instance");
 	}
-	return g_ctx_instance;
 }
 
-struct voluta_env *voluta_get_instance(void)
+void voluta_fini_fs_env(void)
 {
-	return g_ctx_instance;
-}
-
-void voluta_delete_instance(void)
-{
-	if (g_ctx_instance) {
-		voluta_env_del(g_ctx_instance);
-		g_ctx_instance = NULL;
+	if (g_fs_env_inst) {
+		voluta_fs_env_del(g_fs_env_inst);
+		g_fs_env_inst = NULL;
 	}
+}
+
+struct voluta_fs_env *voluta_fs_env_inst(void)
+{
+	return g_fs_env_inst;
+}
+
+
+void voluta_init_ms_env(void)
+{
+	int err;
+
+	if (g_ms_env_inst) {
+		voluta_die(0, "internal error: instance exists");
+	}
+	err = voluta_ms_env_new(&g_ms_env_inst);
+	if (err) {
+		voluta_die(err, "failed to create instance");
+	}
+}
+
+void voluta_fini_ms_env(void)
+{
+	if (g_ms_env_inst) {
+		voluta_ms_env_del(g_ms_env_inst);
+		g_ms_env_inst = NULL;
+	}
+}
+
+struct voluta_ms_env *voluta_ms_env_inst(void)
+{
+	return g_ms_env_inst;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -435,7 +481,7 @@ void voluta_show_help_and_exit(int exit_code, const char *help_string)
 {
 	FILE *fp = exit_code ? stderr : stdout;
 	const char *name = voluta_globals.name;
-	const char *subcmd = voluta_globals.subcmd;
+	const char *subcmd = voluta_globals.cmd_name;
 
 	if (subcmd) {
 		fprintf(fp, "%s %s %s\n", name, subcmd, help_string);
@@ -464,7 +510,7 @@ static void voluta_error_print_progname(void)
 {
 	FILE *fp = stderr;
 	const char *name = voluta_globals.name;
-	const char *subcmd = voluta_globals.subcmd;
+	const char *subcmd = voluta_globals.cmd_name;
 
 	if (subcmd && (subcmd[0] != '-')) {
 		fprintf(fp, "%s %s: ", name, subcmd);
@@ -476,14 +522,14 @@ static void voluta_error_print_progname(void)
 
 void voluta_setup_globals(int argc, char *argv[])
 {
-	voluta_globals.version = voluta_version_string;
+	voluta_globals.version = voluta_g_config.version;
 	voluta_globals.name = program_invocation_short_name;
 	voluta_globals.prog = program_invocation_name;
 	voluta_globals.argc = argc;
 	voluta_globals.argv = argv;
 	voluta_globals.cmd_argc = argc;
 	voluta_globals.cmd_argv = argv;
-	voluta_globals.subcmd = NULL;
+	voluta_globals.cmd_name = NULL;
 	voluta_globals.pid = getpid();
 	voluta_globals.uid = getuid();
 	voluta_globals.gid = getgid();
@@ -524,10 +570,14 @@ void voluta_init_process(void)
 	if (err) {
 		voluta_die(err, "unable to init lib");
 	}
-	voluta_g_log_mask =
-		(VOLUTA_LOG_INFO | VOLUTA_LOG_WARN |
-		 VOLUTA_LOG_ERROR | VOLUTA_LOG_CRIT |
-		 VOLUTA_LOG_STDOUT | VOLUTA_LOG_SYSLOG);
+	voluta_log_mask_set(VOLUTA_LOG_INFO | VOLUTA_LOG_WARN |
+			    VOLUTA_LOG_ERROR | VOLUTA_LOG_CRIT |
+			    VOLUTA_LOG_STDOUT | VOLUTA_LOG_SYSLOG);
 	voluta_resolve_caps();
 }
 
+void voluta_log_process_info(void)
+{
+	voluta_log_info("%s", voluta_globals.version);
+	voluta_log_info("%s", voluta_globals.prog);
+}

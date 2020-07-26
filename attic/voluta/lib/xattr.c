@@ -95,13 +95,16 @@ static size_t xe_diff(const struct voluta_xattr_entry *beg,
 static struct voluta_xattr_entry *
 xe_unconst(const struct voluta_xattr_entry *xe)
 {
-	return (struct voluta_xattr_entry *)xe;
+	return unconst(xe);
 }
 
 static struct voluta_xentry_view *
 xe_view_of(const struct voluta_xattr_entry *xe)
 {
-	return voluta_container_of(xe, struct voluta_xentry_view, xe);
+	const struct voluta_xentry_view *xe_view =
+		container_of2(xe, struct voluta_xentry_view, xe);
+
+	return unconst(xe_view);
 }
 
 static size_t xe_name_len(const struct voluta_xattr_entry *xe)
@@ -191,7 +194,7 @@ xe_search(const struct voluta_xattr_entry *itr,
 {
 	while (itr < end) {
 		if (xe_has_name(itr, name)) {
-			return (struct voluta_xattr_entry *)itr;
+			return unconst(itr);
 		}
 		itr = xe_next(itr);
 	}
@@ -339,7 +342,7 @@ inode_xattr_of(const struct voluta_inode *inode)
 {
 	const struct voluta_inode_xattr *ixa = &inode->i_x;
 
-	return (struct voluta_inode_xattr *)ixa;
+	return unconst(ixa);
 }
 
 static struct voluta_inode_xattr *
@@ -514,8 +517,8 @@ void voluta_setup_inode_xattr(struct voluta_inode_info *ii)
 
 struct voluta_xattr_ctx {
 	struct voluta_sb_info *sbi;
-	const struct voluta_oper_ctx *op_ctx;
-	struct voluta_listxattr_ctx *lsxa_ctx;
+	const struct voluta_oper *op;
+	struct voluta_listxattr_ctx *lxa_ctx;
 	struct voluta_inode_info *ii;
 	const struct voluta_str *name;
 	struct voluta_buf value;
@@ -621,7 +624,7 @@ static int check_xattr(const struct voluta_xattr_ctx *xa_ctx, int access_mode)
 	if (!is_valid_xflags(xa_ctx->flags)) {
 		return -ENOTSUP;
 	}
-	err = voluta_do_access(xa_ctx->op_ctx, ii, access_mode);
+	err = voluta_do_access(xa_ctx->op, ii, access_mode);
 	if (err) {
 		return err;
 	}
@@ -716,7 +719,7 @@ static int do_getxattr(struct voluta_xattr_ctx *xa_ctx, size_t *out_size)
 		return err;
 	}
 	*out_size = xe_value_size(xei.xe);
-	if (buf->bsz == 0) {
+	if (!buf->bsz || (buf->buf == NULL)) {
 		return 0;
 	}
 	if (buf->bsz < (buf->len + *out_size)) {
@@ -726,7 +729,7 @@ static int do_getxattr(struct voluta_xattr_ctx *xa_ctx, size_t *out_size)
 	return 0;
 }
 
-int voluta_do_getxattr(const struct voluta_oper_ctx *op_ctx,
+int voluta_do_getxattr(const struct voluta_oper *op,
 		       struct voluta_inode_info *ii,
 		       const struct voluta_str *name,
 		       void *buf, size_t size, size_t *out_size)
@@ -734,7 +737,7 @@ int voluta_do_getxattr(const struct voluta_oper_ctx *op_ctx,
 	int err;
 	struct voluta_xattr_ctx xa_ctx = {
 		.sbi = i_sbi_of(ii),
-		.op_ctx = op_ctx,
+		.op = op,
 		.ii = ii,
 		.name = name,
 		.value.buf = buf,
@@ -944,22 +947,22 @@ static int do_setxattr(struct voluta_xattr_ctx *xa_ctx)
 	if (err) {
 		return err;
 	}
-	update_itimes(xa_ctx->op_ctx, xa_ctx->ii, VOLUTA_IATTR_CTIME);
+	update_itimes(xa_ctx->op, xa_ctx->ii, VOLUTA_IATTR_CTIME);
 	return 0;
 }
 
-int voluta_do_setxattr(const struct voluta_oper_ctx *op_ctx,
+int voluta_do_setxattr(const struct voluta_oper *op,
 		       struct voluta_inode_info *ii,
 		       const struct voluta_str *name,
-		       const char *value, size_t size, int flags)
+		       const void *value, size_t size, int flags)
 {
 	int err;
 	struct voluta_xattr_ctx xa_ctx = {
 		.sbi = i_sbi_of(ii),
-		.op_ctx = op_ctx,
+		.op = op,
 		.ii = ii,
 		.name = name,
-		.value.buf = (void *)value,
+		.value.buf = unconst(value),
 		.value.len = size,
 		.value.bsz = size,
 		.size = size,
@@ -994,19 +997,19 @@ static int do_removexattr(struct voluta_xattr_ctx *xa_ctx)
 		return err;
 	}
 	discard_xentry(&xei);
-	update_itimes(xa_ctx->op_ctx, xa_ctx->ii, VOLUTA_IATTR_CTIME);
+	update_itimes(xa_ctx->op, xa_ctx->ii, VOLUTA_IATTR_CTIME);
 
 	return 0;
 }
 
-int voluta_do_removexattr(const struct voluta_oper_ctx *op_ctx,
+int voluta_do_removexattr(const struct voluta_oper *op,
 			  struct voluta_inode_info *ii,
 			  const struct voluta_str *name)
 {
 	int err;
 	struct voluta_xattr_ctx xa_ctx = {
 		.sbi = i_sbi_of(ii),
-		.op_ctx = op_ctx,
+		.op = op,
 		.ii = ii,
 		.name = name
 	};
@@ -1023,7 +1026,7 @@ int voluta_do_removexattr(const struct voluta_oper_ctx *op_ctx,
 static int emit(struct voluta_xattr_ctx *xa_ctx, const char *name, size_t nlen)
 {
 	int err;
-	struct voluta_listxattr_ctx *lsxa_ctx = xa_ctx->lsxa_ctx;
+	struct voluta_listxattr_ctx *lsxa_ctx = xa_ctx->lxa_ctx;
 
 	err = lsxa_ctx->actor(lsxa_ctx, name, nlen);
 	return err ? -ERANGE : 0;
@@ -1133,16 +1136,16 @@ static int do_listxattr(struct voluta_xattr_ctx *xa_ctx)
 	return 0;
 }
 
-int voluta_do_listxattr(const struct voluta_oper_ctx *op_ctx,
+int voluta_do_listxattr(const struct voluta_oper *op,
 			struct voluta_inode_info *ii,
-			struct voluta_listxattr_ctx *lsxa)
+			struct voluta_listxattr_ctx *lxa_ctx)
 {
 	int err;
 	struct voluta_xattr_ctx xa_ctx = {
 		.sbi = i_sbi_of(ii),
-		.op_ctx = op_ctx,
+		.op = op,
 		.ii = ii,
-		.lsxa_ctx = lsxa,
+		.lxa_ctx = lxa_ctx,
 		.keep_iter = true
 	};
 

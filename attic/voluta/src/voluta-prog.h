@@ -36,6 +36,13 @@ struct voluta_fsinfo {
 
 typedef void (*voluta_exec_fn)(void);
 
+/* Sub-command descriptor */
+struct voluta_cmd_info {
+	const char *name;
+	voluta_exec_fn getopt_hook;
+	voluta_exec_fn action_hook;
+};
+
 /* Global settings */
 struct voluta_globals {
 	/* Program's version string */
@@ -47,10 +54,10 @@ struct voluta_globals {
 	int     argc;
 	int     pad1;
 	char  **argv;
-	char   *subcmd;
+	char   *cmd_name;
+	char  **cmd_argv;
 	int     cmd_argc;
 	int     pad2;
-	char  **cmd_argv;
 
 
 	/* Process ids */
@@ -92,19 +99,26 @@ struct voluta_globals {
 	char   *mkfs_passphrase_file;
 	char   *mkfs_salt;
 	char   *mkfs_volume;
+	char   *mkfs_label;
 	char   *mkfs_name;
-	loff_t  mkfs_size;
+	char   *mkfs_size;
+	loff_t  mkfs_volume_size;
 	bool    mkfs_force;
 	char    pad4[7];
 
 	/* Options for 'fsck' sub-command */
 	char   *fsck_volume;
 
-	/* Options for 'inquiry' sub-command */
-	char   *inq_path;
+	/* Options for 'show' sub-command */
+	char   *show_path;
+	bool    show_public_only;
+	char    pad5[7];
+
+	/* Options for 'query' sub-command */
+	char   *query_path;
 
 	/* Sub-command execution hook */
-	voluta_exec_fn exec_hook;
+	const struct voluta_cmd_info *cmd_info;
 };
 
 extern struct voluta_globals voluta_globals;
@@ -117,15 +131,19 @@ void voluta_execute_mkfs(void);
 
 void voluta_execute_fsck(void);
 
-void voluta_execute_inquiry(void);
+void voluta_execute_show(void);
+
+void voluta_execute_query(void);
 
 void voluta_getopt_mkfs(void);
 
 void voluta_getopt_fsck(void);
 
+void voluta_getopt_show(void);
+
 void voluta_getopt_mount(void);
 
-void voluta_getopt_inquiry(void);
+void voluta_getopt_query(void);
 
 /* Common utilities */
 __attribute__((__noreturn__))
@@ -135,7 +153,15 @@ __attribute__((__noreturn__))
 void voluta_die_redundant_arg(const char *s);
 
 __attribute__((__noreturn__))
+void voluta_die_no_volume_path(void);
+
+__attribute__((__noreturn__))
+void voluta_die_no_mount_point(void);
+
+__attribute__((__noreturn__))
 void voluta_die_unsupported_opt(void);
+
+void voluta_check_no_redundant_arg(void);
 
 void voluta_register_sigactions(void);
 
@@ -163,6 +189,8 @@ void voluta_setup_globals(int argc, char *argv[]);
 
 void voluta_init_process(void);
 
+void voluta_log_process_info(void);
+
 void voluta_show_help_and_exit(int exit_code, const char *help_string);
 
 void voluta_show_version_and_exit(int exit_code);
@@ -170,12 +198,19 @@ void voluta_show_version_and_exit(int exit_code);
 /* Resolve file-system info by statfs.f_type */
 const struct voluta_fsinfo *voluta_fsinfo_by_vfstype(long vfstype);
 
-/* Singleton instance */
-struct voluta_env *voluta_new_instance(void);
+/* Singleton instances */
+void voluta_init_fs_env(void);
 
-struct voluta_env *voluta_get_instance(void);
+void voluta_fini_fs_env(void);
 
-void voluta_delete_instance(void);
+struct voluta_fs_env *voluta_fs_env_inst(void);
+
+void voluta_init_ms_env(void);
+
+void voluta_fini_ms_env(void);
+
+struct voluta_ms_env *voluta_ms_env_inst(void);
+
 
 /* Signal call-back hook */
 typedef void (*voluta_signal_hook_fn)(int);

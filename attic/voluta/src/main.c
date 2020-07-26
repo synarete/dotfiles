@@ -41,7 +41,8 @@
 
 
 /* Local functions forward declarations */
-static void voluta_parse_args(void);
+static void voluta_parse_global_args(void);
+static void voluta_parse_command_args(void);
 static void voluta_exec_subcmd(void);
 
 
@@ -59,8 +60,11 @@ int main(int argc, char *argv[])
 	/* Setup process defaults */
 	voluta_setup_globals(argc, argv);
 
-	/* Parse sub-commands arguments */
-	voluta_parse_args();
+	/* Parse top-level arguments */
+	voluta_parse_global_args();
+
+	/* Parse sub-command arguments */
+	voluta_parse_command_args();
 
 	/* Common process initializations */
 	voluta_init_process();
@@ -72,76 +76,93 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-static void voluta_exec_subcmd(void)
-{
-	voluta_globals.exec_hook();
-}
 
 /*: : : : : : : : : : : : : : : : : : : : : : : : : : : : : : : : : : : : : :*/
 
-static const char *g_main_usage =
-	"<command> [options]\n\n" \
-	"main commands: \n" \
-	"  mkfs\n" \
-	"  fsck\n" \
-	"  mount\n" \
-	"  inquiry\n" \
-	"";
 
+#define DEFCMD(cmd_) \
+	{ #cmd_, voluta_getopt_##cmd_, voluta_execute_##cmd_ }
 
-static void show_help_and_exit(int exit_code, const char *help_string)
+static bool equals(const char *s1, const char *s2)
 {
-	printf("%s %s\n", voluta_globals.name, help_string);
-	exit(exit_code);
+	return (s1 && s2 && !strcmp(s1, s2));
+}
+
+static bool equals2(const char *s, const char *s1, const char *s2)
+{
+	return equals(s, s1) || equals(s, s2);
+}
+
+static const struct voluta_cmd_info g_cmd_info[] = {
+	DEFCMD(mkfs),
+	DEFCMD(mount),
+	DEFCMD(fsck),
+	DEFCMD(show),
+	DEFCMD(query)
+};
+
+static const struct voluta_cmd_info *cmt_info_of(const char *cmd_name)
+{
+	const struct voluta_cmd_info *cmdi = NULL;
+
+	for (size_t i = 0; i < VOLUTA_ARRAY_SIZE(g_cmd_info); ++i) {
+		cmdi = &g_cmd_info[i];
+		if (equals(cmd_name, cmdi->name)) {
+			return cmdi;
+		}
+	}
+	return NULL;
 }
 
 static void show_main_help_and_exit(int exit_code)
 {
-	show_help_and_exit(exit_code, g_main_usage);
+	printf("%s <command> [options]\n\n", voluta_globals.name);
+	printf("main commands: \n");
+	for (size_t i = 0; i < VOLUTA_ARRAY_SIZE(g_cmd_info); ++i) {
+		printf("  %s\n", g_cmd_info[i].name);
+	}
+	exit(exit_code);
 }
 
-static bool issubcmd(const char *cmd, const char *s1)
-{
-	return (cmd && s1 && !strcmp(cmd, s1));
-}
-
-static bool voluta_issubcmd(const char *s)
-{
-	return issubcmd(voluta_globals.subcmd, s);
-}
-
-static bool voluta_issubcmd2(const char *s1, const char *s2)
-{
-	return voluta_issubcmd(s1) || voluta_issubcmd(s2);
-}
-
-
-static void voluta_parse_args(void)
+static void voluta_grab_args(void)
 {
 	if (voluta_globals.argc <= 1) {
 		show_main_help_and_exit(1);
 	}
-	voluta_globals.subcmd = voluta_globals.argv[1];
+	voluta_globals.cmd_name = voluta_globals.argv[1];
 	voluta_globals.cmd_argc = voluta_globals.argc - 1;
 	voluta_globals.cmd_argv = voluta_globals.argv + 1;
+}
 
-	if (voluta_issubcmd2("-v", "--version")) {
+static void voluta_parse_global_args(void)
+{
+	const char *cmd_name = NULL;
+
+	voluta_grab_args();
+	cmd_name = voluta_globals.cmd_name;
+
+	if (equals2(cmd_name, "-v", "--version")) {
 		voluta_show_version_and_exit(0);
-	} else if (voluta_issubcmd2("-h", "--help")) {
+	}
+	if (equals2(cmd_name, "-h", "--help")) {
 		show_main_help_and_exit(0);
-	} else if (voluta_issubcmd("mount")) {
-		voluta_getopt_mount();
-		voluta_globals.exec_hook = voluta_execute_mount;
-	} else if (voluta_issubcmd("mkfs")) {
-		voluta_getopt_mkfs();
-		voluta_globals.exec_hook = voluta_execute_mkfs;
-	} else if (voluta_issubcmd("fsck")) {
-		voluta_getopt_fsck();
-		voluta_globals.exec_hook = voluta_execute_fsck;
-	} else if (voluta_issubcmd("inquiry")) {
-		voluta_getopt_inquiry();
-		voluta_globals.exec_hook = voluta_execute_inquiry;
-	} else {
+	}
+	voluta_globals.cmd_info = cmt_info_of(cmd_name);
+}
+
+static void voluta_parse_command_args(void)
+{
+	if (voluta_globals.cmd_info == NULL) {
 		show_main_help_and_exit(1);
+	}
+	voluta_globals.cmd_info->getopt_hook();
+}
+
+static void voluta_exec_subcmd(void)
+{
+	const struct voluta_cmd_info *cmdi = voluta_globals.cmd_info;
+
+	if (cmdi && cmdi->action_hook) {
+		cmdi->action_hook();
 	}
 }

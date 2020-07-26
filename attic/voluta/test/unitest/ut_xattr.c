@@ -15,7 +15,6 @@
  * GNU General Public License for more details.
  */
 #define _GNU_SOURCE 1
-#define VOLUTA_TEST 1
 #include "unitest.h"
 
 
@@ -25,41 +24,41 @@ struct voluta_kv_sizes {
 };
 
 
-static struct voluta_ut_keyval *
-kv_new(struct voluta_ut_ctx *ut_ctx, size_t nlen, size_t size)
+static struct ut_keyval *
+kv_new(struct ut_env *ut_env, size_t nlen, size_t size)
 {
-	struct voluta_ut_keyval *kv;
+	struct ut_keyval *kv;
 
-	kv = voluta_ut_malloc(ut_ctx, sizeof(*kv));
-	kv->name = voluta_ut_randstr(ut_ctx, nlen);
-	kv->value = voluta_ut_randstr(ut_ctx, size);
+	kv = ut_malloc(ut_env, sizeof(*kv));
+	kv->name = ut_randstr(ut_env, nlen);
+	kv->value = ut_randstr(ut_env, size);
 	kv->size = size;
 
 	return kv;
 }
 
-static struct voluta_ut_kvl *kvl_new(struct voluta_ut_ctx *ut_ctx,
-				     size_t limit)
+static struct ut_kvl *kvl_new(struct ut_env *ut_env,
+			      size_t limit)
 {
-	struct voluta_ut_kvl *kvl;
-	const size_t list_sz = limit * sizeof(struct voluta_ut_keyval *);
+	struct ut_kvl *kvl;
+	const size_t list_sz = limit * sizeof(struct ut_keyval *);
 
-	kvl = voluta_ut_malloc(ut_ctx, sizeof(*kvl));
-	kvl->ut_ctx = ut_ctx;
-	kvl->list = voluta_ut_zalloc(ut_ctx, list_sz);
+	kvl = ut_malloc(ut_env, sizeof(*kvl));
+	kvl->ut_env = ut_env;
+	kvl->list = ut_zalloc(ut_env, list_sz);
 	kvl->limit = limit;
 	kvl->count = 0;
 	return kvl;
 }
 
-static void kvl_append(struct voluta_ut_kvl *kvl, size_t nlen, size_t value_sz)
+static void kvl_append(struct ut_kvl *kvl, size_t nlen, size_t value_sz)
 {
 	ut_assert_lt(kvl->count, kvl->limit);
 
-	kvl->list[kvl->count++] = kv_new(kvl->ut_ctx, nlen, value_sz);
+	kvl->list[kvl->count++] = kv_new(kvl->ut_env, nlen, value_sz);
 }
 
-static void kvl_appendn(struct voluta_ut_kvl *kvl,
+static void kvl_appendn(struct ut_kvl *kvl,
 			const struct voluta_kv_sizes *arr, size_t arr_len)
 {
 	for (size_t i = 0; i < arr_len; ++i) {
@@ -67,7 +66,7 @@ static void kvl_appendn(struct voluta_ut_kvl *kvl,
 	}
 }
 
-static void kvl_populate(struct voluta_ut_kvl *kvl,
+static void kvl_populate(struct ut_kvl *kvl,
 			 size_t name_len, size_t value_sz)
 {
 	for (size_t i = kvl->count; i < kvl->limit; ++i) {
@@ -75,9 +74,9 @@ static void kvl_populate(struct voluta_ut_kvl *kvl,
 	}
 }
 
-static void kvl_populate_max(struct voluta_ut_kvl *kvl)
+static void kvl_populate_max(struct ut_kvl *kvl)
 {
-	const size_t name_len = VOLUTA_NAME_MAX;
+	const size_t name_len = UT_NAME_MAX;
 	const size_t value_sz = VOLUTA_XATTR_VALUE_MAX;
 
 	for (size_t i = kvl->count; i < kvl->limit; ++i) {
@@ -85,16 +84,16 @@ static void kvl_populate_max(struct voluta_ut_kvl *kvl)
 	}
 }
 
-static void kvl_swap(struct voluta_ut_kvl *kvl, size_t i, size_t j)
+static void kvl_swap(struct ut_kvl *kvl, size_t i, size_t j)
 {
-	struct voluta_ut_keyval *kv;
+	struct ut_keyval *kv;
 
 	kv = kvl->list[i];
 	kvl->list[i] = kvl->list[j];
 	kvl->list[j] = kv;
 }
 
-static void kvl_reverse(struct voluta_ut_kvl *kvl)
+static void kvl_reverse(struct ut_kvl *kvl)
 {
 	const size_t cnt = kvl->count / 2;
 
@@ -103,10 +102,10 @@ static void kvl_reverse(struct voluta_ut_kvl *kvl)
 	}
 }
 
-static void kvl_random_shuffle(struct voluta_ut_kvl *kvl)
+static void kvl_random_shuffle(struct ut_kvl *kvl)
 {
 	size_t pos[32];
-	const size_t npos = ARRAY_SIZE(pos);
+	const size_t npos = UT_ARRAY_SIZE(pos);
 
 	for (size_t i = 0, j = npos; i < kvl->count / 2; ++i, ++j) {
 		if (j >= npos) {
@@ -119,112 +118,114 @@ static void kvl_random_shuffle(struct voluta_ut_kvl *kvl)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_xattr_simple(struct voluta_ut_ctx *ut_ctx)
+static void ut_xattr_simple(struct ut_env *ut_env)
 {
 	ino_t ino;
-	const ino_t root_ino = ROOT_INO;
-	const char *name = T_NAME;
-	struct voluta_ut_kvl *kvl;
+	ino_t dino;
+	const char *name = UT_NAME;
+	struct ut_kvl *kvl;
 
-	kvl = kvl_new(ut_ctx, 16);
+	kvl = kvl_new(ut_env, 16);
 	kvl_populate(kvl, 4, 32);
 
-	voluta_ut_create_file(ut_ctx, root_ino, name, &ino);
+	ut_mkdir_at_root(ut_env, name, &dino);
+	ut_create_file(ut_env, dino, name, &ino);
 	for (size_t i = 0; i < kvl->count; ++i) {
-		voluta_ut_setxattr_create(ut_ctx, ino, kvl->list[i]);
+		ut_setxattr_create(ut_env, ino, kvl->list[i]);
 	}
 	for (size_t i = 0; i < kvl->count; ++i) {
-		voluta_ut_getxattr_value(ut_ctx, ino, kvl->list[i]);
+		ut_getxattr_value(ut_env, ino, kvl->list[i]);
 	}
-	voluta_ut_listxattr_exists(ut_ctx, ino, kvl);
+	ut_listxattr_ok(ut_env, ino, kvl);
 	for (size_t i = 0; i < kvl->count; ++i) {
-		voluta_ut_removexattr_exists(ut_ctx, ino, kvl->list[i]);
+		ut_removexattr_ok(ut_env, ino, kvl->list[i]);
 	}
 	for (size_t i = 0; i < kvl->count; ++i) {
-		voluta_ut_getxattr_nodata(ut_ctx, ino, kvl->list[i]);
+		ut_getxattr_nodata(ut_env, ino, kvl->list[i]);
 	}
-	voluta_ut_remove_file(ut_ctx, root_ino, name, ino);
+	ut_remove_file(ut_env, dino, name, ino);
+	ut_rmdir_at_root(ut_env, name);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_xattr_long_names(struct voluta_ut_ctx *ut_ctx)
+static void ut_xattr_long_names(struct ut_env *ut_env)
 {
 	ino_t ino;
-	const ino_t root_ino = ROOT_INO;
-	const char *name = T_NAME;
-	struct voluta_ut_kvl *kvl;
+	const ino_t root_ino = UT_ROOT_INO;
+	const char *name = UT_NAME;
+	struct ut_kvl *kvl;
 
-	kvl = kvl_new(ut_ctx, 4);
-	kvl_populate(kvl, VOLUTA_NAME_MAX, VOLUTA_XATTR_VALUE_MAX);
+	kvl = kvl_new(ut_env, 4);
+	kvl_populate(kvl, UT_NAME_MAX, VOLUTA_XATTR_VALUE_MAX);
 
-	voluta_ut_create_file(ut_ctx, root_ino, name, &ino);
-	voluta_ut_setxattr_all(ut_ctx, ino, kvl);
-	voluta_ut_listxattr_exists(ut_ctx, ino, kvl);
+	ut_create_file(ut_env, root_ino, name, &ino);
+	ut_setxattr_all(ut_env, ino, kvl);
+	ut_listxattr_ok(ut_env, ino, kvl);
 	kvl_reverse(kvl);
-	voluta_ut_listxattr_exists(ut_ctx, ino, kvl);
-	voluta_ut_removexattr_all(ut_ctx, ino, kvl);
-	voluta_ut_remove_file(ut_ctx, root_ino, name, ino);
+	ut_listxattr_ok(ut_env, ino, kvl);
+	ut_removexattr_all(ut_env, ino, kvl);
+	ut_remove_file(ut_env, root_ino, name, ino);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void fill_short_kv(struct voluta_ut_ctx *ut_ctx,
-			  struct voluta_ut_keyval *kv, size_t idx)
+static void fill_short_kv(struct ut_env *ut_env,
+			  struct ut_keyval *kv, size_t idx)
 {
 	const char *str;
 
-	str = voluta_ut_strfmt(ut_ctx, (idx & 1) ? "%lx" : "%032lx", idx);
+	str = ut_strfmt(ut_env, (idx & 1) ? "%lx" : "%032lx", idx);
 	kv->name = str;
 	kv->value = str;
 	kv->size = strlen(str);
 }
 
-static void ut_xattr_shorts_(struct voluta_ut_ctx *ut_ctx, size_t cnt)
+static void ut_xattr_shorts_(struct ut_env *ut_env, size_t cnt)
 {
 	ino_t ino;
-	const char *dname = T_NAME;
-	struct voluta_ut_keyval kv;
+	const char *dname = UT_NAME;
+	struct ut_keyval kv;
 
-	voluta_ut_mkdir_at_root(ut_ctx, dname, &ino);
+	ut_mkdir_at_root(ut_env, dname, &ino);
 	for (size_t i = 0; i < cnt; ++i) {
-		fill_short_kv(ut_ctx, &kv, i);
-		voluta_ut_setxattr_create(ut_ctx, ino, &kv);
+		fill_short_kv(ut_env, &kv, i);
+		ut_setxattr_create(ut_env, ino, &kv);
 	}
 	for (size_t i = 0; i < cnt; i += 2) {
-		fill_short_kv(ut_ctx, &kv, i);
-		voluta_ut_removexattr_exists(ut_ctx, ino, &kv);
+		fill_short_kv(ut_env, &kv, i);
+		ut_removexattr_ok(ut_env, ino, &kv);
 	}
 	for (size_t i = 1; i < cnt; i += 2) {
-		fill_short_kv(ut_ctx, &kv, i);
-		voluta_ut_removexattr_exists(ut_ctx, ino, &kv);
-		fill_short_kv(ut_ctx, &kv, ~i);
-		voluta_ut_setxattr_create(ut_ctx, ino, &kv);
-		fill_short_kv(ut_ctx, &kv, ~(i - 1));
-		voluta_ut_setxattr_create(ut_ctx, ino, &kv);
+		fill_short_kv(ut_env, &kv, i);
+		ut_removexattr_ok(ut_env, ino, &kv);
+		fill_short_kv(ut_env, &kv, ~i);
+		ut_setxattr_create(ut_env, ino, &kv);
+		fill_short_kv(ut_env, &kv, ~(i - 1));
+		ut_setxattr_create(ut_env, ino, &kv);
 	}
 	for (size_t i = 0; i < cnt; ++i) {
-		fill_short_kv(ut_ctx, &kv, ~i);
-		voluta_ut_removexattr_exists(ut_ctx, ino, &kv);
+		fill_short_kv(ut_env, &kv, ~i);
+		ut_removexattr_ok(ut_env, ino, &kv);
 	}
-	voluta_ut_rmdir_at_root(ut_ctx, dname);
+	ut_rmdir_at_root(ut_env, dname);
 }
 
-static void ut_xattr_shorts(struct voluta_ut_ctx *ut_ctx)
+static void ut_xattr_shorts(struct ut_env *ut_env)
 {
-	ut_xattr_shorts_(ut_ctx, 10);
-	ut_xattr_shorts_(ut_ctx, 100);
+	ut_xattr_shorts_(ut_env, 10);
+	ut_xattr_shorts_(ut_env, 100);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void fill_novalue_kv(struct voluta_ut_ctx *ut_ctx,
-			    struct voluta_ut_keyval *kv, size_t idx)
+static void fill_novalue_kv(struct ut_env *ut_env,
+			    struct ut_keyval *kv, size_t idx)
 {
 	size_t len;
 	char *str;
 
-	str = voluta_ut_strfmt(ut_ctx, "%lx-%0255lx", idx, idx);
+	str = ut_strfmt(ut_env, "%lx-%0255lx", idx, idx);
 	len = strlen(str);
 	if ((idx > 7) && (idx < len)) {
 		str[idx] = '\0';
@@ -236,202 +237,201 @@ static void fill_novalue_kv(struct voluta_ut_ctx *ut_ctx,
 	kv->size = 0;
 }
 
-static void ut_xattr_no_value_(struct voluta_ut_ctx *ut_ctx, size_t cnt)
+static void ut_xattr_no_value_(struct ut_env *ut_env, size_t cnt)
 {
 	ino_t ino;
-	const char *dname = T_NAME;
-	struct voluta_ut_keyval kv;
+	const char *dname = UT_NAME;
+	struct ut_keyval kv;
 
-	voluta_ut_mkdir_at_root(ut_ctx, dname, &ino);
+	ut_mkdir_at_root(ut_env, dname, &ino);
 	for (size_t i = 0; i < cnt; ++i) {
-		fill_novalue_kv(ut_ctx, &kv, i);
-		voluta_ut_setxattr_create(ut_ctx, ino, &kv);
+		fill_novalue_kv(ut_env, &kv, i);
+		ut_setxattr_create(ut_env, ino, &kv);
 	}
 	for (size_t i = 0; i < cnt; i += 2) {
-		fill_novalue_kv(ut_ctx, &kv, i);
-		voluta_ut_removexattr_exists(ut_ctx, ino, &kv);
+		fill_novalue_kv(ut_env, &kv, i);
+		ut_removexattr_ok(ut_env, ino, &kv);
 	}
 	for (size_t i = 1; i < cnt; i += 2) {
-		fill_novalue_kv(ut_ctx, &kv, i);
-		voluta_ut_removexattr_exists(ut_ctx, ino, &kv);
-		fill_novalue_kv(ut_ctx, &kv, ~i);
-		voluta_ut_setxattr_create(ut_ctx, ino, &kv);
-		fill_novalue_kv(ut_ctx, &kv, ~(i - 1));
-		voluta_ut_setxattr_create(ut_ctx, ino, &kv);
+		fill_novalue_kv(ut_env, &kv, i);
+		ut_removexattr_ok(ut_env, ino, &kv);
+		fill_novalue_kv(ut_env, &kv, ~i);
+		ut_setxattr_create(ut_env, ino, &kv);
+		fill_novalue_kv(ut_env, &kv, ~(i - 1));
+		ut_setxattr_create(ut_env, ino, &kv);
 	}
 	for (size_t i = 0; i < cnt; ++i) {
-		fill_novalue_kv(ut_ctx, &kv, ~i);
-		voluta_ut_removexattr_exists(ut_ctx, ino, &kv);
+		fill_novalue_kv(ut_env, &kv, ~i);
+		ut_removexattr_ok(ut_env, ino, &kv);
 	}
-	voluta_ut_rmdir_at_root(ut_ctx, dname);
+	ut_rmdir_at_root(ut_env, dname);
 }
 
-static void ut_xattr_no_value(struct voluta_ut_ctx *ut_ctx)
+static void ut_xattr_no_value(struct ut_env *ut_env)
 {
-	ut_xattr_no_value_(ut_ctx, 40);
+	ut_xattr_no_value_(ut_env, 40);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_xattr_multi(struct voluta_ut_ctx *ut_ctx)
+static void ut_xattr_multi(struct ut_env *ut_env)
 {
 	ino_t ino;
 	ino_t dino;
-	const ino_t root_ino = ROOT_INO;
-	const char *dname = T_NAME;
-	const char *fname = T_NAME;
-	struct voluta_ut_kvl *kvl;
+	const char *dname = UT_NAME;
+	const char *fname = UT_NAME;
+	struct ut_kvl *kvl;
 	const struct voluta_kv_sizes kv_sizes_arr[] = {
 		{ 1, 1 },
-		{ VOLUTA_NAME_MAX / 2, 2 },
+		{ UT_NAME_MAX / 2, 2 },
 		{ 2, VOLUTA_XATTR_VALUE_MAX / 2 },
-		{ VOLUTA_NAME_MAX / 16, 16 },
+		{ UT_NAME_MAX / 16, 16 },
 		{ 32, VOLUTA_XATTR_VALUE_MAX / 32 },
-		{ VOLUTA_NAME_MAX, 128 },
+		{ UT_NAME_MAX, 128 },
 		{ 64, VOLUTA_XATTR_VALUE_MAX },
 	};
-	const size_t nkv_sizes = ARRAY_SIZE(kv_sizes_arr);
+	const size_t nkv_sizes = UT_ARRAY_SIZE(kv_sizes_arr);
 
-	voluta_ut_mkdir_ok(ut_ctx, root_ino, dname, &dino);
-	voluta_ut_create_only(ut_ctx, dino, fname, &ino);
+	ut_mkdir_at_root(ut_env, dname, &dino);
+	ut_create_only(ut_env, dino, fname, &ino);
 
 	for (size_t i = 0; i < 4; ++i) {
-		kvl = kvl_new(ut_ctx, nkv_sizes);
+		kvl = kvl_new(ut_env, nkv_sizes);
 		kvl_appendn(kvl, kv_sizes_arr, nkv_sizes);
 
-		voluta_ut_setxattr_all(ut_ctx, dino, kvl);
-		voluta_ut_listxattr_exists(ut_ctx, dino, kvl);
-		voluta_ut_setxattr_all(ut_ctx, ino, kvl);
-		voluta_ut_listxattr_exists(ut_ctx, ino, kvl);
+		ut_setxattr_all(ut_env, dino, kvl);
+		ut_listxattr_ok(ut_env, dino, kvl);
+		ut_setxattr_all(ut_env, ino, kvl);
+		ut_listxattr_ok(ut_env, ino, kvl);
 		kvl_reverse(kvl);
-		voluta_ut_listxattr_exists(ut_ctx, dino, kvl);
-		voluta_ut_listxattr_exists(ut_ctx, ino, kvl);
-		voluta_ut_removexattr_all(ut_ctx, ino, kvl);
-		voluta_ut_drop_caches_fully(ut_ctx);
+		ut_listxattr_ok(ut_env, dino, kvl);
+		ut_listxattr_ok(ut_env, ino, kvl);
+		ut_removexattr_all(ut_env, ino, kvl);
+		ut_drop_caches_fully(ut_env);
 		kvl_random_shuffle(kvl);
-		voluta_ut_setxattr_all(ut_ctx, ino, kvl);
-		voluta_ut_listxattr_exists(ut_ctx, ino, kvl);
-		voluta_ut_listxattr_exists(ut_ctx, dino, kvl);
+		ut_setxattr_all(ut_env, ino, kvl);
+		ut_listxattr_ok(ut_env, ino, kvl);
+		ut_listxattr_ok(ut_env, dino, kvl);
 		kvl_random_shuffle(kvl);
-		voluta_ut_listxattr_exists(ut_ctx, ino, kvl);
-		voluta_ut_removexattr_all(ut_ctx, ino, kvl);
-		voluta_ut_removexattr_all(ut_ctx, dino, kvl);
+		ut_listxattr_ok(ut_env, ino, kvl);
+		ut_removexattr_all(ut_env, ino, kvl);
+		ut_removexattr_all(ut_env, dino, kvl);
 	}
-	voluta_ut_unlink_exists(ut_ctx, dino, fname);
-	voluta_ut_rmdir_ok(ut_ctx, root_ino, dname);
+	ut_unlink_ok(ut_env, dino, fname);
+	ut_rmdir_at_root(ut_env, dname);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_xattr_lookup_random(struct voluta_ut_ctx *ut_ctx)
+static void ut_xattr_lookup_random(struct ut_env *ut_env)
 {
 	ino_t ino;
 	ino_t dino;
-	const ino_t root_ino = ROOT_INO;
-	const char *dname = T_NAME;
+	const ino_t root_ino = UT_ROOT_INO;
+	const char *dname = UT_NAME;
 	const char *xname;
-	struct voluta_ut_kvl *kvl = kvl_new(ut_ctx, 4);
+	struct ut_kvl *kvl = kvl_new(ut_env, 4);
 
 	kvl_populate_max(kvl);
-	voluta_ut_mkdir_ok(ut_ctx, root_ino, dname, &dino);
+	ut_mkdir_oki(ut_env, root_ino, dname, &dino);
 	for (size_t i = 0; i < kvl->count; ++i) {
 		xname = kvl->list[i]->name;
-		voluta_ut_create_file(ut_ctx, dino, xname, &ino);
-		voluta_ut_setxattr_all(ut_ctx, ino, kvl);
-		voluta_ut_listxattr_exists(ut_ctx, ino, kvl);
+		ut_create_file(ut_env, dino, xname, &ino);
+		ut_setxattr_all(ut_env, ino, kvl);
+		ut_listxattr_ok(ut_env, ino, kvl);
 	}
 	for (size_t i = 0; i < kvl->count; ++i) {
 		xname = kvl->list[i]->name;
-		voluta_ut_lookup_ok(ut_ctx, dino, xname, &ino);
-		voluta_ut_listxattr_exists(ut_ctx, ino, kvl);
+		ut_lookup_ino(ut_env, dino, xname, &ino);
+		ut_listxattr_ok(ut_env, ino, kvl);
 	}
 	kvl_random_shuffle(kvl);
 	for (size_t i = 0; i < kvl->count; i += 3) {
 		xname = kvl->list[i]->name;
-		voluta_ut_lookup_ok(ut_ctx, dino, xname, &ino);
-		voluta_ut_removexattr_all(ut_ctx, ino, kvl);
+		ut_lookup_ino(ut_env, dino, xname, &ino);
+		ut_removexattr_all(ut_env, ino, kvl);
 	}
 	kvl_random_shuffle(kvl);
 	for (size_t i = 0; i < kvl->count; ++i) {
 		xname = kvl->list[i]->name;
-		voluta_ut_lookup_ok(ut_ctx, dino, xname, &ino);
-		voluta_ut_remove_file(ut_ctx, dino, xname, ino);
+		ut_lookup_ino(ut_env, dino, xname, &ino);
+		ut_remove_file(ut_env, dino, xname, ino);
 	}
-	voluta_ut_rmdir_ok(ut_ctx, root_ino, dname);
+	ut_rmdir_ok(ut_env, root_ino, dname);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_xattr_replace(struct voluta_ut_ctx *ut_ctx)
+static void ut_xattr_replace(struct ut_env *ut_env)
 {
 	ino_t ino;
 	ino_t dino;
-	const ino_t root_ino = ROOT_INO;
-	const char *dname = T_NAME;
-	const char *fname = T_NAME;
-	struct voluta_ut_kvl *kvl = kvl_new(ut_ctx, 5);
+	const ino_t root_ino = UT_ROOT_INO;
+	const char *dname = UT_NAME;
+	const char *fname = UT_NAME;
+	struct ut_kvl *kvl = kvl_new(ut_env, 5);
 
-	kvl_populate(kvl, VOLUTA_NAME_MAX / 2, VOLUTA_XATTR_VALUE_MAX / 2);
+	kvl_populate(kvl, UT_NAME_MAX / 2, VOLUTA_XATTR_VALUE_MAX / 2);
 
-	voluta_ut_mkdir_ok(ut_ctx, root_ino, dname, &dino);
-	voluta_ut_create_file(ut_ctx, dino, fname, &ino);
+	ut_mkdir_oki(ut_env, root_ino, dname, &dino);
+	ut_create_file(ut_env, dino, fname, &ino);
 	for (size_t i = 0; i < kvl->count; ++i) {
-		voluta_ut_setxattr_create(ut_ctx, ino, kvl->list[i]);
+		ut_setxattr_create(ut_env, ino, kvl->list[i]);
 	}
 	for (size_t i = 0; i < kvl->count; ++i) {
 		kvl->list[i]->size = VOLUTA_XATTR_VALUE_MAX / 3;
-		voluta_ut_setxattr_replace(ut_ctx, ino, kvl->list[i]);
+		ut_setxattr_replace(ut_env, ino, kvl->list[i]);
 	}
 	for (size_t i = 0; i < kvl->count; ++i) {
 		kvl->list[i]->size = VOLUTA_XATTR_VALUE_MAX / 4;
-		voluta_ut_setxattr_rereplace(ut_ctx, ino, kvl->list[i]);
+		ut_setxattr_rereplace(ut_env, ino, kvl->list[i]);
 	}
 	for (size_t i = 0; i < kvl->count; ++i) {
-		voluta_ut_removexattr_exists(ut_ctx, ino, kvl->list[i]);
+		ut_removexattr_ok(ut_env, ino, kvl->list[i]);
 	}
-	voluta_ut_remove_file(ut_ctx, dino, fname, ino);
-	voluta_ut_rmdir_ok(ut_ctx, root_ino, dname);
+	ut_remove_file(ut_env, dino, fname, ino);
+	ut_rmdir_ok(ut_env, root_ino, dname);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_xattr_replace_multi(struct voluta_ut_ctx *ut_ctx)
+static void ut_xattr_replace_multi(struct ut_env *ut_env)
 {
 	ino_t ino;
 	ino_t dino;
 	size_t value_size;
-	const ino_t root_ino = ROOT_INO;
-	const char *dname = T_NAME;
-	const char *fname = T_NAME;
-	struct voluta_ut_kvl *kvl = kvl_new(ut_ctx, 3);
+	const ino_t root_ino = UT_ROOT_INO;
+	const char *dname = UT_NAME;
+	const char *fname = UT_NAME;
+	struct ut_kvl *kvl = kvl_new(ut_env, 3);
 
 	value_size = VOLUTA_XATTR_VALUE_MAX;
-	kvl_populate(kvl, VOLUTA_NAME_MAX / 2, value_size);
+	kvl_populate(kvl, UT_NAME_MAX / 2, value_size);
 
-	voluta_ut_mkdir_ok(ut_ctx, root_ino, dname, &dino);
-	voluta_ut_create_file(ut_ctx, dino, fname, &ino);
+	ut_mkdir_oki(ut_env, root_ino, dname, &dino);
+	ut_create_file(ut_env, dino, fname, &ino);
 	for (size_t i = 0; i < kvl->count; ++i) {
-		voluta_ut_setxattr_create(ut_ctx, ino, kvl->list[i]);
+		ut_setxattr_create(ut_env, ino, kvl->list[i]);
 	}
 	for (size_t i = 0; i < kvl->count; ++i) {
 		for (size_t j = value_size; j > 2; --j) {
 			kvl->list[i]->size = j - 1;
-			voluta_ut_setxattr_replace(ut_ctx, ino, kvl->list[i]);
+			ut_setxattr_replace(ut_env, ino, kvl->list[i]);
 			kvl->list[i]->size = j - 2;
-			voluta_ut_setxattr_rereplace(ut_ctx, ino,
-						     kvl->list[i]);
+			ut_setxattr_rereplace(ut_env, ino,
+					      kvl->list[i]);
 		}
 	}
 	for (size_t i = 0; i < kvl->count; ++i) {
-		voluta_ut_removexattr_exists(ut_ctx, ino, kvl->list[i]);
+		ut_removexattr_ok(ut_env, ino, kvl->list[i]);
 	}
-	voluta_ut_remove_file(ut_ctx, dino, fname, ino);
-	voluta_ut_rmdir_ok(ut_ctx, root_ino, dname);
+	ut_remove_file(ut_env, dino, fname, ino);
+	ut_rmdir_ok(ut_env, root_ino, dname);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static const struct voluta_ut_testdef ut_local_tests[] = {
+static const struct ut_testdef ut_local_tests[] = {
 	UT_DEFTEST(ut_xattr_simple),
 	UT_DEFTEST(ut_xattr_long_names),
 	UT_DEFTEST(ut_xattr_shorts),
@@ -442,5 +442,4 @@ static const struct voluta_ut_testdef ut_local_tests[] = {
 	UT_DEFTEST(ut_xattr_replace_multi),
 };
 
-const struct voluta_ut_tests voluta_ut_test_xattr =
-	UT_MKTESTS(ut_local_tests);
+const struct ut_tests ut_test_xattr = UT_MKTESTS(ut_local_tests);

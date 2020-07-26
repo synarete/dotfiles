@@ -15,211 +15,219 @@
  * GNU General Public License for more details.
  */
 #define _GNU_SOURCE 1
-#define VOLUTA_TEST 1
 #include "unitest.h"
+
+
+struct ut_ioparams {
+	loff_t offset;
+	size_t length;
+	size_t nskip;
+	size_t count;
+};
 
 #define MKPARAMS(o_, l_, s_, c_) \
 	{ .offset = (o_), .length = (l_), .nskip = (s_), .count = (c_) }
 
 
-static struct voluta_ut_iobuf **
-new_iobufs(struct voluta_ut_ctx *ut_ctx,
-	   const struct voluta_t_ioparams *params)
+static struct ut_dvec **
+new_dvecs(struct ut_env *ut_env, const struct ut_ioparams *params)
 {
 	loff_t off;
-	struct voluta_ut_iobuf **list;
+	struct ut_dvec **list;
 	const size_t step = params->length + params->nskip;
 
-	list = voluta_ut_zerobuf(ut_ctx, params->count * sizeof(*list));
+	list = ut_zerobuf(ut_env, params->count * sizeof(*list));
 	for (size_t i = 0; i < params->count; ++i) {
 		off = params->offset + (loff_t)(i * step);
-		list[i] = voluta_ut_new_iobuf(ut_ctx, off, params->length);
+		list[i] = ut_new_dvec(ut_env, off, params->length);
 	}
 	return list;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static unsigned long *random_indices(struct voluta_ut_ctx *ut_ctx, size_t cnt)
+static unsigned long *random_indices(struct ut_env *ut_env, size_t cnt)
 {
-	return (unsigned long *)voluta_ut_randseq(ut_ctx, cnt, 0);
+	return (unsigned long *)ut_randseq(ut_env, cnt, 0);
 }
 
-static void ut_file_random_io_(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-			       const struct voluta_t_ioparams *params)
+static void ut_file_random_io_(struct ut_env *ut_env, ino_t ino,
+			       const struct ut_ioparams *params)
 {
-	size_t *idx, i, cnt = params->count;
-	struct voluta_ut_iobuf **iobufs;
-	struct voluta_ut_iobuf *iobuf;
+	size_t *idx;
+	struct ut_dvec *dvec;
+	struct ut_dvec **dvecs;
+	const size_t cnt = params->count;
 
-	iobufs = new_iobufs(ut_ctx, params);
-	idx = random_indices(ut_ctx, cnt);
-	for (i = 0; i < cnt; ++i) {
-		iobuf = iobufs[idx[i]];
-		voluta_ut_write_iobuf(ut_ctx, ino, iobuf);
+	dvecs = new_dvecs(ut_env, params);
+	idx = random_indices(ut_env, cnt);
+	for (size_t i = 0; i < cnt; ++i) {
+		dvec = dvecs[idx[i]];
+		ut_write_dvec(ut_env, ino, dvec);
 	}
-	for (i = 0; i < cnt; ++i) {
-		iobuf = iobufs[idx[i]];
-		voluta_ut_read_iobuf(ut_ctx, ino, iobuf);
+	for (size_t i = 0; i < cnt; ++i) {
+		dvec = dvecs[idx[i]];
+		ut_read_dvec(ut_env, ino, dvec);
 	}
-	idx = random_indices(ut_ctx, cnt);
-	for (i = 0; i < cnt; ++i) {
-		iobuf = iobufs[idx[i]];
-		voluta_ut_read_iobuf(ut_ctx, ino, iobuf);
+	idx = random_indices(ut_env, cnt);
+	for (size_t i = 0; i < cnt; ++i) {
+		dvec = dvecs[idx[i]];
+		ut_read_dvec(ut_env, ino, dvec);
 	}
-	iobufs = new_iobufs(ut_ctx, params);
-	idx = random_indices(ut_ctx, cnt);
-	for (i = 0; i < cnt; ++i) {
-		iobuf = iobufs[idx[i]];
-		voluta_ut_write_iobuf(ut_ctx, ino, iobuf);
+	dvecs = new_dvecs(ut_env, params);
+	idx = random_indices(ut_env, cnt);
+	for (size_t i = 0; i < cnt; ++i) {
+		dvec = dvecs[idx[i]];
+		ut_write_dvec(ut_env, ino, dvec);
 	}
-	idx = random_indices(ut_ctx, cnt);
-	for (i = 0; i < cnt; ++i) {
-		iobuf = iobufs[idx[i]];
-		voluta_ut_read_iobuf(ut_ctx, ino, iobuf);
-	}
-}
-
-static void ut_file_random_io2_(struct voluta_ut_ctx *ut_ctx, ino_t ino,
-				const struct voluta_t_ioparams *params)
-{
-	size_t *idx, i, cnt = params->count;
-	struct voluta_ut_iobuf **iobufs;
-	struct voluta_ut_iobuf *iobuf;
-
-	iobufs = new_iobufs(ut_ctx, params);
-	idx = random_indices(ut_ctx, cnt);
-	for (i = 0; i < cnt; ++i) {
-		iobuf = iobufs[idx[i]];
-		voluta_ut_write_iobuf(ut_ctx, ino, iobuf);
-	}
-	voluta_ut_sync_drop(ut_ctx);
-	for (i = 0; i < cnt; ++i) {
-		iobuf = iobufs[idx[i]];
-		voluta_ut_read_iobuf(ut_ctx, ino, iobuf);
-	}
-	idx = random_indices(ut_ctx, cnt);
-	for (i = 0; i < cnt; ++i) {
-		iobuf = iobufs[idx[i]];
-		voluta_ut_read_iobuf(ut_ctx, ino, iobuf);
-	}
-	iobufs = new_iobufs(ut_ctx, params);
-	idx = random_indices(ut_ctx, cnt);
-	for (i = 0; i < cnt; ++i) {
-		iobuf = iobufs[idx[i]];
-		voluta_ut_write_iobuf(ut_ctx, ino, iobuf);
-	}
-	voluta_ut_sync_drop(ut_ctx);
-	idx = random_indices(ut_ctx, cnt);
-	for (i = 0; i < cnt; ++i) {
-		iobuf = iobufs[idx[i]];
-		voluta_ut_read_iobuf(ut_ctx, ino, iobuf);
+	idx = random_indices(ut_env, cnt);
+	for (size_t i = 0; i < cnt; ++i) {
+		dvec = dvecs[idx[i]];
+		ut_read_dvec(ut_env, ino, dvec);
 	}
 }
 
-static void ut_file_random_(struct voluta_ut_ctx *ut_ctx,
-			    const struct voluta_t_ioparams *params)
+static void ut_file_random_io2_(struct ut_env *ut_env, ino_t ino,
+				const struct ut_ioparams *params)
 {
-	ino_t ino, dino, root_ino = ROOT_INO;
-	const char *name = T_NAME;
+	size_t *idx;
+	struct ut_dvec *dvec;
+	struct ut_dvec **dvecs;
+	const size_t cnt = params->count;
 
-	voluta_ut_mkdir_ok(ut_ctx, root_ino, name, &dino);
-	voluta_ut_create_file(ut_ctx, dino, name, &ino);
-	ut_file_random_io_(ut_ctx, ino, params);
-	ut_file_random_io2_(ut_ctx, ino, params);
-	voluta_ut_remove_file(ut_ctx, dino, name, ino);
-	voluta_ut_rmdir_ok(ut_ctx, root_ino, name);
+	dvecs = new_dvecs(ut_env, params);
+	idx = random_indices(ut_env, cnt);
+	for (size_t i = 0; i < cnt; ++i) {
+		dvec = dvecs[idx[i]];
+		ut_write_dvec(ut_env, ino, dvec);
+	}
+	ut_sync_drop(ut_env);
+	for (size_t i = 0; i < cnt; ++i) {
+		dvec = dvecs[idx[i]];
+		ut_read_dvec(ut_env, ino, dvec);
+	}
+	idx = random_indices(ut_env, cnt);
+	for (size_t i = 0; i < cnt; ++i) {
+		dvec = dvecs[idx[i]];
+		ut_read_dvec(ut_env, ino, dvec);
+	}
+	dvecs = new_dvecs(ut_env, params);
+	idx = random_indices(ut_env, cnt);
+	for (size_t i = 0; i < cnt; ++i) {
+		dvec = dvecs[idx[i]];
+		ut_write_dvec(ut_env, ino, dvec);
+	}
+	ut_sync_drop(ut_env);
+	idx = random_indices(ut_env, cnt);
+	for (size_t i = 0; i < cnt; ++i) {
+		dvec = dvecs[idx[i]];
+		ut_read_dvec(ut_env, ino, dvec);
+	}
+}
+
+static void ut_file_random_(struct ut_env *ut_env,
+			    const struct ut_ioparams *params)
+{
+	ino_t ino;
+	ino_t dino;
+	const char *name = UT_NAME;
+
+	ut_mkdir_at_root(ut_env, name, &dino);
+	ut_create_file(ut_env, dino, name, &ino);
+	ut_file_random_io_(ut_env, ino, params);
+	ut_file_random_io2_(ut_env, ino, params);
+	ut_remove_file(ut_env, dino, name, ino);
+	ut_rmdir_at_root(ut_env, name);
 }
 
 static void
-ut_file_random_arr_(struct voluta_ut_ctx *ut_ctx,
-		    const struct voluta_t_ioparams *arr, size_t nelems)
+ut_file_random_arr_(struct ut_env *ut_env,
+		    const struct ut_ioparams *arr, size_t nelems)
 {
 	for (size_t i = 0; i < nelems; ++i) {
-		ut_file_random_(ut_ctx, &arr[i]);
-		voluta_ut_freeall(ut_ctx);
+		ut_file_random_(ut_env, &arr[i]);
+		ut_freeall(ut_env);
 	}
 }
 
 #define ut_file_random_arr(ctx_, arr_) \
-	ut_file_random_arr_(ctx_, arr_, ARRAY_SIZE(arr_))
+	ut_file_random_arr_(ctx_, arr_, UT_ARRAY_SIZE(arr_))
 
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_file_random_aligned(struct voluta_ut_ctx *ut_ctx)
+static void ut_file_random_aligned(struct ut_env *ut_env)
 {
-	const struct voluta_t_ioparams ut_aligned_params[] = {
-		MKPARAMS(0, BK_SIZE, 0, 4),
-		MKPARAMS(0, UMEGA, 0, 4),
-		MKPARAMS(BK_SIZE, BK_SIZE, BK_SIZE, 16),
-		MKPARAMS(BK_SIZE, UMEGA, BK_SIZE, 16),
-		MKPARAMS(MEGA, BK_SIZE, BK_SIZE, 16),
-		MKPARAMS(MEGA, BK_SIZE, UMEGA, 32),
-		MKPARAMS(MEGA, UMEGA, BK_SIZE, 16),
-		MKPARAMS(MEGA, UMEGA, UMEGA, 32),
-		MKPARAMS(MEGA - BK_SIZE, BK_SIZE, GIGA, 64),
-		MKPARAMS(MEGA - BK_SIZE, UMEGA / 2, GIGA, 64),
-		MKPARAMS(MEGA - BK_SIZE, UMEGA / 2, 0, 8),
-		MKPARAMS(GIGA, UMEGA, 0, 8),
-		MKPARAMS(GIGA - BK_SIZE, UMEGA / 2, 0, 16),
-		MKPARAMS(TERA - BK_SIZE, BK_SIZE, BK_SIZE, 64),
-		MKPARAMS(TERA - BK_SIZE, UMEGA / 2, 0, 64),
-		MKPARAMS(FILESIZE_MAX - MEGA, BK_SIZE, 0, 16),
-		MKPARAMS(FILESIZE_MAX - GIGA, UMEGA, UMEGA, 8),
-		MKPARAMS(FILESIZE_MAX - (16 * MEGA), UMEGA / 2, 0, 16),
+	const struct ut_ioparams ut_aligned_params[] = {
+		MKPARAMS(0, UT_BK_SIZE, 0, 4),
+		MKPARAMS(0, UT_UMEGA, 0, 4),
+		MKPARAMS(UT_BK_SIZE, UT_BK_SIZE, UT_BK_SIZE, 16),
+		MKPARAMS(UT_BK_SIZE, UT_UMEGA, UT_BK_SIZE, 16),
+		MKPARAMS(UT_MEGA, UT_BK_SIZE, UT_BK_SIZE, 16),
+		MKPARAMS(UT_MEGA, UT_BK_SIZE, UT_UMEGA, 32),
+		MKPARAMS(UT_MEGA, UT_UMEGA, UT_BK_SIZE, 16),
+		MKPARAMS(UT_MEGA, UT_UMEGA, UT_UMEGA, 32),
+		MKPARAMS(UT_MEGA - UT_BK_SIZE, UT_BK_SIZE, UT_GIGA, 64),
+		MKPARAMS(UT_MEGA - UT_BK_SIZE, UT_UMEGA / 2, UT_GIGA, 64),
+		MKPARAMS(UT_MEGA - UT_BK_SIZE, UT_UMEGA / 2, 0, 8),
+		MKPARAMS(UT_GIGA, UT_UMEGA, 0, 8),
+		MKPARAMS(UT_GIGA - UT_BK_SIZE, UT_UMEGA / 2, 0, 16),
+		MKPARAMS(UT_TERA - UT_BK_SIZE, UT_BK_SIZE, UT_BK_SIZE, 64),
+		MKPARAMS(UT_TERA - UT_BK_SIZE, UT_UMEGA / 2, 0, 64),
+		MKPARAMS(UT_FILESIZE_MAX - UT_MEGA, UT_BK_SIZE, 0, 16),
+		MKPARAMS(UT_FILESIZE_MAX - UT_GIGA, UT_UMEGA, UT_UMEGA, 8),
+		MKPARAMS(UT_FILESIZE_MAX - (16 * UT_MEGA), UT_UMEGA / 2, 0, 16)
 	};
 
-	ut_file_random_arr(ut_ctx, ut_aligned_params);
+	ut_file_random_arr(ut_env, ut_aligned_params);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_file_random_unaligned(struct voluta_ut_ctx *ut_ctx)
+static void ut_file_random_unaligned(struct ut_env *ut_env)
 {
-	const struct voluta_t_ioparams ut_unaligned_params[] = {
-		MKPARAMS(79, BK_SIZE + 7, 1, 7),
-		MKPARAMS(79, UMEGA / 7, 1, 7),
-		MKPARAMS(7907, BK_SIZE + 17, 0, 17),
-		MKPARAMS(7907, UMEGA / 17, 0, 17),
-		MKPARAMS(MEGA / 77773, BK_SIZE + 77773, 1, 773),
-		MKPARAMS(MEGA / 77773, UMEGA / 7, 1, 73),
-		MKPARAMS(GIGA / 19777, BK_SIZE + 19777, 173, 37),
-		MKPARAMS(GIGA / 19, UMEGA / 601, 601, 601),
-		MKPARAMS(TERA / 77003, BK_SIZE + 99971, 0, 661),
-		MKPARAMS(TERA / 77003, UMEGA / 101, 0, 101),
-		MKPARAMS(FILESIZE_MAX / 100003, BK_SIZE + 100003, 0, 13),
-		MKPARAMS(FILESIZE_MAX / 100003, UMEGA / 307, 307, 307),
-		MKPARAMS(FILESIZE_MAX / 3, UMEGA / 11, 11111, 11),
+	const struct ut_ioparams ut_unaligned_params[] = {
+		MKPARAMS(79, UT_BK_SIZE + 7, 1, 7),
+		MKPARAMS(79, UT_UMEGA / 7, 1, 7),
+		MKPARAMS(7907, UT_BK_SIZE + 17, 0, 17),
+		MKPARAMS(7907, UT_UMEGA / 17, 0, 17),
+		MKPARAMS(UT_MEGA / 77773, UT_BK_SIZE + 77773, 1, 773),
+		MKPARAMS(UT_MEGA / 77773, UT_UMEGA / 7, 1, 73),
+		MKPARAMS(UT_GIGA / 19777, UT_BK_SIZE + 19777, 173, 37),
+		MKPARAMS(UT_GIGA / 19, UT_UMEGA / 601, 601, 601),
+		MKPARAMS(UT_TERA / 77003, UT_BK_SIZE + 99971, 0, 661),
+		MKPARAMS(UT_TERA / 77003, UT_UMEGA / 101, 0, 101),
+		MKPARAMS(UT_FILESIZE_MAX / 100003, UT_BK_SIZE + 100003, 0, 13),
+		MKPARAMS(UT_FILESIZE_MAX / 100003, UT_UMEGA / 307, 307, 307),
+		MKPARAMS(UT_FILESIZE_MAX / 3, UT_UMEGA / 11, 11111, 11),
 	};
 
-	ut_file_random_arr(ut_ctx, ut_unaligned_params);
+	ut_file_random_arr(ut_env, ut_unaligned_params);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_file_random_random(struct voluta_ut_ctx *ut_ctx)
+static void ut_file_random_random(struct ut_env *ut_env)
 {
 	uint64_t rand;
-	struct voluta_t_ioparams params;
+	struct ut_ioparams params;
 
 	for (size_t i = 0; i < 10; i++) {
-		voluta_ut_randfill(ut_ctx, &rand, sizeof(rand));
-		params.offset = (loff_t)(rand % FILESIZE_MAX) / 13;
-		params.length = (rand % UMEGA) + BK_SIZE;
-		params.nskip = (rand % UGIGA) / 11;
+		ut_randfill(ut_env, &rand, sizeof(rand));
+		params.offset = (loff_t)(rand % UT_FILESIZE_MAX) / 13;
+		params.length = (rand % UT_UMEGA) + UT_BK_SIZE;
+		params.nskip = (rand % UT_UGIGA) / 11;
 		params.count = (rand % 16) + 1;
-		ut_file_random_(ut_ctx, &params);
+		ut_file_random_(ut_env, &params);
 	}
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static const struct voluta_ut_testdef ut_local_tests[] = {
+static const struct ut_testdef ut_local_tests[] = {
 	UT_DEFTEST(ut_file_random_aligned),
 	UT_DEFTEST(ut_file_random_unaligned),
 	UT_DEFTEST(ut_file_random_random),
 };
 
-const struct voluta_ut_tests voluta_ut_test_file_random =
-	UT_MKTESTS(ut_local_tests);
+const struct ut_tests ut_test_file_random = UT_MKTESTS(ut_local_tests);

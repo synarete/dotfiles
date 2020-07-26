@@ -66,7 +66,7 @@
 #define FUSEI_ENTRY_TIMEOUT   (1000000.0f)
 
 #define FUSEI_DATA_BUFSIZE      VOLUTA_IO_SIZE_MAX
-#define FUSEI_READDIR_BUFSIZE   (64 * VOLUTA_UKILO)
+#define FUSEI_READDIR_BUFSIZE   (8 * VOLUTA_UKILO)
 #define FUSEI_XATTR_BUFSIZE     (64 * VOLUTA_UKILO)
 
 /* Local types */
@@ -108,15 +108,16 @@ struct voluta_fusei_diter {
 	char *cur;
 	size_t ndents;
 	loff_t dent_off;
-	size_t dent_namelen;
-	struct stat dent_stat;
-	char dent_name[VOLUTA_NAME_MAX + 1];
+	int plus;
+	unsigned int namelen;
+	struct stat attr;
+	char name[VOLUTA_NAME_MAX + 1];
 	char buf[FUSEI_READDIR_BUFSIZE];
 };
 
 
 struct voluta_fusei_xiter {
-	struct voluta_listxattr_ctx listxattr_ctx;
+	struct voluta_listxattr_ctx lxa_ctx;
 	struct voluta_fusei *fusei;
 	size_t count;
 	const char *beg;
@@ -139,7 +140,6 @@ union voluta_fusei_u {
 };
 
 
-/* Local convenience macros */
 #define req_to_fusei(req_, pfusei_)                      \
 	do { if (!req_to_fusei_or_inval(req, pfusei_)) return; } while (0)
 
@@ -158,7 +158,6 @@ union voluta_fusei_u {
 #define require_ok(fusei, err) \
 	do { if (reply_if_not(fusei, ((err) == 0), (err))) return; } while (0)
 
-/* Local functions forward declarations */
 static void reply_inval(fuse_req_t req);
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
@@ -194,10 +193,13 @@ static struct voluta_fusei *resolve_fusei(struct fuse_req *req)
 	if (!curr_req_ctx) {
 		return NULL;
 	}
-	fusei->ucred->uid = curr_req_ctx->uid;
-	fusei->ucred->gid = curr_req_ctx->gid;
-	fusei->ucred->pid = curr_req_ctx->pid;
-	fusei->ucred->umask = curr_req_ctx->umask;
+	fusei->oper.ucred.uid = curr_req_ctx->uid;
+	fusei->oper.ucred.gid = curr_req_ctx->gid;
+	fusei->oper.ucred.pid = curr_req_ctx->pid;
+	fusei->oper.ucred.umask = curr_req_ctx->umask;
+	fusei->oper.unique = (unsigned long)req;
+	voluta_ts_gettime(&fusei->oper.xtime, true);
+
 	fusei->req = req;
 	fusei->err = 0;
 	return fusei;
@@ -211,10 +213,10 @@ static void update_fusei(struct voluta_fusei *fusei,
 	 * by page-cache, which implies non-valid credentials.
 	 */
 	if (fi && fi->writepage) {
-		fusei->ucred->uid = 0;
-		fusei->ucred->gid = 0;
-		fusei->ucred->pid = 1;
-		fusei->ucred->umask = 0002;
+		fusei->oper.ucred.uid = 0;
+		fusei->oper.ucred.gid = 0;
+		fusei->oper.ucred.pid = 1;
+		fusei->oper.ucred.umask = 0002;
 	}
 }
 
@@ -237,16 +239,19 @@ static bool req_to_fusei_or_inval(struct fuse_req *req,
 	return (*fusei != NULL);
 }
 
-static struct voluta_env *env_of(const struct voluta_fusei *fusei)
+static struct voluta_sb_info *sbi_of_(const struct voluta_fusei *fusei)
 {
-	return fusei->env;
+	return fusei->fs_env->sbi;
+}
+
+static struct voluta_oper *op_of(struct voluta_fusei *fusei)
+{
+	return &fusei->oper;
 }
 
 static struct voluta_qalloc *qalloc_of(const struct voluta_fusei *fusei)
 {
-	struct voluta_env *env = env_of(fusei);
-
-	return &env->qalloc;
+	return &fusei->fs_env->qalloc;
 }
 
 static bool is_conn_cap(const struct voluta_fusei *fusei, unsigned int mask)
@@ -312,69 +317,81 @@ static size_t diter_length(const struct voluta_fusei_diter *diter)
 	return (size_t)(diter->cur - diter->beg);
 }
 
-static void update_dirent(struct voluta_fusei_diter *diter,
-			  const struct voluta_readdir_entry_info *rdei)
+static void update_dirent(struct voluta_fusei_diter *di,
+			  const struct voluta_readdir_info *rdi)
 {
-	struct stat *dent_stat = &diter->dent_stat;
-	const size_t namelen_max = sizeof(diter->dent_name) - 1;
+	const size_t nlen_max = sizeof(di->name) - 1;
 
-	voluta_memzero(dent_stat, sizeof(*dent_stat));
-	diter->dent_namelen = min_size(rdei->name_len, namelen_max);
-	memcpy(diter->dent_name, rdei->name, diter->dent_namelen);
-	diter->dent_name[diter->dent_namelen] = '\0';
-	diter->dent_off = rdei->off;
-	dent_stat->st_ino = rdei->ino;
-	dent_stat->st_mode = DTTOIF(rdei->dt);
+	di->namelen = (unsigned int)min_size(rdi->namelen, nlen_max);
+	memcpy(di->name, rdi->name, di->namelen);
+	di->name[di->namelen] = '\0';
+	di->dent_off = rdi->off;
+
+	if (di->plus) {
+		memcpy(&di->attr, &rdi->attr, sizeof(di->attr));
+	} else {
+		memset(&di->attr, 0, sizeof(di->attr));
+		di->attr.st_ino = rdi->ino;
+		di->attr.st_mode = DTTOIF(rdi->dt);
+	}
 }
 
-static int emit_dirent(struct voluta_fusei_diter *diter, loff_t doff_next)
+static int emit_dirent(struct voluta_fusei_diter *di, loff_t doff_next)
 {
 	char *buf;
 	size_t bsz;
 	size_t cnt;
 	fuse_req_t req;
+	struct fuse_entry_param ep = { .ino = 0 };
 
-	buf = diter->cur;
-	if (buf >= diter->end) {
+	buf = di->cur;
+	if (buf >= di->end) {
 		return -EINVAL;
 	}
 
-	req = diter->fusei->req;
-	bsz = (size_t)(diter->end - buf);
-	cnt = fuse_add_direntry(req, buf, bsz, diter->dent_name,
-				&diter->dent_stat, doff_next);
+	req = di->fusei->req;
+	bsz = (size_t)(di->end - buf);
+
+	if (di->plus) {
+		fill_entry_param(&ep, &di->attr);
+		cnt = fuse_add_direntry_plus(req, buf, bsz,
+					     di->name, &ep, doff_next);
+	} else {
+		cnt = fuse_add_direntry(req, buf, bsz, di->name,
+					&di->attr, doff_next);
+	}
 	if (!cnt || (cnt > bsz)) {
 		return -EINVAL;
 	}
-	diter->ndents++;
-	diter->cur += cnt;
+	di->ndents++;
+	di->cur += cnt;
 	return 0;
 }
 
 static bool has_dirent(const struct voluta_fusei_diter *diter)
 {
-	return (diter->dent_stat.st_ino > 0) &&
-	       (diter->dent_namelen > 0);
+	return (diter->attr.st_ino > 0) &&
+	       (diter->namelen > 0);
 }
 
 static int filldir(struct voluta_readdir_ctx *rd_ctx,
-		   const struct voluta_readdir_entry_info *rdei)
+		   const struct voluta_readdir_info *rdi)
 {
 	int err = 0;
-	struct voluta_fusei_diter *diter_ctx;
+	struct voluta_fusei_diter *di;
 
-	diter_ctx = diter_of(rd_ctx);
-	if (has_dirent(diter_ctx)) {
-		err = emit_dirent(diter_ctx, rdei->off);
+	di = diter_of(rd_ctx);
+	if (has_dirent(di)) {
+		err = emit_dirent(di, rdi->off);
 	}
 	if (!err) {
-		update_dirent(diter_ctx, rdei);
+		update_dirent(di, rdi);
 	}
 	return err;
 }
 
 static struct voluta_fusei_diter *
-diter_prep(struct voluta_fusei *fusei, size_t bsz_in, loff_t pos)
+diter_prep(struct voluta_fusei *fusei, size_t bsz_in, loff_t pos, int plus)
 {
 	size_t bsz;
 	struct voluta_fusei_diter *diter = &fusei->u->di;
@@ -382,15 +399,16 @@ diter_prep(struct voluta_fusei *fusei, size_t bsz_in, loff_t pos)
 	bsz = min_size(bsz_in, sizeof(diter->buf));
 	diter->ndents = 0;
 	diter->dent_off = 0;
-	diter->dent_namelen = 0;
+	diter->namelen = 0;
 	diter->beg = diter->buf;
 	diter->end = diter->buf + bsz;
 	diter->cur = diter->buf;
 	diter->rd_ctx.actor = filldir;
 	diter->rd_ctx.pos = pos;
 	diter->fusei = fusei;
-	voluta_memzero(diter->dent_name, sizeof(diter->dent_name));
-	voluta_memzero(&diter->dent_stat, sizeof(diter->dent_stat));
+	diter->plus = plus;
+	voluta_memzero(diter->name, sizeof(diter->name));
+	voluta_memzero(&diter->attr, sizeof(diter->attr));
 	return diter;
 }
 
@@ -398,7 +416,7 @@ static void diter_done(struct voluta_fusei_diter *diter)
 {
 	diter->ndents = 0;
 	diter->dent_off = 0;
-	diter->dent_namelen = 0;
+	diter->namelen = 0;
 	diter->beg = NULL;
 	diter->end = NULL;
 	diter->cur = NULL;
@@ -410,7 +428,7 @@ static void diter_done(struct voluta_fusei_diter *diter)
 
 static struct voluta_fusei_xiter *xiter_of(struct voluta_listxattr_ctx *p)
 {
-	return container_of(p, struct voluta_fusei_xiter, listxattr_ctx);
+	return container_of(p, struct voluta_fusei_xiter, lxa_ctx);
 }
 
 static size_t xiter_avail(const struct voluta_fusei_xiter *xiter)
@@ -443,7 +461,7 @@ xiter_prep(struct voluta_fusei *fusei, size_t size)
 {
 	struct voluta_fusei_xiter *xiter = &fusei->u->xi;
 
-	xiter->listxattr_ctx.actor = fillxent;
+	xiter->lxa_ctx.actor = fillxent;
 	xiter->fusei = fusei;
 	xiter->count = 0;
 	if (size) {
@@ -462,7 +480,7 @@ static void xiter_done(struct voluta_fusei *fusei)
 {
 	struct voluta_fusei_xiter *xiter = &fusei->u->xi;
 
-	xiter->listxattr_ctx.actor = NULL;
+	xiter->lxa_ctx.actor = NULL;
 	xiter->fusei = NULL;
 	xiter->count = 0;
 	xiter->beg = NULL;
@@ -589,6 +607,7 @@ static void reply_open(struct voluta_fusei *fusei)
 
 	voluta_memzero(&fi, sizeof(fi));
 	fi.keep_cache = 1;
+	fi.cache_readdir = 1;
 
 	fusei->err = fuse_reply_open(fusei->req, &fi);
 	fusei->req = NULL;
@@ -775,6 +794,21 @@ static void reply_ioctl_retry_get(struct voluta_fusei *fusei,
 	fusei->req = NULL;
 }
 
+static void reply_lseek(struct voluta_fusei *fusei, loff_t off)
+{
+	fusei->err = fuse_reply_lseek(fusei->req, off);
+	fusei->req = NULL;
+}
+
+static void reply_lseek_or_err(struct voluta_fusei *fusei, loff_t off, int err)
+{
+	if (!err) {
+		reply_lseek(fusei, off);
+	} else {
+		reply_err(fusei, err);
+	}
+}
+
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
 static void set_want(struct fuse_conn_info *conn, unsigned int mask)
@@ -800,11 +834,17 @@ static unsigned int rdwr_max_size(const struct voluta_fusei *fusei)
 	 * Crap, crap, crap! need more investigating. Or better, re-write this
 	 * pile of crap.
 	 */
+	int err;
+	long pipe_size_max = 0;
 	size_t pipe_max_size, data_max_size, max_size;
 
-
 	/* Sould use value from: /proc/sys/fs/pipe-max-size */
-	pipe_max_size = VOLUTA_UMEGA;
+	err = voluta_proc_pipe_max_size(&pipe_size_max);
+	if (err) {
+		pipe_max_size = VOLUTA_UMEGA;
+	} else {
+		pipe_max_size = min(VOLUTA_UMEGA, (size_t)pipe_size_max);
+	}
 	data_max_size = data_buf_size(fusei);
 	max_size = min(pipe_max_size, data_max_size);
 
@@ -827,10 +867,11 @@ static void do_init(void *userdata, struct fuse_conn_info *coni)
 	set_want(coni, FUSE_CAP_SPLICE_READ);
 	set_want(coni, FUSE_CAP_HANDLE_KILLPRIV);
 	set_want(coni, FUSE_CAP_IOCTL_DIR);
+	set_want(coni, FUSE_CAP_READDIRPLUS);
 	/* set_want(conn, FUSE_CAP_DONT_MASK); */
 	/*
-	 * XXX: When enabling FUSE_CAP_WRITEBACK_CACHE 'git tests' pass ok,
-	 * but fstests fail with ctime issues. Needs further investigation.
+	 * XXX: When enabling FUSE_CAP_WRITEBACK_CACHE fstests fails with
+	 * metadata (st_ctime,st_blocks) issues. Needs further investigation.
 	 *
 	 * XXX: Also, bugs in 'test_truncate_zero'
 	 */
@@ -867,10 +908,28 @@ static void do_forget(fuse_req_t req, ino_t ino, uint64_t nlookup)
 	struct voluta_fusei *fusei;
 
 	req_to_fusei(req, &fusei);
-	err = voluta_fs_forget(env_of(fusei), ino);
+	err = voluta_fs_forget(sbi_of_(fusei), op_of(fusei), ino, nlookup);
 	reply_none(fusei);
-	voluta_unused(err);
-	voluta_unused(nlookup);
+	unused(err);
+	unused(nlookup);
+}
+
+static void do_forget_multi(fuse_req_t req, size_t count,
+			    struct fuse_forget_data *forgets)
+{
+	int err;
+	ino_t ino;
+	size_t nlo;
+	struct voluta_fusei *fusei;
+
+	req_to_fusei(req, &fusei);
+	for (size_t i = 0; i < count; ++i) {
+		ino = forgets[i].ino;
+		nlo = forgets[i].nlookup;
+		err = voluta_fs_forget(sbi_of_(fusei), op_of(fusei), ino, nlo);
+		unused(err);
+	}
+	reply_none(fusei);
 }
 
 static void do_statfs(fuse_req_t req, ino_t ino)
@@ -880,7 +939,7 @@ static void do_statfs(fuse_req_t req, ino_t ino)
 	struct voluta_fusei *fusei;
 
 	req_to_fusei(req, &fusei);
-	err = voluta_fs_statfs(env_of(fusei), ino, &stvfs);
+	err = voluta_fs_statfs(sbi_of_(fusei), op_of(fusei), ino, &stvfs);
 	reply_statfs_or_err(fusei, &stvfs, err);
 }
 
@@ -893,7 +952,8 @@ static void do_lookup(fuse_req_t req, fuse_ino_t parent, const char *name)
 	req_to_fusei(req, &fusei);
 	require_ino(fusei, parent);
 
-	err = voluta_fs_lookup(env_of(fusei), parent, name, &st);
+	err = voluta_fs_lookup(sbi_of_(fusei), op_of(fusei),
+			       parent, name, &st);
 	reply_entry_or_err(fusei, &st, err);
 }
 
@@ -908,7 +968,8 @@ static void do_mkdir(fuse_req_t req, fuse_ino_t parent,
 	req_to_fusei(req, &fusei);
 	require_ino(fusei, parent);
 
-	err = voluta_fs_mkdir(env_of(fusei), parent, name, dmode, &st);
+	err = voluta_fs_mkdir(sbi_of_(fusei), op_of(fusei),
+			      parent, name, dmode, &st);
 	reply_entry_or_err(fusei, &st, err);
 }
 
@@ -920,7 +981,7 @@ static void do_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name)
 	req_to_fusei(req, &fusei);
 	require_ino(fusei, parent);
 
-	err = voluta_fs_rmdir(env_of(fusei), parent, name);
+	err = voluta_fs_rmdir(sbi_of_(fusei), op_of(fusei), parent, name);
 	reply_status(fusei, err);
 }
 
@@ -932,7 +993,7 @@ static void do_access(fuse_req_t req, fuse_ino_t ino, int mask)
 	req_to_fusei(req, &fusei);
 	require_ino(fusei, ino);
 
-	err = voluta_fs_access(env_of(fusei), ino, mask);
+	err = voluta_fs_access(sbi_of_(fusei), op_of(fusei), ino, mask);
 	reply_status(fusei, err);
 }
 
@@ -947,7 +1008,7 @@ static void do_getattr(fuse_req_t req, fuse_ino_t ino,
 	require_ino(fusei, ino);
 	require_fi(fusei, fi);
 
-	err = voluta_fs_getattr(env_of(fusei), ino, &st);
+	err = voluta_fs_getattr(sbi_of_(fusei), op_of(fusei), ino, &st);
 	reply_attr_or_err(fusei, &st, err);
 }
 
@@ -997,7 +1058,6 @@ static void do_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 	gid_t gid;
 	struct stat st, times;
 	struct voluta_fusei *fusei;
-	struct voluta_env *env;
 
 	req_to_fusei(req, &fusei);
 	require_ino(fusei, ino);
@@ -1005,29 +1065,33 @@ static void do_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 
 	utimens_of(attr, to_set, &times);
 
-	env = env_of(fusei);
 	err = uid_gid_of(attr, to_set, &uid, &gid);
 	require_ok(fusei, err);
 
 	if (to_set & FUSE_SET_ATTR_AMTIME_NOW) {
-		err = voluta_fs_utimens(env, ino, &times, &st);
+		err = voluta_fs_utimens(sbi_of_(fusei), op_of(fusei), ino,
+					&times, &st);
 		require_ok(fusei, err);
 	}
 	if (to_set & FUSE_SET_ATTR_MODE) {
-		err = voluta_fs_chmod(env, ino, attr->st_mode, &times, &st);
+		err = voluta_fs_chmod(sbi_of_(fusei), op_of(fusei), ino,
+				      attr->st_mode, &times, &st);
 		require_ok(fusei, err);
 	}
 	if (to_set & (FUSE_SET_ATTR_UID | FUSE_SET_ATTR_GID)) {
-		err = voluta_fs_chown(env, ino, uid, gid, &times, &st);
+		err = voluta_fs_chown(sbi_of_(fusei), op_of(fusei), ino,
+				      uid, gid, &times, &st);
 		require_ok(fusei, err);
 	}
 	if (to_set & FUSE_SET_ATTR_SIZE) {
-		err = voluta_fs_truncate(env, ino, attr->st_size, &st);
+		err = voluta_fs_truncate(sbi_of_(fusei), op_of(fusei), ino,
+					 attr->st_size, &st);
 		require_ok(fusei, err);
 	}
 	if ((to_set & FUSE_SET_ATTR_AMCTIME) &&
 	    !(to_set & FUSE_SET_ATTR_NONTIME)) {
-		err = voluta_fs_utimens(env, ino, &times, &st);
+		err = voluta_fs_utimens(sbi_of_(fusei), op_of(fusei),
+					ino, &times, &st);
 		require_ok(fusei, err);
 	}
 	reply_attr_or_err(fusei, &st, err);
@@ -1043,7 +1107,8 @@ static void do_symlink(fuse_req_t req, const char *target,
 	req_to_fusei(req, &fusei);
 	require_ino(fusei, parent);
 
-	err = voluta_fs_symlink(env_of(fusei), parent, name, target, &st);
+	err = voluta_fs_symlink(sbi_of_(fusei), op_of(fusei),
+				parent, name, target, &st);
 	reply_entry_or_err(fusei, &st, err);
 }
 
@@ -1059,7 +1124,7 @@ static void do_readlink(fuse_req_t req, fuse_ino_t ino)
 
 	buf = fusei->u->pb.path;
 	len = sizeof(fusei->u->pb.path);
-	err = voluta_fs_readlink(env_of(fusei), ino, buf, len);
+	err = voluta_fs_readlink(sbi_of_(fusei), op_of(fusei), ino, buf, len);
 	reply_readlink_or_err(fusei, buf, err);
 }
 
@@ -1073,10 +1138,10 @@ static void do_mknod(fuse_req_t req, fuse_ino_t parent,
 	req_to_fusei(req, &fusei);
 	require_ino(fusei, parent);
 
-	err = voluta_fs_mknod(env_of(fusei), parent, name, mode, rdev, &st);
+	err = voluta_fs_mknod(sbi_of_(fusei), op_of(fusei),
+			      parent, name, mode, rdev, &st);
 	reply_entry_or_err(fusei, &st, err);
 }
-
 
 static void do_unlink(fuse_req_t req, fuse_ino_t parent, const char *name)
 {
@@ -1086,7 +1151,7 @@ static void do_unlink(fuse_req_t req, fuse_ino_t parent, const char *name)
 	req_to_fusei(req, &fusei);
 	require_ino(fusei, parent);
 
-	err = voluta_fs_unlink(env_of(fusei), parent, name);
+	err = voluta_fs_unlink(sbi_of_(fusei), op_of(fusei), parent, name);
 	reply_status(fusei, err);
 }
 
@@ -1101,7 +1166,8 @@ static void do_link(fuse_req_t req, fuse_ino_t ino,
 	require_ino(fusei, ino);
 	require_ino(fusei, newparent);
 
-	err = voluta_fs_link(env_of(fusei), ino, newparent, newname, &st);
+	err = voluta_fs_link(sbi_of_(fusei), op_of(fusei),
+			     ino, newparent, newname, &st);
 	reply_entry_or_err(fusei, &st, err);
 }
 
@@ -1116,7 +1182,7 @@ static void do_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
 	require_ino(fusei, parent);
 	require_ino(fusei, newparent);
 
-	err = voluta_fs_rename(env_of(fusei), parent,
+	err = voluta_fs_rename(sbi_of_(fusei), op_of(fusei), parent,
 			       name, newparent, newname, (int)flags);
 	reply_status(fusei, err);
 }
@@ -1131,7 +1197,7 @@ static void do_opendir(fuse_req_t req, fuse_ino_t dir_ino,
 	require_ino(fusei, dir_ino);
 	require_fi(fusei, fi);
 
-	err = voluta_fs_opendir(env_of(fusei), dir_ino);
+	err = voluta_fs_opendir(sbi_of_(fusei), op_of(fusei), dir_ino);
 	reply_opendir_or_err(fusei, err);
 }
 
@@ -1145,7 +1211,8 @@ static void do_releasedir(fuse_req_t req, fuse_ino_t ino,
 	require_ino(fusei, ino);
 	require_fi(fusei, fi);
 
-	err = voluta_fs_releasedir(env_of(fusei), ino);
+	err = voluta_fs_releasedir(sbi_of_(fusei), op_of(fusei),
+				   ino, fi->flags);
 	reply_status(fusei, err);
 }
 
@@ -1159,7 +1226,8 @@ static void do_fsyncdir(fuse_req_t req, fuse_ino_t ino, int datasync,
 	require_ino(fusei, ino);
 	require_fi(fusei, fi);
 
-	err = voluta_fs_fsyncdir(env_of(fusei), ino, datasync != 0);
+	err = voluta_fs_fsyncdir(sbi_of_(fusei), op_of(fusei),
+				 ino, datasync != 0);
 	reply_status(fusei, err);
 }
 
@@ -1168,16 +1236,35 @@ static void do_readdir(fuse_req_t req, fuse_ino_t dir_ino, size_t size,
 {
 	int err;
 	struct voluta_fusei *fusei;
-	struct voluta_fusei_diter *diter;
+	struct voluta_fusei_diter *di;
 
 	req_to_fusei(req, &fusei);
 	require_ino(fusei, dir_ino);
 	require_fi(fusei, fi);
 
-	diter = diter_prep(fusei, size, off);
-	err = voluta_fs_readdir(env_of(fusei), dir_ino, &diter->rd_ctx);
-	reply_readdir_or_err(fusei, diter, err);
-	diter_done(diter);
+	di = diter_prep(fusei, size, off, 0);
+	err = voluta_fs_readdir(sbi_of_(fusei), op_of(fusei),
+				dir_ino, &di->rd_ctx);
+	reply_readdir_or_err(fusei, di, err);
+	diter_done(di);
+}
+
+static void do_readdirplus(fuse_req_t req, fuse_ino_t dir_ino, size_t size,
+			   off_t off, struct fuse_file_info *fi)
+{
+	int err;
+	struct voluta_fusei *fusei;
+	struct voluta_fusei_diter *di;
+
+	req_to_fusei(req, &fusei);
+	require_ino(fusei, dir_ino);
+	require_fi(fusei, fi);
+
+	di = diter_prep(fusei, size, off, 1);
+	err = voluta_fs_readdirplus(sbi_of_(fusei), op_of(fusei),
+				    dir_ino, &di->rd_ctx);
+	reply_readdir_or_err(fusei, di, err);
+	diter_done(di);
 }
 
 static void do_create(fuse_req_t req, fuse_ino_t parent, const char *name,
@@ -1191,7 +1278,8 @@ static void do_create(fuse_req_t req, fuse_ino_t parent, const char *name,
 	require_ino(fusei, parent);
 	require_fi(fusei, fi);
 
-	err = voluta_fs_create(env_of(fusei), parent, name, mode, &st);
+	err = voluta_fs_create(sbi_of_(fusei), op_of(fusei),
+			       parent, name, fi->flags, mode, &st);
 	reply_create_or_err(fusei, &st, err);
 }
 
@@ -1203,7 +1291,7 @@ static void do_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi)
 	req_to_fusei(req, &fusei);
 	require_ino(fusei, ino);
 
-	err = voluta_fs_open(env_of(fusei), ino, fi->flags);
+	err = voluta_fs_open(sbi_of_(fusei), op_of(fusei), ino, fi->flags);
 	reply_open_or_err(fusei, err);
 }
 
@@ -1217,7 +1305,8 @@ static void do_release(fuse_req_t req, fuse_ino_t ino,
 	require_ino(fusei, ino);
 	require_fi(fusei, fi);
 
-	err = voluta_fs_release(env_of(fusei), ino);
+	err = voluta_fs_release(sbi_of_(fusei), op_of(fusei),
+				ino, fi->flags, fi->flush);
 	reply_status(fusei, err);
 }
 
@@ -1231,7 +1320,7 @@ static void do_flush(fuse_req_t req, fuse_ino_t ino,
 	require_ino(fusei, ino);
 	require_fi(fusei, fi);
 
-	err = voluta_fs_flush(env_of(fusei), ino);
+	err = voluta_fs_flush(sbi_of_(fusei), op_of(fusei), ino);
 	reply_status(fusei, err);
 }
 
@@ -1245,7 +1334,8 @@ static void do_fsync(fuse_req_t req, fuse_ino_t ino, int datasync,
 	require_ino(fusei, ino);
 	require_fi(fusei, fi);
 
-	err = voluta_fs_fsync(env_of(fusei), ino, datasync != 0);
+	err = voluta_fs_fsync(sbi_of_(fusei), op_of(fusei),
+			      ino, datasync != 0);
 	reply_status(fusei, err);
 }
 
@@ -1259,14 +1349,18 @@ static void do_fallocate(fuse_req_t req, fuse_ino_t ino, int mode, off_t off,
 	require_ino(fusei, ino);
 	require_fi(fusei, fi);
 
-	err = voluta_fs_fallocate(env_of(fusei), ino, mode, off, len);
+	err = voluta_fs_fallocate(sbi_of_(fusei), op_of(fusei),
+				  ino, mode, off, len);
 	reply_status(fusei, err);
 }
 
 static struct voluta_fusei_rw_iter *
 fusei_rw_iter_of(const struct voluta_rw_iter *rwi)
 {
-	return container_of(rwi, struct voluta_fusei_rw_iter, rwi);
+	const struct voluta_fusei_rw_iter *frwi =
+		container_of2(rwi, struct voluta_fusei_rw_iter, rwi);
+
+	return unconst(frwi);
 }
 
 static int fusei_read_iter_actor(struct voluta_rw_iter *rd_iter,
@@ -1328,7 +1422,8 @@ static void do_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 	require_fi(fusei, fi);
 
 	frwi = setup_read_iter(fusei, size, off);
-	err = voluta_fs_read_iter(env_of(fusei), ino, &frwi->rwi);
+	err = voluta_fs_read_iter(sbi_of_(fusei), op_of(fusei),
+				  ino, &frwi->rwi);
 	reply_read_or_err(fusei, err);
 }
 
@@ -1363,6 +1458,7 @@ static struct voluta_fusei_rw_iter *
 setup_write_iter(struct voluta_fusei *fusei, struct fuse_bufvec *bvec_in,
 		 const void *buf, size_t len, loff_t off)
 {
+	const uint8_t *dat = buf;
 	struct voluta_fusei_rw_iter *rwi = &fusei->u->rw.rwi;
 
 	rwi->rwi.actor = fusei_write_iter_actor;
@@ -1371,7 +1467,7 @@ setup_write_iter(struct voluta_fusei *fusei, struct fuse_bufvec *bvec_in,
 	rwi->rwi.off = off;
 	rwi->dat_len = 0;
 	rwi->dat_max = len;
-	rwi->dat = (uint8_t *)buf;
+	rwi->dat = unconst(dat);
 	rwi->with_splice = cap_splice(fusei);
 	return rwi;
 }
@@ -1388,7 +1484,8 @@ static void do_write(fuse_req_t req, fuse_ino_t ino, const char *buf,
 	require_fi(fusei, fi);
 
 	rwi = setup_write_iter(fusei, NULL, buf, size, off);
-	err = voluta_fs_write_iter(env_of(fusei), ino, &rwi->rwi);
+	err = voluta_fs_write_iter(sbi_of_(fusei), op_of(fusei),
+				   ino, &rwi->rwi);
 	reply_write_or_err(fusei, rwi->dat_len, err);
 }
 
@@ -1407,7 +1504,8 @@ static void do_write_buf(fuse_req_t req, fuse_ino_t ino,
 
 	size = fuse_buf_size(bufv);
 	rwi = setup_write_iter(fusei, bufv, NULL, size, off);
-	err = voluta_fs_write_iter(env_of(fusei), ino, &rwi->rwi);
+	err = voluta_fs_write_iter(sbi_of_(fusei), op_of(fusei),
+				   ino, &rwi->rwi);
 	reply_write_or_err(fusei, rwi->dat_len, err);
 }
 
@@ -1420,7 +1518,8 @@ static void do_setxattr(fuse_req_t req, fuse_ino_t ino, const char *name,
 	req_to_fusei(req, &fusei);
 	require_ino(fusei, ino);
 
-	err = voluta_fs_setxattr(env_of(fusei), ino, name, val, vsz, flags);
+	err = voluta_fs_setxattr(sbi_of_(fusei), op_of(fusei),
+				 ino, name, val, vsz, flags);
 	reply_status(fusei, err);
 }
 
@@ -1437,7 +1536,8 @@ static void do_getxattr(fuse_req_t req, fuse_ino_t ino,
 
 	buf = fusei->u->xi.buf;
 	len = min_size(size, sizeof(fusei->u->xi.buf));
-	err = voluta_fs_getxattr(env_of(fusei), ino, name, buf, len, &cnt);
+	err = voluta_fs_getxattr(sbi_of_(fusei), op_of(fusei),
+				 ino, name, buf, len, &cnt);
 	reply_xattr_or_err(fusei, size, buf, cnt, err);
 }
 
@@ -1451,7 +1551,8 @@ static void do_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size)
 	require_ino(fusei, ino);
 
 	xiter = xiter_prep(fusei, size);
-	err = voluta_fs_listxattr(env_of(fusei), ino, &xiter->listxattr_ctx);
+	err = voluta_fs_listxattr(sbi_of_(fusei), op_of(fusei), ino,
+				  &xiter->lxa_ctx);
 	reply_xattr_or_err(fusei, size, xiter->beg, xiter->count, err);
 	xiter_done(fusei);
 }
@@ -1464,7 +1565,7 @@ static void do_removexattr(fuse_req_t req, fuse_ino_t ino, const char *name)
 	req_to_fusei(req, &fusei);
 	require_ino(fusei, ino);
 
-	err = voluta_fs_removexattr(env_of(fusei), ino, name);
+	err = voluta_fs_removexattr(sbi_of_(fusei), op_of(fusei), ino, name);
 	reply_status(fusei, err);
 }
 
@@ -1476,8 +1577,24 @@ static void do_bmap(fuse_req_t req, fuse_ino_t ino, size_t blksz, uint64_t idx)
 	require_ino(fusei, ino);
 
 	reply_nonsys(fusei);
-	voluta_unused(blksz);
-	voluta_unused(idx);
+	unused(blksz);
+	unused(idx);
+}
+
+static void do_lseek(fuse_req_t req, fuse_ino_t ino, off_t off, int whence,
+		     struct fuse_file_info *fi)
+{
+	int err;
+	loff_t soff = -1;
+	struct voluta_fusei *fusei;
+
+	req_to_fusei(req, &fusei);
+	require_ino(fusei, ino);
+
+	err = voluta_fs_lseek(sbi_of_(fusei), op_of(fusei), ino,
+			      off, whence, &soff);
+	reply_lseek_or_err(fusei, soff, err);
+	unused(fi);
 }
 
 static void do_ioc_getflags(fuse_req_t req, fuse_ino_t ino,
@@ -1493,7 +1610,7 @@ static void do_ioc_getflags(fuse_req_t req, fuse_ino_t ino,
 	require_fi(fusei, fi);
 
 	if (out_bufsz == sizeof(ret)) {
-		err = voluta_fs_statx(env_of(fusei), ino, &stx);
+		err = voluta_fs_statx(sbi_of_(fusei), op_of(fusei), ino, &stx);
 		ret = (long)stx.stx_attributes;
 	}
 	reply_ioctl_or_err(fusei, 0, &ret, sizeof(ret), err);
@@ -1542,7 +1659,7 @@ static void do_ioc_fiemap(fuse_req_t req, fuse_ino_t ino,
 	size_t nex;
 	size_t len = 0;
 	struct voluta_fusei *fusei;
-	struct fiemap *fm = (void *)in_buf;
+	struct fiemap *fm = unconst(in_buf);
 	const size_t fmsz = sizeof(*fm);
 	const size_t exsz = sizeof(fm->fm_extents[0]);
 
@@ -1569,7 +1686,7 @@ static void do_ioc_fiemap(fuse_req_t req, fuse_ino_t ino,
 		reply_err(fusei, err);
 		return;
 	}
-	err = voluta_fs_fiemap(env_of(fusei), ino, fm);
+	err = voluta_fs_fiemap(sbi_of_(fusei), op_of(fusei), ino, fm);
 	nex = err ? 0 : fm->fm_mapped_extents;
 	len = voluta_min(out_bufsz, fmsz + (nex * exsz));
 	reply_ioctl_or_err(fusei, 0, fm, len, err);
@@ -1577,13 +1694,13 @@ static void do_ioc_fiemap(fuse_req_t req, fuse_ino_t ino,
 }
 
 
-static void do_ioc_inquiry(fuse_req_t req, fuse_ino_t ino,
-			   struct fuse_file_info *fi,
-			   unsigned int flags, size_t out_bufsz)
+static void do_ioc_query(fuse_req_t req, fuse_ino_t ino,
+			 struct fuse_file_info *fi,
+			 unsigned int flags, size_t out_bufsz)
 {
 	int err = -EINVAL;
 	struct voluta_fusei *fusei;
-	struct voluta_inquiry inq = { .version = 0 };
+	struct voluta_query inq = { .version = 0 };
 
 	req_to_fusei(req, &fusei);
 	require_ino(fusei, ino);
@@ -1593,7 +1710,8 @@ static void do_ioc_inquiry(fuse_req_t req, fuse_ino_t ino,
 		reply_ioctl_retry_get(fusei, &inq, sizeof(inq));
 	} else {
 		if (out_bufsz == sizeof(inq)) {
-			err = voluta_fs_inquiry(env_of(fusei), ino, &inq);
+			err = voluta_fs_query(sbi_of_(fusei), op_of(fusei),
+					      ino, &inq);
 		}
 		reply_ioctl_or_err(fusei, 0, &inq, sizeof(inq), err);
 	}
@@ -1627,14 +1745,14 @@ static void do_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd,
 	case FS_IOC_FIEMAP:
 		do_ioc_fiemap(req, ino, fi, in_buf, in_bufsz, out_bufsz);
 		break;
-	case VOLUTA_FS_IOC_INQUIRY:
-		do_ioc_inquiry(req, ino, fi, flags, out_bufsz);
+	case VOLUTA_FS_IOC_QUERY:
+		do_ioc_query(req, ino, fi, flags, out_bufsz);
 		break;
 	default:
 		do_ioc_notimpl(req, ino, fi);
 		break;
 	}
-	voluta_unused(arg);
+	unused(arg);
 }
 
 
@@ -1644,6 +1762,7 @@ static const struct fuse_lowlevel_ops voluta_fusei_ll_ops = {
 	.statfs = do_statfs,
 	.lookup = do_lookup,
 	.forget = do_forget,
+	.forget_multi = do_forget_multi,
 	.access = do_access,
 	.getattr = do_getattr,
 	.setattr = do_setattr,
@@ -1657,6 +1776,7 @@ static const struct fuse_lowlevel_ops voluta_fusei_ll_ops = {
 	.rename = do_rename,
 	.opendir = do_opendir,
 	.readdir = do_readdir,
+	.readdirplus = do_readdirplus,
 	.releasedir = do_releasedir,
 	.fsyncdir = do_fsyncdir,
 	.create = do_create,
@@ -1673,6 +1793,7 @@ static const struct fuse_lowlevel_ops voluta_fusei_ll_ops = {
 	.listxattr = do_listxattr,
 	.removexattr = do_removexattr,
 	.bmap = do_bmap,
+	.lseek = do_lseek,
 	.ioctl = do_ioctl
 };
 
@@ -1698,13 +1819,12 @@ static void fusei_free_u(struct voluta_fusei *fusei)
 	fusei->u = NULL;
 }
 
-int voluta_fusei_init(struct voluta_fusei *fusei, struct voluta_env *env)
+int voluta_fusei_init(struct voluta_fusei *fusei, struct voluta_fs_env *env)
 {
-	const int pstore_flags = env->cstore->pstore.flags;
+	const int pstore_flags = env->pstore->ps_flags;
 
-	fusei->env = env;
+	fusei->fs_env = env;
 	fusei->qal = &env->qalloc;
-	fusei->ucred = &env->op_ctx.ucred;
 	fusei->page_size = voluta_sc_page_size();
 	fusei->conn_caps = 0;
 	fusei->err = 0;
@@ -1719,7 +1839,7 @@ void voluta_fusei_fini(struct voluta_fusei *fusei)
 {
 	fusei_free_u(fusei);
 	fusei->qal = NULL;
-	fusei->env = NULL;
+	fusei->fs_env = NULL;
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/

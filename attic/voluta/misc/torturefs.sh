@@ -2,7 +2,6 @@
 #
 # Torture file-system using various well-known tools.
 #
-TOKYOCABINET_GIT_URL="https://github.com/maiha/tokyocabinet"
 RSYNC_GIT_URL="git://git.samba.org/rsync.git"
 POSTGRESQL_GIT_URL="git://git.postgresql.org/git/postgresql.git"
 SQLITE_GIT_URL="https://github.com/mackyle/sqlite.git"
@@ -44,23 +43,6 @@ do_coreutils_check() {
   run ./configure
   run make
   try make check
-  git_clean_fxd
-
-  cd ${currdir}
-  run rm -rf ${workdir}
-}
-
-# TokyoCabinet
-do_tokyocabinet_check() {
-  local currdir=$(pwd)
-  local workdir="$1/tokyocabinet"
-
-  git_clone ${TOKYOCABINET_GIT_URL} ${workdir}
-
-  cd ${workdir}
-  run ./configure
-  run make
-  run make check
   git_clean_fxd
 
   cd ${currdir}
@@ -200,7 +182,6 @@ do_sqlite_check() {
 do_all_checks() {
   local workdir="$1"
 
-  do_tokyocabinet_check ${workdir}
   do_rsync_check ${workdir}
   do_postgresql_check ${workdir}
   do_coreutils_check ${workdir}
@@ -218,7 +199,6 @@ show_usage() {
   echo "  -c|--coreutils        (${COREUTILS_GIT_GRL})"
   echo "  -d|--diffutils        (${DIFFUTILS_GIT_URL})"
   echo "  -f|--findutils        (${FINDUTILS_GIT_URL})"
-  echo "  -t|--tokyocabinet     (${TOKYOCABINET_GIT_URL})"
   echo "  -r|--rsync            (${RSYNC_GIT_URL})"
   echo "  -p|--postgres         (${POSTGRESQL_GIT_URL})"
   echo "  -s|--subversion       (${SUBVERSION_GIT_URL})"
@@ -244,9 +224,6 @@ case "$arg" in
     ;;
   -g|--gitscm)
     do_gitscm_check ${wd}
-    ;;
-  -t|--tokyocabinet)
-    do_tokyocabinet_check ${wd}
     ;;
   -r|--rsync)
     do_rsync_check ${wd}

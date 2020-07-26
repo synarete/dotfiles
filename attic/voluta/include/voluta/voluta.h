@@ -19,7 +19,8 @@
 
 #include <unistd.h>
 #include <stdlib.h>
-#include "util.h"
+#include "macros.h"
+#include "logging.h"
 #include "defs.h"
 #include "api.h"
 

@@ -15,55 +15,55 @@
  * GNU General Public License for more details.
  */
 #define _GNU_SOURCE 1
-#define VOLUTA_TEST 1
 #include <unistd.h>
 #include <dirent.h>
 #include "unitest.h"
 
 
-struct voluta_ut_direlem {
-	struct voluta_ut_direlem *next;
-	struct dirent64 dent;
+struct ut_direlem {
+	struct ut_direlem *next;
+	struct ut_dirent_info dei;
 	mode_t mode;
 	int pad;
 };
 
-struct voluta_ut_dirlist {
-	struct voluta_ut_ctx *ut_ctx;
+struct ut_dirlist {
+	struct ut_env *ut_env;
 	ino_t dino;
 	size_t count;
-	struct voluta_ut_direlem *list;
+	struct ut_direlem *list;
 };
 
 
-static struct voluta_ut_direlem *
-new_direlem(struct voluta_ut_ctx *ut_ctx, const struct dirent64 *dent)
+static struct ut_direlem *
+new_direlem(struct ut_env *ut_env, const struct ut_dirent_info *dei)
 {
-	struct voluta_ut_direlem *de;
+	struct ut_direlem *de;
 
-	de = voluta_ut_zerobuf(ut_ctx, sizeof(*de));
-	if (dent != NULL) {
-		memcpy(&de->dent, dent, sizeof(de->dent));
-		de->mode = DTTOIF((mode_t)dent->d_type);
-	}
+	de = ut_zerobuf(ut_env, sizeof(*de));
+	ut_assert_not_null(de);
+
+	memcpy(&de->dei, dei, sizeof(de->dei));
+	de->mode = DTTOIF((mode_t)dei->de.d_type);
+
 	return de;
 }
 
-static struct voluta_ut_dirlist *
-new_dirlist(struct voluta_ut_ctx *ut_ctx, ino_t dino)
+static struct ut_dirlist *
+new_dirlist(struct ut_env *ut_env, ino_t dino)
 {
-	struct voluta_ut_dirlist *dl;
+	struct ut_dirlist *dl;
 
-	dl = voluta_ut_zerobuf(ut_ctx, sizeof(*dl));
-	dl->ut_ctx = ut_ctx;
+	dl = ut_zerobuf(ut_env, sizeof(*dl));
+	dl->ut_env = ut_env;
 	dl->dino = dino;
 	dl->count = 0;
 	dl->list = NULL;
 	return dl;
 }
 
-static void push_direlem(struct voluta_ut_dirlist *dl,
-			 struct voluta_ut_direlem *de)
+static void push_direlem(struct ut_dirlist *dl,
+			 struct ut_direlem *de)
 {
 	de->next = dl->list;
 	dl->list = de;
@@ -72,60 +72,23 @@ static void push_direlem(struct voluta_ut_dirlist *dl,
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static bool is_dot_or_dotdot(const struct dirent64 *dent)
-{
-	return !strcmp(dent->d_name, ".") || !strcmp(dent->d_name, "..");
-}
-
-static struct voluta_ut_readdir_ctx *ut_new_readdir_ctx(
-	struct voluta_ut_ctx *ut_ctx)
-{
-	return voluta_ut_new_readdir_ctx(ut_ctx);
-}
-
-static void ut_opendir_ok(struct voluta_ut_ctx *ut_ctx, ino_t ino)
-{
-	int err;
-
-	err = voluta_ut_opendir(ut_ctx, ino);
-	ut_assert_ok(err);
-}
-
-static void ut_releasedir_ok(struct voluta_ut_ctx *ut_ctx, ino_t ino)
-{
-	int err;
-
-	err = voluta_ut_releasedir(ut_ctx, ino);
-	ut_assert_ok(err);
-}
-
-static void ut_readdir_ok(struct voluta_ut_ctx *ut_ctx, ino_t ino, loff_t doff,
-			  struct voluta_ut_readdir_ctx *readdir_ctx)
-{
-	int err;
-
-	err = voluta_ut_readdir(ut_ctx, ino, doff, readdir_ctx);
-	ut_assert_ok(err);
-}
-
-/*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
-
-static struct voluta_ut_dirlist *
-dir_list(struct voluta_ut_ctx *ut_ctx, ino_t dino, size_t expected_nents)
+static struct ut_dirlist *
+dir_list(struct ut_env *ut_env, ino_t dino, size_t expected_nents)
 {
 	int partial = 0;
 	loff_t doff = 0;
 	size_t ndents = 1;
 	size_t dots = 0;
-	const struct dirent64 *dent;
-	struct voluta_ut_dirlist *dl = new_dirlist(ut_ctx, dino);
-	struct voluta_ut_readdir_ctx *readdir_ctx = ut_new_readdir_ctx(ut_ctx);
-	const size_t ndents_max = ARRAY_SIZE(readdir_ctx->dents);
+	const struct ut_dirent_info *dei;
+	struct ut_readdir_ctx *rd_ctx;
+	struct ut_dirlist *dl = new_dirlist(ut_env, dino);
+	const size_t ndents_max = UT_ARRAY_SIZE(rd_ctx->dei);
 
-	ut_opendir_ok(ut_ctx, dino);
+	rd_ctx = ut_new_readdir_ctx(ut_env);
+	ut_opendir_ok(ut_env, dino);
 	while (ndents > 0) {
-		ut_readdir_ok(ut_ctx, dino, doff, readdir_ctx);
-		ndents = readdir_ctx->ndents;
+		ut_readdir_ok(ut_env, dino, doff, rd_ctx);
+		ndents = rd_ctx->nde;
 		ut_assert_le(ndents, ndents_max);
 
 		if (ndents && (ndents < ndents_max)) {
@@ -133,76 +96,75 @@ dir_list(struct voluta_ut_ctx *ut_ctx, ino_t dino, size_t expected_nents)
 			partial++;
 		}
 		for (size_t i = 0; i < ndents; ++i) {
-			dent = &readdir_ctx->dents[i];
-			if (!is_dot_or_dotdot(dent)) {
+			dei = &rd_ctx->dei[i];
+			if (!ut_dot_or_dotdot(dei->de.d_name)) {
 				ut_assert_lt(dl->count, expected_nents);
-				push_direlem(dl, new_direlem(ut_ctx, dent));
+				push_direlem(dl, new_direlem(ut_env, dei));
 			} else {
 				ut_assert_lt(dots, 2);
 				dots++;
 			}
-			doff = dent->d_off + 1;
+			doff = dei->de.d_off + 1;
 		}
 	}
 	if (expected_nents < UINT_MAX) {
 		ut_assert_eq(dl->count, expected_nents);
 	}
-	ut_releasedir_ok(ut_ctx, dino);
+	ut_releasedir_ok(ut_env, dino);
 	return dl;
 }
 
-static struct voluta_ut_dirlist *
-dir_list_all(struct voluta_ut_ctx *ut_ctx, ino_t dino)
+static struct ut_dirlist *dir_list_all(struct ut_env *ut_env, ino_t dino)
 {
-	return dir_list(ut_ctx, dino, UINT_MAX);
+	return dir_list(ut_env, dino, UINT_MAX);
 }
 
-static struct voluta_ut_dirlist *
-dir_list_some(struct voluta_ut_ctx *ut_ctx, ino_t dino, loff_t off,
-	      size_t max_nents)
+static struct ut_dirlist *dir_list_some(struct ut_env *ut_env, ino_t dino,
+					loff_t off, size_t max_nents)
 {
 	bool keep_iter = true;
 	loff_t doff = off;
-	const struct dirent64 *dent;
-	struct voluta_ut_dirlist *dl = new_dirlist(ut_ctx, dino);
-	struct voluta_ut_readdir_ctx *readdir_ctx = ut_new_readdir_ctx(ut_ctx);
+	const struct ut_dirent_info *dei;
+	struct ut_dirlist *dl = new_dirlist(ut_env, dino);
+	struct ut_readdir_ctx *rd_ctx =
+		ut_new_readdir_ctx(ut_env);
 
-	ut_opendir_ok(ut_ctx, dino);
+	ut_opendir_ok(ut_env, dino);
 	while (keep_iter) {
-		ut_readdir_ok(ut_ctx, dino, doff, readdir_ctx);
-		for (size_t i = 0; i < readdir_ctx->ndents; ++i) {
-			dent = &readdir_ctx->dents[i];
-			if (!is_dot_or_dotdot(dent)) {
-				push_direlem(dl, new_direlem(ut_ctx, dent));
+		ut_readdir_ok(ut_env, dino, doff, rd_ctx);
+		for (size_t i = 0; i < rd_ctx->nde; ++i) {
+			dei = &rd_ctx->dei[i];
+			if (!ut_dot_or_dotdot(dei->de.d_name)) {
+				push_direlem(dl, new_direlem(ut_env, dei));
 				if (dl->count == max_nents) {
 					keep_iter = false;
 				}
 			}
-			doff = dent->d_off + 1;
+			doff = dei->de.d_off + 1;
 		}
-		if (!readdir_ctx->ndents) {
+		if (!rd_ctx->nde) {
 			keep_iter = false;
 		}
 	}
-	ut_releasedir_ok(ut_ctx, dino);
+	ut_releasedir_ok(ut_env, dino);
 	return dl;
 }
 
-static void dir_unlink_all(struct voluta_ut_dirlist *dl)
+static void dir_unlink_all(struct ut_dirlist *dl)
 {
 	size_t count = 0;
 	const char *name;
-	const struct voluta_ut_direlem *de;
+	const struct ut_direlem *de;
 
 	for (de = dl->list; de != NULL; de = de->next) {
 		ut_assert_lt(count, dl->count);
-		name = de->dent.d_name;
+		name = de->dei.de.d_name;
 		if (S_ISDIR(de->mode)) {
-			voluta_ut_rmdir_ok(dl->ut_ctx, dl->dino, name);
+			ut_rmdir_ok(dl->ut_env, dl->dino, name);
 		} else if (S_ISLNK(de->mode)) {
-			voluta_ut_remove_link(dl->ut_ctx, dl->dino, name);
+			ut_remove_link(dl->ut_env, dl->dino, name);
 		} else {
-			voluta_ut_unlink_exists(dl->ut_ctx, dl->dino, name);
+			ut_unlink_ok(dl->ut_env, dl->dino, name);
 		}
 		count += 1;
 	}
@@ -213,29 +175,20 @@ static void dir_unlink_all(struct voluta_ut_dirlist *dl)
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static const char *make_name(struct voluta_ut_ctx *ut_ctx,
-			     const char *prefix, size_t idx)
-{
-	char name[UT_NAME_MAX + 1] = "";
-
-	snprintf(name, sizeof(name) - 1, "%s%ld", prefix, idx + 1);
-	return voluta_ut_strdup(ut_ctx, name);
-}
-
-static void create_nfiles(struct voluta_ut_ctx *ut_ctx, ino_t dino,
-			  const char *dname, size_t count)
+static void ut_create_nfiles(struct ut_env *ut_env, ino_t dino,
+			     const char *dname, size_t count)
 {
 	ino_t ino;
 	const char *name;
 
 	for (size_t i = 0; i < count; ++i) {
-		name = make_name(ut_ctx, dname, i);
-		voluta_ut_create_only(ut_ctx, dino, name, &ino);
+		name = ut_make_name(ut_env, dname, i);
+		ut_create_only(ut_env, dino, name, &ino);
 	}
 }
 
-static void create_ndirs_files(struct voluta_ut_ctx *ut_ctx, ino_t dino,
-			       const char *dname, size_t count)
+static void ut_create_ninodes(struct ut_env *ut_env, ino_t dino,
+			      const char *dname, size_t count)
 {
 	ino_t ino;
 	const char *name;
@@ -243,135 +196,128 @@ static void create_ndirs_files(struct voluta_ut_ctx *ut_ctx, ino_t dino,
 	struct stat st;
 
 	for (size_t i = 0; i < count; ++i) {
-		name = make_name(ut_ctx, dname, i);
+		name = ut_make_name(ut_env, dname, i);
 		if ((i % 3) == 0) {
-			voluta_ut_mkdir_ok(ut_ctx, dino, name, &ino);
+			ut_mkdir_oki(ut_env, dino, name, &ino);
 		} else if ((i % 5) == 0) {
 			snprintf(s, sizeof(s) - 1, "%s_%lu", dname, i);
-			voluta_ut_create_symlink(ut_ctx, dino, name, s, &ino);
+			ut_symlink_ok(ut_env, dino, name, s, &ino);
 		} else {
-			voluta_ut_create_only(ut_ctx, dino, name, &ino);
+			ut_create_only(ut_env, dino, name, &ino);
 		}
 	}
-	voluta_ut_getattr_exists(ut_ctx, dino, &st);
+	ut_getattr_ok(ut_env, dino, &st);
 	ut_assert_ge(st.st_size, count);
 }
 
 
-static void ut_dir_list_simple_(struct voluta_ut_ctx *ut_ctx, size_t count)
+static void ut_dir_list_simple_(struct ut_env *ut_env, size_t count)
 {
-	ino_t dino, parent = ROOT_INO;
-	const char *dname = T_NAME;
-	struct voluta_ut_dirlist *dl;
+	ino_t dino;
+	const char *name = UT_NAME;
+	struct ut_dirlist *dl;
 
-	voluta_ut_mkdir_ok(ut_ctx, parent, dname, &dino);
-	create_nfiles(ut_ctx, dino, dname, count);
-	dl = dir_list(ut_ctx, dino, count);
+	ut_mkdir_at_root(ut_env, name, &dino);
+	ut_create_nfiles(ut_env, dino, name, count);
+	dl = dir_list(ut_env, dino, count);
 	dir_unlink_all(dl);
-	create_ndirs_files(ut_ctx, dino, dname, count);
-	dl = dir_list(ut_ctx, dino, count);
+	ut_create_ninodes(ut_env, dino, name, count);
+	dl = dir_list(ut_env, dino, count);
 	dir_unlink_all(dl);
-	voluta_ut_releasedir(ut_ctx, dino);
-	voluta_ut_rmdir_ok(ut_ctx, parent, dname);
+	ut_rmdir_at_root(ut_env, name);
 }
 
-static void ut_dir_list_simple(struct voluta_ut_ctx *ut_ctx)
+static void ut_dir_list_simple(struct ut_env *ut_env)
 {
-	ut_dir_list_simple_(ut_ctx, 1 << 4);
-	ut_dir_list_simple_(ut_ctx, 1 << 8);
-	ut_dir_list_simple_(ut_ctx, 1 << 10);
+	ut_dir_list_simple_(ut_env, 1 << 4);
+	ut_dir_list_simple_(ut_env, 1 << 8);
+	ut_dir_list_simple_(ut_env, 1 << 10);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void ut_dir_list_repeated_(struct voluta_ut_ctx *ut_ctx,
+static void ut_dir_list_repeated_(struct ut_env *ut_env,
 				  size_t count, size_t niter)
 {
-	size_t count2 = count / 2;
-	ino_t dino, parent = ROOT_INO;
+	ino_t dino;
 	const char *prefix = NULL;
-	const char *dname = T_NAME;
-	struct voluta_ut_dirlist *dl;
+	const char *name = UT_NAME;
+	struct ut_dirlist *dl;
 
-	voluta_ut_mkdir_ok(ut_ctx, parent, dname, &dino);
+	ut_mkdir_at_root(ut_env, name, &dino);
 	while (niter-- > 0) {
-		prefix = ut_randstr(ut_ctx, 31);
-		create_nfiles(ut_ctx, dino, prefix, count);
-		dl = dir_list(ut_ctx, dino, count);
+		prefix = ut_randstr(ut_env, 31);
+		ut_create_nfiles(ut_env, dino, prefix, count);
+		dl = dir_list(ut_env, dino, count);
 		dir_unlink_all(dl);
 
-		prefix = ut_randstr(ut_ctx, 127);
-		create_ndirs_files(ut_ctx, dino, prefix, count2);
-		dl = dir_list(ut_ctx, dino, count2);
+		prefix = ut_randstr(ut_env, 127);
+		ut_create_ninodes(ut_env, dino, prefix, count / 2);
+		dl = dir_list(ut_env, dino, count / 2);
 		dir_unlink_all(dl);
 	}
-	voluta_ut_releasedir(ut_ctx, dino);
-	voluta_ut_rmdir_ok(ut_ctx, parent, dname);
+	ut_rmdir_at_root(ut_env, name);
 }
 
-static void ut_dir_list_repeated(struct voluta_ut_ctx *ut_ctx)
+static void ut_dir_list_repeated(struct ut_env *ut_env)
 {
-	ut_dir_list_repeated_(ut_ctx, 1 << 4, 5);
-	ut_dir_list_repeated_(ut_ctx, 1 << 6, 4);
-	ut_dir_list_repeated_(ut_ctx, 1 << 10, 3);
-	ut_dir_list_repeated_(ut_ctx, 1 << 14, 2);
+	ut_dir_list_repeated_(ut_env, 1 << 4, 5);
+	ut_dir_list_repeated_(ut_env, 1 << 6, 4);
+	ut_dir_list_repeated_(ut_env, 1 << 10, 3);
+	ut_dir_list_repeated_(ut_env, 1 << 14, 2);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static void create_nfiles_sparse(struct voluta_ut_ctx *ut_ctx, ino_t dino,
+static void create_nfiles_sparse(struct ut_env *ut_env, ino_t dino,
 				 const char *prefix, size_t count)
 {
 	ino_t ino;
 	const char *name;
 
 	for (size_t i = 0; i < (2 * count); ++i) {
-		name = make_name(ut_ctx, prefix, i);
-		voluta_ut_create_only(ut_ctx, dino, name, &ino);
+		name = ut_make_name(ut_env, prefix, i);
+		ut_create_only(ut_env, dino, name, &ino);
 	}
 	for (size_t j = 1; j < (2 * count); j += 2) {
-		name = make_name(ut_ctx, prefix, j);
-		voluta_ut_unlink_exists(ut_ctx, dino, name);
+		name = ut_make_name(ut_env, prefix, j);
+		ut_unlink_ok(ut_env, dino, name);
 	}
 }
 
-static void ut_dir_list_sparse_(struct voluta_ut_ctx *ut_ctx, size_t count)
+static void ut_dir_list_sparse_(struct ut_env *ut_env, size_t count)
 {
+	ino_t dino;
 	loff_t doff = (loff_t)count;
-	ino_t dino, parent = ROOT_INO;
-	const char *dname = T_NAME;
-	struct voluta_ut_dirlist *dl;
+	const char *dname = UT_NAME;
+	struct ut_dirlist *dl = NULL;
 
-	voluta_ut_mkdir_ok(ut_ctx, parent, dname, &dino);
-
-	create_nfiles_sparse(ut_ctx, dino, ut_randstr(ut_ctx, 71), count);
-	dl = dir_list_some(ut_ctx, dino, (2 * doff) / 3, count);
+	ut_mkdir_at_root(ut_env, dname, &dino);
+	create_nfiles_sparse(ut_env, dino, ut_randstr(ut_env, 71), count);
+	dl = dir_list_some(ut_env, dino, (2 * doff) / 3, count);
 	dir_unlink_all(dl);
-	dl = dir_list_some(ut_ctx, dino, doff / 3, count);
+	dl = dir_list_some(ut_env, dino, doff / 3, count);
 	dir_unlink_all(dl);
-	create_nfiles_sparse(ut_ctx, dino, ut_randstr(ut_ctx, 127), count / 2);
-	dl = dir_list_some(ut_ctx, dino, doff / 3, count);
+	create_nfiles_sparse(ut_env, dino, ut_randstr(ut_env, 127), count / 2);
+	dl = dir_list_some(ut_env, dino, doff / 3, count);
 	dir_unlink_all(dl);
-	dl = dir_list_all(ut_ctx, dino);
+	dl = dir_list_all(ut_env, dino);
 	dir_unlink_all(dl);
-
-	voluta_ut_releasedir(ut_ctx, dino);
-	voluta_ut_rmdir_ok(ut_ctx, parent, dname);
+	ut_rmdir_at_root(ut_env, dname);
 }
 
-static void ut_dir_list_sparse(struct voluta_ut_ctx *ut_ctx)
+static void ut_dir_list_sparse(struct ut_env *ut_env)
 {
-	ut_dir_list_sparse_(ut_ctx, 11);
-	ut_dir_list_sparse_(ut_ctx, 1111);
+	ut_dir_list_sparse_(ut_env, 11);
+	ut_dir_list_sparse_(ut_env, 1111);
 }
 
 /*. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .*/
 
-static const struct voluta_ut_testdef ut_local_tests[] = {
+static const struct ut_testdef ut_local_tests[] = {
 	UT_DEFTEST(ut_dir_list_simple),
 	UT_DEFTEST(ut_dir_list_repeated),
 	UT_DEFTEST(ut_dir_list_sparse),
 };
 
-const struct voluta_ut_tests voluta_ut_test_dir_list =
-	UT_MKTESTS(ut_local_tests);
+const struct ut_tests ut_test_dir_list = UT_MKTESTS(ut_local_tests);

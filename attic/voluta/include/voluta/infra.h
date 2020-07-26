@@ -31,7 +31,6 @@ size_t voluta_min3(size_t x, size_t y, size_t z);
 
 size_t voluta_max(size_t x, size_t y);
 
-size_t voluta_clamp(size_t v, size_t lo, size_t hi);
 
 int voluta_compare3(long x, long y);
 
@@ -50,22 +49,8 @@ uint32_t voluta_adler32(const void *dat, size_t len);
 uint64_t voluta_twang_mix64(uint64_t key);
 
 
-/* sysconf wrappers */
-size_t voluta_sc_page_size(void);
 
-size_t voluta_sc_phys_pages(void);
 
-size_t voluta_sc_avphys_pages(void);
-
-size_t voluta_sc_l1_dcache_linesize(void);
-
-/* monotonic clock */
-void voluta_mclock_now(struct timespec *);
-
-void voluta_mclock_dur(const struct timespec *, struct timespec *);
-
-/* random generator */
-void voluta_getentropy(void *, size_t);
 
 /* memory */
 int voluta_mmap_memory(size_t, void **);
@@ -79,27 +64,8 @@ void voluta_munmap_secure_memory(void *, size_t);
 void voluta_memzero(void *s, size_t n);
 
 
-/* quick memory allocator */
 struct voluta_qalloc;
-
-struct voluta_qastat {
-	size_t memsz_data;      /* Size in bytes of data memory */
-	size_t memsz_meta;      /* Size in bytes of meta memory */
-	size_t npages;          /* Total number of memory-mapped pages */
-	size_t npages_used;     /* Number of currently-allocated pages */
-	size_t nbytes_used;     /* Current number of allocated bytes */
-};
-
-struct voluta_memref {
-	void  *mem;             /* Referenced memory */
-	void  *page;            /* Containing memory page */
-	void  *cookie;          /* Internal object */
-	size_t len;             /* Memory length */
-	loff_t off;             /* Offset of memory in underlying file */
-	int    fd;              /* Underlying file-descriptor */
-	int    pad;
-};
-
+struct voluta_qastat;
 
 int voluta_resolve_memsize(size_t mem_want, size_t *out_mem_size);
 

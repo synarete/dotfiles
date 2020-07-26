@@ -31,7 +31,7 @@
 
 static void mkfs_finalize(void)
 {
-	voluta_delete_instance();
+	voluta_fini_fs_env();
 	voluta_free_passphrase(&voluta_globals.mkfs_passphrase);
 	voluta_flush_stdout();
 }
@@ -42,8 +42,9 @@ static void mkfs_setup_params(void)
 	int exists;
 	struct stat st;
 	bool force = voluta_globals.mkfs_force;
-	loff_t size = voluta_globals.mkfs_size;
+	loff_t size = voluta_globals.mkfs_volume_size;
 	const char *volume_path = voluta_globals.mkfs_volume;
+	struct voluta_vboot_record vbr;
 
 	err = voluta_sys_stat(volume_path, &st);
 	exists = !err;
@@ -58,25 +59,25 @@ static void mkfs_setup_params(void)
 		voluta_die(err, "stat failure: %s", volume_path);
 	}
 	if (exists) {
-		err = voluta_require_exclusive_volume(volume_path, false);
+		err = voluta_read_vboot_record(volume_path, &vbr);
 		if (err) {
 			voluta_die(err, "volume in use: %s", volume_path);
 		}
 	}
 
 	err = voluta_resolve_volume_size(volume_path, size,
-					 &voluta_globals.mkfs_size);
+					 &voluta_globals.mkfs_volume_size);
 	if (err) {
-		voluta_die(err, "unsupported size: %ld", size);
+		voluta_die(0, "unsupported size: %s", voluta_globals.mkfs_size);
 	}
 	voluta_globals.mkfs_passphrase =
 		voluta_read_passphrase(voluta_globals.mkfs_passphrase_file, 1);
 }
 
-static void mkfs_create_setup_env(void)
+static void mkfs_create_setup_fs_env(void)
 {
 	int err;
-	struct voluta_env *env;
+	struct voluta_fs_env *fs_env;
 	const struct voluta_params params = {
 		.ucred = {
 			.uid = getuid(),
@@ -86,12 +87,16 @@ static void mkfs_create_setup_env(void)
 		},
 		.passphrase = voluta_globals.mkfs_passphrase,
 		.salt = voluta_globals.mkfs_salt,
+		.volume_label = voluta_globals.mkfs_label,
+		.volume_name = voluta_globals.mkfs_name,
 		.volume_path = voluta_globals.mkfs_volume,
-		.volume_size = voluta_globals.mkfs_size
+		.volume_size = voluta_globals.mkfs_volume_size
 	};
 
-	env = voluta_new_instance();
-	err = voluta_env_setparams(env, &params);
+	voluta_init_fs_env();
+
+	fs_env = voluta_fs_env_inst();
+	err = voluta_fs_env_setparams(fs_env, &params);
 	if (err) {
 		voluta_die(err, "illegal mkfs params");
 	}
@@ -100,13 +105,11 @@ static void mkfs_create_setup_env(void)
 static void mkfs_format_volume(void)
 {
 	int err;
-	struct voluta_env *env;
+	struct voluta_fs_env *fs_env;
 	const char *volume_path = voluta_globals.mkfs_volume;
-	const char *name = voluta_globals.mkfs_name;
-	const loff_t size = voluta_globals.mkfs_size;
 
-	env = voluta_get_instance();
-	err = voluta_env_format(env, volume_path, size, name);
+	fs_env = voluta_fs_env_inst();
+	err = voluta_fs_env_format(fs_env);
 	if (err) {
 		voluta_die(err, "format error: %s", volume_path);
 	}
@@ -123,7 +126,7 @@ void voluta_execute_mkfs(void)
 	mkfs_setup_params();
 
 	/* Prepare environment */
-	mkfs_create_setup_env();
+	mkfs_create_setup_fs_env();
 
 	/* Do actual mkfs */
 	mkfs_format_volume();
@@ -138,8 +141,9 @@ void voluta_execute_mkfs(void)
 static const char *g_mkfs_usage =
 	"[options] <volume-path> \n\n" \
 	"options: \n" \
-	"  -s, --size=N                 Volume size in bytes\n" \
-	"  -n, --name=NAME              Name label\n" \
+	"  -s, --size=NBYTES            Volume size\n" \
+	"  -l, --label=LABEL            Public label\n" \
+	"  -n, --name=NAME              Private name\n" \
 	"  -F, --force                  Force overwrite if volume exists\n" \
 	"  -P, --passphrase-file=PATH   Passphrase input file (unsafe)\n" \
 	"  -S, --salt=SALT              Additional SALT input to passphrase\n" \
@@ -153,8 +157,9 @@ void voluta_getopt_mkfs(void)
 	int opt_index;
 	int argc;
 	char **argv;
-	const struct option mkfs_options[] = {
+	const struct option opts[] = {
 		{ "size", required_argument, NULL, 's' },
+		{ "label", required_argument, NULL, 'l' },
 		{ "name", required_argument, NULL, 'n' },
 		{ "force", no_argument, NULL, 'F' },
 		{ "passphrase-file", required_argument, NULL, 'P' },
@@ -168,13 +173,16 @@ void voluta_getopt_mkfs(void)
 	argv = voluta_globals.cmd_argv;
 	while (c > 0) {
 		opt_index = 0;
-		c = getopt_long(argc, argv, "s:n:P:S:Fvh",
-				mkfs_options, &opt_index);
+		c = getopt_long(argc, argv, "s:l:n:P:S:Fvh", opts, &opt_index);
 		if (c == -1) {
 			break;
 		}
 		if (c == 's') {
-			voluta_globals.mkfs_size = voluta_parse_size(optarg);
+			voluta_globals.mkfs_size = optarg;
+			voluta_globals.mkfs_volume_size =
+				voluta_parse_size(optarg);
+		} else if (c == 'l') {
+			voluta_globals.mkfs_label = optarg;
 		} else if (c == 'n') {
 			voluta_globals.mkfs_name = optarg;
 		} else if (c == 'P') {
@@ -192,11 +200,9 @@ void voluta_getopt_mkfs(void)
 		}
 	}
 	if (optind >= argc) {
-		voluta_die(0, "missing volume path");
+		voluta_die_no_volume_path();
 	}
 	voluta_globals.mkfs_volume = argv[optind++];
-	if (optind < argc) {
-		voluta_die_redundant_arg(argv[optind]);
-	}
+	voluta_check_no_redundant_arg();
 }
 
