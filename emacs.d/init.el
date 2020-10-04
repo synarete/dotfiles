@@ -20,7 +20,7 @@
 (require 'cc-mode)
 (require 'make-mode)
 (require 'magit)
-(require 'git-commit)
+;(require 'git-commit)
 (require 'smart-tabs-mode)
 (require 'generic-x)
 (require 'smooth-scroll)
@@ -103,8 +103,8 @@
 (setq mouse-autoselect-window t)
 
 ;; Default font
-(set-default-font "Monospace 11")
-
+;(set-default-font "Monospace 11")
+(add-to-list 'default-frame-alist '(font . "Monospace 11"))
 
 ;;;; Behaviour:
 
