@@ -1,0 +1,3 @@
+#!/bin/sh
+cd ${HOME}
+exec blender "$@" > /dev/null 2>&1 &
