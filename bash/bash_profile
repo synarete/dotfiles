@@ -64,7 +64,7 @@ alias tree='tree -C -F --dirsfirst'
 alias rgrepc='egrep -Rn --include="*.[ch]" '
 #alias gsw='git show -W'
 
-# Aliases from local bin
+# Aliases from bin
 alias gll='git-log-list'
 alias gcw='git-commit-wip'
 alias gri='git-rebase-interactive'
@@ -79,6 +79,6 @@ shopt -s checkwinsize
 export PYTHONSTARTUP=${ROOT}/bash/pystartup
 
 # Extra tools
-export PATH=${ROOT}/local/bin:${PATH}
+export PATH=${ROOT}/bin:${PATH}
 
 
