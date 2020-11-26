@@ -1,0 +1,21 @@
+{
+    "tasks": [
+        {
+            "label": "Build project",
+            "type": "shell",
+            "command": "/usr/bin/make",
+            "args": [],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "make"
+        }
+    ]
+}
