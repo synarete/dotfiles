@@ -19,7 +19,7 @@
     "workbench.colorTheme": "Default Dark+",
     "workbench.editor.showTabs": false,
     "workbench.colorCustomizations": {
-        "statusBar.background": "#404040",
+        "statusBar.background": "#515151",
         "statusBar.foreground": "#F8F8F8",
         "statusBar.noFolderBackground": "#212121",
         "statusBar.debuggingBackground": "#263238"
