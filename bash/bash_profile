@@ -47,7 +47,7 @@ export GIT_PS1_SHOWUPSTREAM="auto"
 export GIT_PS1_DESCRIBE_STYLE=branch
 export GIT_PS1_SHOWCOLORHINTS=1
 export GIT_PS1_HIDE_IF_PWD_IGNORED=1
-export PS1="[${GREEN}\u@\h${NORMAL} ${VIOLET}\w${NORMAL}${NORMAL}]${YELLOW}\$(__git_ps1)${NORMAL}\$ ${RESET}"
+export PS1="[${GREEN}\u@\h${NORMAL} ${BLUE}\w${NORMAL}${NORMAL}]${YELLOW}\$(__git_ps1)${NORMAL}\$ ${RESET}"
 export PS1_MINIMAL="[${BRIGHT_WHITE}\u@\h${NORMAL} ${WHITE}\w${NORMAL}${NORMAL}]${YELLOW}\$(__git_ps1)${NORMAL}\$ ${RESET}"
 
 # Aliases
