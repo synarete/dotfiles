@@ -12,6 +12,7 @@
 .project
 .pydevproject
 .settings
+.vscode
 
 # Extras
 tags
