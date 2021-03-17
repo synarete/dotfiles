@@ -39,5 +39,11 @@ set sort_aux='reverse-last-date-received'
 # G to get mail
 bind index G imap-fetch-mail
 
+# Pager (scroll with arrows)
+bind pager <up> previous-line
+bind pager <down> next-line
+set smart_wrap
+set text_flowed
+
 # Sidebar
 
