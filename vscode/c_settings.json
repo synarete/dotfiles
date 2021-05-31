@@ -1,11 +1,11 @@
 {
-    "window.zoomLevel": 1.5,
-    "terminal.integrated.fontSize": 12,
+    "window.zoomLevel": 1.0,
+    "terminal.integrated.fontSize": 13,
     "editor.fontFamily": "'monospace', 'Droid Sans Mono', monospace, 'Droid Sans Fallback'",
     "editor.renderControlCharacters": true,
     "editor.renderIndentGuides": false,
     "editor.renderWhitespace": "all",
-    "editor.fontSize": 12,
+    "editor.fontSize": 13,
     "editor.tabSize": 8,
     "editor.formatOnSave": false,
     "editor.formatOnType": false,
@@ -16,12 +16,14 @@
     "files.insertFinalNewline": true,
     "files.trimFinalNewlines": true,
     "breadcrumbs.enabled": true,
-    "workbench.colorTheme": "Default Dark+",
-    "workbench.editor.showTabs": false,
+    "workbench.colorTheme": "Visual Studio Dark - C++",
+    "workbench.editor.showTabs": true,
     "workbench.colorCustomizations": {
-        "statusBar.background": "#515151",
-        "statusBar.foreground": "#F8F8F8",
+        "statusBar.background": "#101010",
+        "statusBar.foreground": "#F8F1F8",
         "statusBar.noFolderBackground": "#212121",
-        "statusBar.debuggingBackground": "#263238"
+        "statusBar.debuggingBackground": "#263238",
+        "activityBar.background": "#111111",
+        "editorGutter.background": "#212121",
     }
 }
