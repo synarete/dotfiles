@@ -3,5 +3,6 @@
     "colorscheme": "synarete",
     "divreverse": false,
     "indentchar": "»",
+    "rmtrailingws": true,
     "tabsize": 8
 }
