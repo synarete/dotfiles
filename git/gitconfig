@@ -1,6 +1,9 @@
-#[user]
-#	name = Shachar Sharon
-#	email = synarete@xxxxxxxx
+[user]
+	email = synarete@xxxxxxxx
+	name = Shachar Sharon
+
+[init]
+	defaultBranch = main
 
 [core]
 	whitespace = trailing-space,space-before-tab
