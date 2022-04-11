@@ -2,7 +2,7 @@
 #
 # gll -- Wrapper of 'git log' with pretty colorful format
 #
-# Copyright (C) 2019,2020 Shachar Sharon
+# Copyright (C) 2019-2022 Shachar Sharon
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -23,14 +23,13 @@
 # DEALINGS IN THE SOFTWARE.
 #
 
-import sys
 import os
+import sys
 import getopt
 import shlex
+import shutil
 import subprocess
-import distutils.spawn
 import colorama
-
 
 WHITE = colorama.Fore.WHITE
 GREEN = colorama.Fore.GREEN
@@ -53,7 +52,7 @@ NLINES_DEFAULT = 24
 
 def msg(txt: str) -> None:
     name = os.path.basename(__file__)
-    print(name + ': ' + txt)
+    print(name + ": " + txt)
 
 
 def die(txt: str) -> None:
@@ -62,41 +61,43 @@ def die(txt: str) -> None:
 
 
 def locate_bin(name: str) -> str:
-    xbin = distutils.spawn.find_executable(name)
+    xbin = shutil.which(name, os.X_OK)
     if not xbin:
-        die('failed to find ' + name)
+        die("failed to find " + name)
     return str(xbin).strip()
 
 
 def subexec(cmd, work_dir=None) -> str:
-    '''Execute command as sub-process, die upon failure'''
-    pipes = subprocess.Popen(shlex.split(cmd),
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE,
-                             cwd=work_dir,
-                             shell=False,
-                             env=os.environ.copy())
+    """Execute command as sub-process, die upon failure"""
+    pipes = subprocess.Popen(
+        shlex.split(cmd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=work_dir,
+        shell=False,
+        env=os.environ.copy(),
+    )
     std_out, std_err = pipes.communicate()
     if pipes.returncode != 0:
-        die('failed: ' + cmd)
+        die("failed: " + cmd)
     out = std_err or std_out
-    return out.decode('UTF-8')
+    return out.decode("UTF-8")
 
 
 def git_log_format(work_dir: str, ref_name: str, nlines: int) -> str:
-    '''Calls git-log-format without colors and with | as seperator'''
-    cmd = locate_bin('git')
-    cmd = cmd + ' --no-pager log --abbrev-commit --decorate --date=short'
-    cmd = cmd + ' -n{} '.format(nlines)
-    cmd = cmd + ' --format=tformat:\'%h|%an|%ad|%d|%s\' '
+    """Calls git-log-format without colors and with | as seperator"""
+    cmd = locate_bin("git")
+    cmd = cmd + " --no-pager log --abbrev-commit --decorate --date=short"
+    cmd = cmd + " -n{} ".format(nlines)
+    cmd = cmd + " --format=tformat:'%h|%an|%ad|%d|%s' "
     cmd = cmd + ref_name
     return subexec(cmd, work_dir)
 
 
 def parse_git_log(lines: str) -> list:
     gll_dat = []
-    for ln in lines.split('\n'):
-        t = tuple(ln.split('|', 5))
+    for ln in lines.split("\n"):
+        t = tuple(ln.split("|", 5))
         if len(t) != 5:
             continue
         gll_dat.append(t)
@@ -104,37 +105,37 @@ def parse_git_log(lines: str) -> list:
 
 
 def color_branch_tags(tag_token: str) -> str:
-    tags_in = [ tag.strip() for tag in tag_token.strip("()").split(",") ]
+    tags_in = [tag.strip() for tag in tag_token.strip("()").split(",")]
     if not tag_token or not tags_in:
-        return ''
+        return ""
     tags_out = []
     for tag in tags_in:
-        ctag = ''
-        if '/' in tag:
+        ctag = ""
+        if "/" in tag:
             ctag = DIM + LIGHTRED_EX + tag
-        elif 'HEAD' in tag:
-            if ' -> ' in tag:
-                head, tail = tuple(tag.split(' ', 1))
-                tag = head + ' ' + LIGHTGREEN_EX + tail
+        elif "HEAD" in tag:
+            if " -> " in tag:
+                head, tail = tuple(tag.split(" ", 1))
+                tag = head + " " + LIGHTGREEN_EX + tail
             ctag = BRIGHT + LIGHTBLUE_EX + tag
-        elif 'tag: ' in tag:
-            ctag = LIGHTYELLOW_EX + tag.replace('tag: ', '')
+        elif "tag: " in tag:
+            ctag = LIGHTYELLOW_EX + tag.replace("tag: ", "")
         else:
             ctag = LIGHTMAGENTA_EX + tag
         tags_out.append(RESET_ALL + ctag + RESET_ALL)
-    return '(' + ', '.join(tags_out) + ') '
+    return "(" + ", ".join(tags_out) + ") "
 
 
-def print_gll_line(sha: str, author: str, date: str,
-                   tag_token: str, commit_msg: str) -> None:
-    hsep = RED + BRIGHT + '|' + RESET_ALL
+def print_gll_line(sha: str, author: str, date: str, tag_token: str,
+                   commit_msg: str) -> None:
+    hsep = RED + BRIGHT + "|" + RESET_ALL
     sha = GREEN + sha
-    author = YELLOW + '{:<20s}'.format(author)
+    author = YELLOW + "{:<20s}".format(author)
     date = LIGHTBLUE_EX + date
     tags = color_branch_tags(tag_token)
     cmsg = RESET_ALL + commit_msg + RESET_ALL
     tail = tags + RESET_ALL + commit_msg + RESET_ALL
-    print('{} {} {} {} {}'.format(sha, author, date, hsep, tail))
+    print("{} {} {} {} {}".format(sha, author, date, hsep, tail))
 
 
 def print_gll(gll_dat: list) -> None:
@@ -152,7 +153,7 @@ def usage(exit_code: int) -> None:
 def parse_args() -> tuple:
     nlines = NLINES_DEFAULT
     work_dir = os.getcwd()
-    ref_name = ''
+    ref_name = ""
     try:
         opts, args = getopt.getopt(sys.argv[1:], "hn:", ["help", "nlines="])
     except getopt.GetoptError as err:
@@ -185,5 +186,5 @@ def main() -> None:
     sys.exit(0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
