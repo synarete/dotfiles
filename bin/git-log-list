@@ -85,11 +85,11 @@ def subexec(cmd, work_dir=None) -> str:
 
 
 def git_log_format(work_dir: str, ref_name: str, nlines: int) -> str:
-    """Calls git-log-format without colors and with | as seperator"""
+    """Calls git-log-format without colors and with '|||' as seperator"""
     cmd = locate_bin("git")
     cmd = cmd + " --no-pager log --abbrev-commit --decorate --date=short"
     cmd = cmd + " -n{} ".format(nlines)
-    cmd = cmd + " --format=tformat:'%h|%an|%ad|%d|%s' "
+    cmd = cmd + " --format=tformat:'%h|||%an|||%ad|||%d|||%s' "
     cmd = cmd + ref_name
     return subexec(cmd, work_dir)
 
@@ -97,7 +97,7 @@ def git_log_format(work_dir: str, ref_name: str, nlines: int) -> str:
 def parse_git_log(lines: str) -> list:
     gll_dat = []
     for ln in lines.split("\n"):
-        t = tuple(ln.split("|", 5))
+        t = tuple(ln.split("|||", 5))
         if len(t) != 5:
             continue
         gll_dat.append(t)
