@@ -68,13 +68,9 @@ rpmdump() {
   done
 }
 
-# Find files by type (C|Go)
+# Find C files 
 rfindc() {
   find "$@" -type f -name "*.[ch]"
-}
-
-rfindgo() {
-  find "$@" -type f -name "*.go"
 }
 
 # Git formatted log
