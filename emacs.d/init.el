@@ -25,6 +25,7 @@
 (require 'generic-x)
 (require 'smooth-scroll)
 (require 'rst)
+(require 'xcscope)
 
 ;;;; Appearence:
 
@@ -75,7 +76,7 @@
 (require 'fill-column-indicator)
 (setq fci-style 'rule)
 (setq fci-rule-width 1)
-(setq fci-rule-color "ivory")
+(setq fci-rule-color "ivory4")
 (setq-default fci-rule-column 80)
 (add-hook 'c-mode-hook 'fci-mode)
 (setq auto-fill-mode 1)
@@ -104,19 +105,20 @@
 
 ;; Default font
 ;(set-default-font "Monospace 11")
-(add-to-list 'default-frame-alist '(font . "Monospace 11"))
+(add-to-list 'default-frame-alist '(font . "Monospace 12"))
 
 ;;;; Behaviour:
 
 ;; Enable whitespace-mode
 (require 'whitespace)
-(setq whitespace-line-column 80
-      whitespace-style '(tabs tab-mark trailing lines-tail))
+(setq whitespace-line-column 80)
+(setq whitespace-style '(face space tabs tab-mark trailing lines-tail))
 (add-hook 'python-mode-hook 'whitespace-mode)
 (add-hook 'c-mode-hook 'whitespace-mode)
-;(global-whitespace-mode 1)
-
+; (global-whitespace-mode 1)
 (setq-default show-trailing-whitespace t)
+(custom-set-faces
+ '(whitespace-tab ((t (:foreground "#363636")))))
 
 ;; Truncate lines at 80
 (add-hook 'text-mode-hook 'turn-on-auto-fill)
@@ -212,8 +214,8 @@
 (global-set-key (kbd "C-x <right>") 'windmove-right)
 
 ;; Buffer navigation
-(global-set-key "\M-[M" 'scroll-down)      ; PgUp = scroll-down
-(global-set-key "\M-[H\M-[2J" 'scroll-up)  ; PgDn = scroll-up
+;; (global-set-key "\M-[M" 'scroll-down)      ; PgUp = scroll-down
+;; (global-set-key "\M-[H\M-[2J" 'scroll-up)  ; PgDn = scroll-up
 
 ;; Search forward with Ctrl-f
 (global-set-key [(control f)] 'isearch-forward)
@@ -253,9 +255,8 @@
 (autoload 'ibuffer "ibuffer" "List buffers" t)
 
 ;; Cycle through buffers with arrow-keys (Ctrl-left/right)
-(global-set-key (kbd "C-<left>")  'bs-cycle-previous)
-(global-set-key (kbd "C-<right>") 'bs-cycle-next)
-
+(global-set-key (kbd "C-x <left>")  'bs-cycle-previous)
+(global-set-key (kbd "C-x <right>") 'bs-cycle-next)
 
 ;;;; Mode-setup:
 
@@ -277,7 +278,8 @@
 
 ;; CC
 (setq c-default-style
-      '((java-mode . "java")
+      '((cc-mode . "linux")
+        (java-mode . "java")
         (awk-mode . "awk")
         (other . "k&r")))
 
