@@ -11,7 +11,7 @@ try() {
 
 # Emacs helpers
 emacsclnt() {
-  emacsclient -t -a "" $@
+  emacsclient -t -a "" "$@"
 }
 
 emacsd_start() {
@@ -47,11 +47,11 @@ ptop() {
   if [ -z "${name}" ]; then
     return
   fi
-  pids=$(pgrep -d',' -x ${name})
+  pids=$(pgrep -d',' -x "${name}")
   if [ -z "${pids}" ]; then
     return
   fi
-  top -p ${pids}
+  top -p "${pids}"
 }
 
 # Show installed packages using white-seperator delimiter
@@ -62,7 +62,7 @@ rpmqaf() {
 # Show content of rpm file
 rpmdump() {
   for f in "$@"; do
-    echo ${f}
+    echo "${f}"
     try rpm2cpio "${f}" | cpio -tv
     echo
   done
@@ -83,16 +83,7 @@ rfindc() {
 
 # Git remote update shorten
 gru() {
-  git remote update $@
-}
-
-# Git tag by date
-git-tag-by-date() {
-  prefix="$1"
-  datenow=$(date -I | tr -d '-')
-  if [ ! -z ${prefix} ]; then
-    git tag ${prefix}-${datenow}
-  fi
+  git remote update "$@"
 }
 
 # Pipe "git show" into vi
