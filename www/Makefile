@@ -2,7 +2,7 @@
 all: index.html
 
 index.html: index.rst
-	rst2html5  $? $@
+	rst2html --theme medium-black  $? $@
 
 .PHONY: clean
 clean:
