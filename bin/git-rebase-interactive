@@ -1,2 +1,3 @@
 #!/bin/bash
+# tip: use --ignore-date to change timestamps
 git rebase --interactive $@

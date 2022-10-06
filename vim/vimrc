@@ -96,6 +96,11 @@ set sidescroll=1
 " Spell-check in git commits
 autocmd FileType gitcommit setlocal spell
 
+" Spell-check for text markdown and restructuredtext
+autocmd BufRead,BufNewFile *.txt setlocal spell
+autocmd BufRead,BufNewFile *.md setlocal spell
+autocmd BufRead,BufNewFile *.rst setlocal spell
+
 " Avoid noisy cscope
 set nocscopeverbose
 
