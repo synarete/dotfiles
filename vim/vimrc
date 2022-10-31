@@ -74,6 +74,8 @@ highlight LineNr term=bold cterm=NONE ctermfg=DarkGray ctermbg=NONE
 " Colored colum at 80
 highlight ColorColumn ctermbg=3 guibg=Gray3
 set colorcolumn=80
+autocmd FileType gitcommit set colorcolumn=72
+autocmd FileType rst,markdown set colorcolumn=72,80
 
 " Set utf8 as standard encoding and en_US as the standard language
 set encoding=utf8
