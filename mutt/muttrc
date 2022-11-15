@@ -26,6 +26,7 @@ unset use_domain
 set realname = "XXXXXXX YYYYYY"
 set from = "synarete@xxxxxxxx"
 set use_from = yes
+set text_flowed
 
 # Misc
 set move = no
@@ -44,6 +45,9 @@ bind pager <up> previous-line
 bind pager <down> next-line
 set smart_wrap
 set text_flowed
+
+# Reply to all recipients
+bind index,pager g group-reply
 
 # Sidebar
 
