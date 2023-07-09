@@ -9,14 +9,23 @@
 # http://stackoverflow.com/questions/591923/make-git-automatically-remove-trailing-whitespace-before-committing
 #
 
-_print() { 
-  local self=$(basename ${BASH_SOURCE[0]})
+_print() {
+  local self
 
+  self=$(basename "${BASH_SOURCE[0]}")
   echo "${self}: $*" >&2; 
 }
 
 _rtrim_spaces() {
   local path="$1"
+
+  if [[ ! -f ${path} ]]; then
+    return
+  fi
+
+  if [[ ${path} == *.png ]]; then
+    return
+  fi
 
   if grep -q "[[:blank:]]$" "${path}"; then
     _print "Remove trailing spaces:" "${path}"
@@ -33,10 +42,8 @@ _git_precommit_files() {
   git diff-index --name-status --cached HEAD | grep -v ^D | cut -c3-
 }
 
-  
 for f in $(_git_precommit_files); do
   _rtrim_spaces "$f"
   _git_readd "$f"
 done
-
 
