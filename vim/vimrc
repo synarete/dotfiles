@@ -102,6 +102,7 @@ autocmd FileType gitcommit setlocal spell
 autocmd BufRead,BufNewFile *.txt setlocal spell
 autocmd BufRead,BufNewFile *.md setlocal spell
 autocmd BufRead,BufNewFile *.rst setlocal spell
+autocmd BufRead,BufNewFile *.tex setlocal spell
 
 " Avoid noisy cscope
 set nocscopeverbose
