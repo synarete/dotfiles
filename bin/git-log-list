@@ -23,12 +23,13 @@
 # DEALINGS IN THE SOFTWARE.
 #
 
-import os
-import sys
 import getopt
+import os
 import shlex
 import shutil
 import subprocess
+import sys
+
 import colorama
 
 WHITE = colorama.Fore.WHITE
@@ -69,26 +70,28 @@ def locate_bin(name: str) -> str:
 
 def subexec(cmd, work_dir=None) -> str:
     """Execute command as sub-process, die upon failure"""
-    pipes = subprocess.Popen(
+    ret = ""
+    with subprocess.Popen(
         shlex.split(cmd),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         cwd=work_dir,
         shell=False,
         env=os.environ.copy(),
-    )
-    std_out, std_err = pipes.communicate()
-    if pipes.returncode != 0:
-        die("failed: " + cmd)
-    out = std_err or std_out
-    return out.decode("UTF-8")
+    ) as pipes:
+        std_out, std_err = pipes.communicate()
+        if pipes.returncode != 0:
+            die("failed: " + cmd)
+        out = std_err or std_out
+        ret = out.decode("UTF-8")
+    return ret
 
 
 def git_log_format(work_dir: str, ref_name: str, nlines: int) -> str:
     """Calls git-log-format without colors and with '|||' as seperator"""
     cmd = locate_bin("git")
     cmd = cmd + " --no-pager log --abbrev-commit --decorate --date=short"
-    cmd = cmd + " -n{} ".format(nlines)
+    cmd = cmd + f" -n{nlines} "
     cmd = cmd + " --format=tformat:'%h|||%an|||%ad|||%d|||%s' "
     cmd = cmd + ref_name
     return subexec(cmd, work_dir)
@@ -126,16 +129,17 @@ def color_branch_tags(tag_token: str) -> str:
     return "(" + ", ".join(tags_out) + ") "
 
 
-def print_gll_line(sha: str, author: str, date: str, tag_token: str,
-                   commit_msg: str) -> None:
+def print_gll_line(
+    sha: str, author: str, date: str, tag_token: str, commit_msg: str
+) -> None:
     hsep = RED + BRIGHT + "|" + RESET_ALL
     sha = GREEN + sha
     author = YELLOW + "{:<20s}".format(author)
     date = LIGHTBLUE_EX + date
     tags = color_branch_tags(tag_token)
     cmsg = RESET_ALL + commit_msg + RESET_ALL
-    tail = tags + RESET_ALL + commit_msg + RESET_ALL
-    print("{} {} {} {} {}".format(sha, author, date, hsep, tail))
+    tail = tags + cmsg
+    print(f"{sha} {author} {date} {hsep} {tail}")
 
 
 def print_gll(gll_dat: list) -> None:
@@ -146,7 +150,7 @@ def print_gll(gll_dat: list) -> None:
 
 def usage(exit_code: int) -> None:
     prog = os.path.basename(sys.argv[0])
-    print("usage: {} [-n NLINES] [<git-path>]".format(prog))
+    print(f"usage: {prog} [-n NLINES] [<git-path>]")
     sys.exit(exit_code)
 
 
