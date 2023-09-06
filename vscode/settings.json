@@ -19,7 +19,7 @@
   "go.buildOnSave": "package",
   "go.formatTool": "gofmt",
   "terminal.integrated.fontSize": 16,
-  "window.zoomLevel": 0.5,
+  "window.zoomLevel": 0.75,
   "workbench.colorCustomizations": {
     "activityBar.background": "#111111",
     "editor.background": "#121212",
