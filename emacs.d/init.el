@@ -16,16 +16,25 @@
 
 (load-library "python")
 
-;;;; Extras:
+;;;; Packages:
+(require 'package)
+(package-initialize)
+
+;; Where to look for extra emacs packages
+(add-to-list 'package-archives
+             '("melpa-stabe" . "https://melpa.org/packages/") t)
+
 (require 'cc-mode)
 (require 'make-mode)
-(require 'magit)
-;(require 'git-commit)
 (require 'smart-tabs-mode)
 (require 'generic-x)
 (require 'smooth-scroll)
 (require 'rst)
-(require 'xcscope)
+(require 'magit)
+(require 'which-key)
+
+(require 'use-package)
+(setq use-package-always-ensure t)
 
 ;;;; Appearence:
 
@@ -104,21 +113,19 @@
 (setq mouse-autoselect-window t)
 
 ;; Default font
-;(set-default-font "Monospace 11")
-(add-to-list 'default-frame-alist '(font . "Monospace 12"))
+(add-to-list 'default-frame-alist '(font . "Source Code Pro 14"))
 
 ;;;; Behaviour:
 
 ;; Enable whitespace-mode
 (require 'whitespace)
 (setq whitespace-line-column 80)
-(setq whitespace-style '(face space tabs tab-mark trailing lines-tail))
+;; (setq whitespace-style '(face space tabs tab-mark trailing lines-tail))
+(setq whitespace-style '(face tab-mark trailing lines-tail))
+(setq-default show-trailing-whitespace t)
 (add-hook 'python-mode-hook 'whitespace-mode)
 (add-hook 'c-mode-hook 'whitespace-mode)
-; (global-whitespace-mode 1)
-(setq-default show-trailing-whitespace t)
-(custom-set-faces
- '(whitespace-tab ((t (:foreground "#363636")))))
+;; (global-whitespace-mode 1)
 
 ;; Truncate lines at 80
 (add-hook 'text-mode-hook 'turn-on-auto-fill)
@@ -139,13 +146,13 @@
 (add-hook 'before-save-hook 'delete-trailing-whitespace)
 (add-hook 'before-save-hook 'whitespace-cleanup)
 
-;; Enable smoth-scrolling
-(smooth-scroll-mode t)
+;; Disable smoth-scrolling
+(smooth-scroll-mode nil)
 
 ;;(setq mouse-wheel-scroll-amount '(1 ((shift) . 1)))
 ;;(setq mouse-wheel-progressive-speed nil)
 (setq mouse-wheel-follow-mouse 't)
-(setq scroll-conservatively 10000)
+(setq scroll-conservatively 10)
 (setq auto-window-vscroll nil)
 
 ;; Do not ask before saving buffers
@@ -165,10 +172,6 @@
 (setq save-place-file
       (concat user-emacs-directory "saveplace.el") )
 (setq-default save-place t)
-
-;; Start with enlarged window size
-;;(if (window-system)
-;;    (set-frame-size (selected-frame) 90 40))
 
 ;; When on a tab, make the cursor the tab length
 (setq-default x-stretch-cursor t)
@@ -207,11 +210,11 @@
 
 ;; Window switching
 (windmove-default-keybindings 'control)  ;; C-[direction]
-(global-set-key (kbd "C-x -") 'rotate-windows)
-(global-set-key (kbd "C-x <up>") 'windmove-up)
-(global-set-key (kbd "C-x <down>") 'windmove-down)
-(global-set-key (kbd "C-x <left>") 'windmove-left)
-(global-set-key (kbd "C-x <right>") 'windmove-right)
+;; (global-set-key (kbd "M -") 'rotate-windows)
+(global-set-key (kbd "<M-up>") 'windmove-up)
+(global-set-key (kbd "<M-down>") 'windmove-down)
+(global-set-key (kbd "<M-left>") 'windmove-left)
+(global-set-key (kbd "<M-right>") 'windmove-right)
 
 ;; Buffer navigation
 ;; (global-set-key "\M-[M" 'scroll-down)      ; PgUp = scroll-down
@@ -255,8 +258,15 @@
 (autoload 'ibuffer "ibuffer" "List buffers" t)
 
 ;; Cycle through buffers with arrow-keys (Ctrl-left/right)
-(global-set-key (kbd "C-x <left>")  'bs-cycle-previous)
-(global-set-key (kbd "C-x <right>") 'bs-cycle-next)
+(global-set-key (kbd "<C-left>")  'bs-cycle-previous)
+(global-set-key (kbd "<C-right>") 'bs-cycle-next)
+
+
+;; Show key-bindings
+(which-key-mode)
+
+;; Use winner-mode to navige changes in the window configuration
+(winner-mode 1)
 
 ;;;; Mode-setup:
 
@@ -322,10 +332,14 @@
 ;; Git
 (add-hook 'git-commit-setup-hook 'turn-off-auto-fill t)
 
-;;;; Colors:
+;;;; Terminal
+(use-package term
+  :commands term
+  :config
+  (setq explicit-shell-file-name "bash"))
 
-;; Prefered color theme + private customizations
-(require 'color-theme)
-(color-theme-initialize)                                       
+;;;; Colors-theme:
 (load-theme 'twilight t) ;; wombat
 (set-face-underline-p 'highlight nil)
+
+;;;; Custom comes here...
