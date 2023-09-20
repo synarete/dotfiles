@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0
+#
+# Helper python-script to copy files from flat source directory structure (such
+# as Android storage, via FUSE mount) into date-based structure. Each file in
+# source tree, which has a known suffix, is copied into date-based format of
+# <dest-dir>/<year>/<month>/<file-name>.
+#
+
+import getopt
+import os
+import sys
+import typing
+from datetime import datetime as Datetime
+from pathlib import Path
+
+_KNOWN_SUFFIX = [
+    ".gif",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".pdf",
+    ".webm",
+    ".avi",
+    ".av1",
+    ".mp4",
+    ".mov",
+    ".mjpg",
+    ".mkv",
+    ".vob",
+    ".mpg",
+    ".tiff",
+    ".blend",
+]
+
+
+def _has_known_suffix(path: Path) -> bool:
+    suf = str(path.suffix).lower()
+    return suf in _KNOWN_SUFFIX
+
+
+def _is_known_file(path: Path) -> bool:
+    return path.is_file() and _has_known_suffix(path)
+
+
+def _mtime_of(path: Path) -> Datetime:
+    mt = path.stat().st_mtime
+    return Datetime.fromtimestamp(mt)
+
+
+def _dest_prefix_of(path: Path) -> Path:
+    return Path(_mtime_of(path).strftime("%Y/%m"))
+
+
+def _normalized(path: Path) -> Path:
+    stem = str(path.stem)
+    sufix = str(path.suffix).lower()
+    return path.parent / Path(stem + sufix)
+
+
+def _dest_path_of(src_path: Path, base_dir: Path) -> Path:
+    path = base_dir / _dest_prefix_of(src_path) / src_path.name
+    return _normalized(path)
+
+
+def _find_known_files(src_path: Path) -> typing.Iterator[Path]:
+    if _is_known_file(src_path):
+        yield src_path
+    elif src_path.is_dir():
+        for sub in src_path.rglob("*"):
+            sub_path = src_path / sub
+            for src_file in _find_known_files(sub_path):
+                yield src_file
+
+
+def _copy_file(src_file: Path, dst_file: Path) -> None:
+    dst_file.parent.mkdir(parents=True, exist_ok=True)
+    dst_file.write_bytes(src_file.read_bytes())
+
+
+def _preserve_mode(src_file: Path, dst_file: Path) -> None:
+    src_stat = src_file.stat()
+    dst_file.chmod(src_stat.st_mode)
+
+
+def _preserve_amtimes(src_file: Path, dst_file: Path) -> None:
+    src_stat = src_file.stat()
+    src_atime, src_mtime = src_stat.st_atime, src_stat.st_mtime
+    os.utime(dst_file, (src_atime, src_mtime))
+
+
+def _copy_src_to_dst(src_file: Path, dst_file: Path) -> None:
+    try:
+        _copy_file(src_file, dst_file)
+        _preserve_mode(src_file, dst_file)
+        _preserve_amtimes(src_file, dst_file)
+        print(f"{src_file} --> {dst_file}")
+    except (IOError, OSError) as err:
+        print(f"{src_file} --> {dst_file} => {err}")
+
+
+def _reorder(src_base: Path, dst_base: Path, from_mtime: Datetime) -> None:
+    for src_file in _find_known_files(src_base):
+        src_mtime = _mtime_of(src_file)
+        dst_file = _dest_path_of(src_file, dst_base)
+        if src_mtime >= from_mtime and not dst_file.is_file():
+            _copy_src_to_dst(src_file, dst_file)
+
+
+def _usage(exit_code: int) -> None:
+    print("reorder-by-time [--from=<date>] <src-dir> <dst-dir>\n")
+    sys.exit(exit_code)
+
+
+def _parse_from_time(tm: str) -> Datetime:
+    return Datetime.strptime(tm, "%Y-%m-%d")
+
+
+def main():
+    from_mtime = _parse_from_time("2000-01-01")
+    opts, args = getopt.getopt(sys.argv[1:], "hd:", ["help", "from="])
+    if len(args) != 2:
+        _usage(1)
+    for o, a in opts:
+        if o in ("-h", "--help"):
+            _usage(0)
+        elif o in ("-d", "--from"):
+            from_mtime = _parse_from_time(a)
+        else:
+            _usage(1)
+    src_base, dst_base = Path(args[0]), Path(args[1])
+    if not src_base.is_dir() or not dst_base.is_dir():
+        _usage(2)
+    _reorder(src_base, dst_base, from_mtime)
+
+
+if __name__ == "__main__":
+    main()
