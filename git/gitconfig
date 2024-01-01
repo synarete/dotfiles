@@ -7,7 +7,7 @@
 
 [core]
 	whitespace = trailing-space,space-before-tab
-        editor = vim
+	editor = vim
 	bigfilethreshold = 256k
 	autocrlf = input
 	# excludesfile = ${HOME}/.gitignore_global
@@ -78,6 +78,8 @@
 
 [diff]
 	tool = vimdiff
+	colormoved = "default"
+	colormovedws = "allow-indentation-change"
 
 [credential]
 	helper = cache
