@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0
 #
 # Helper python-script to copy files from flat source directory structure (such
-# as Android storage, via FUSE mount) into date-based structure. Each file in
-# source tree, which has a known suffix, is copied into date-based format of
-# <dest-dir>/<year>/<month>/<file-name>.
+# as Android storage, via FUSE mount) into date oriented structure. Each file
+# in the source tree, which has a known suffix, is copied into date-based format
+# of <dest-dir>/<year>/<month>/<file-name>.
 #
 
 import getopt
