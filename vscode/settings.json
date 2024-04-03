@@ -31,7 +31,8 @@
     "statusBar.noFolderBackground": "#212121",
     "statusBar.debuggingBackground": "#263238"
   },
-  "workbench.editor.showTabs": true,
+  "workbench.editor.showTabs": "multiple",
   "workbench.iconTheme": "Monokai Pro (Filter Spectrum) Icons",
-  "workbench.colorTheme": "Mountain"
+  "editor.renderWhitespace": "all",
+  "workbench.colorTheme": "Nord Dark Pro Darker",
 }
