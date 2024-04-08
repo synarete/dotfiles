@@ -1,17 +1,15 @@
+# shellcheck shell=bash
 # User specific bash settings
 
 # If not running interactively, don't do anything
 [ -z "$PS1" ] && return
 
 # Source system files
-_try_source() {
-  if [ -f "$1" ]; then
-    source "$1" 
-  fi
-}
+source /etc/bashrc
+source /etc/profile
 
-_try_source /etc/bashrc
-_try_source /etc/profile
+# Try-source git system-wide files
+_try_source() { if [ -f "$1" ]; then source "$1"; fi }
 _try_source /usr/share/git-core/contrib/completion/git-prompt.sh
 _try_source /etc/bash_completion.d/git-prompt
 
@@ -31,8 +29,7 @@ export HISTSIZE=10000
 export HISTCONTROL=ignoreboth:erasedups
 
 # Prompt
-#export PS1='[\u@\h \W]\$ '
-export PROMPT_DIRTRIM=2
+export PROMPT_DIRTRIM=3
 export GIT_PS1_SHOWDIRTYSTATE=1
 export GIT_PS1_SHOWSTASHSTATE=1
 export GIT_PS1_SHOWUNTRACKEDFILES=1
@@ -43,6 +40,7 @@ export GIT_PS1_SHOWCOLORHINTS=1
 export GIT_PS1_HIDE_IF_PWD_IGNORED=1
 export PS1="[${VIOLET}\u@\h${NORMAL} ${BLUE}\w${NORMAL}${NORMAL}]\$(__git_ps1)\$ ${RESET}"
 export PS1_MINIMAL="[${BRIGHT_WHITE}\u@\h${NORMAL} ${WHITE}\w${NORMAL}${NORMAL}]${RESET}\$(__git_ps1)${YELLOW}\$ ${RESET}"
+#export PS1='[\u@\h \W]\$ '
 
 # Aliases
 alias ll='ls -lh'
