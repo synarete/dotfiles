@@ -108,7 +108,8 @@ def _reorder(src_base: Path, dst_base: Path, from_mtime: Datetime) -> None:
 
 
 def _usage(exit_code: int) -> None:
-    print("reorder-by-time [--from=<date>] <src-dir> <dst-dir>\n")
+    print(sys.argv)
+    print("copy-reordered-by-time [--from=<date>] <src-dir> <dst-dir>\n")
     sys.exit(exit_code)
 
 
