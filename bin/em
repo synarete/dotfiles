@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -e
+command -v emacs
+exec emacs "$@" > /dev/null 2>&1 &

@@ -10,10 +10,6 @@ try() {
 }
 
 # Emacs helpers
-emacsclnt() {
-  emacsclient -t -a "" "$@"
-}
-
 emacsd_start() {
   emacs --daemon
 }
