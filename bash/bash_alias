@@ -1,0 +1,17 @@
+
+# Aliases 
+alias ll='ls -lh'
+alias ltr='ls -ltrh'
+alias lss='ls -lhs'
+alias la='ls -A'
+alias l='ls -CF'
+alias cd..='cd ..'
+alias tailf='tail -f'
+alias tree='tree -C -F --dirsfirst'
+alias rgrepc='egrep -Rn --include="*.[ch]" '
+#alias gsw='git show -W'
+
+# Aliases from bin
+alias gll='git-log-list'
+alias gri='git-rebase-interactive'
+

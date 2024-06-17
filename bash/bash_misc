@@ -1,0 +1,12 @@
+# Terminal type (for vim within tmux)
+export TERM=xterm-256color
+
+# Bash history
+export HISTSIZE=10000
+export HISTCONTROL=ignoreboth:erasedups
+
+# Clangd flags
+export CLANGD_FLAGS="--header-insertion=never"
+
+# Use vim as default editor
+export EDITOR=vim
