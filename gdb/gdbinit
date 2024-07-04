@@ -1,4 +1,3 @@
-
 set $COLOUREDPROMPT = 1
 set $USECOLOR = 1
 
@@ -13,7 +12,8 @@ set history remove-duplicates 100
 set print pretty on
 set print array on
 
+set debuginfod enabled on
+
 # ignore some signals (Boehm–Demers–Weiser GC)
 handle SIGPWR noprint nostop pass
 handle SIGXCPU noprint nostop pass
-
