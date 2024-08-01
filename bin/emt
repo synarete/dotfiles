@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+TERM=xterm-256color COLORTERM=truecolor \
+  emacs -nw "$@" --eval '(set-background-color "#131517")'
