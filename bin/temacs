@@ -4,4 +4,4 @@ export LANG=en_US.UTF-8
 export LANGUAGE=en_US.UTF-8
 export COLORTERM=truecolor
 export TERM=xterm-256color
-emacs -nw "$@" --eval '(set-background-color "#131517")'
+emacs -nw -q -l "${HOME}/.emacs.d/init.el" "$@"
