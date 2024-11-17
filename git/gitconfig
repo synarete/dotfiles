@@ -65,7 +65,7 @@
 	co = checkout
 	nb = checkout -b
 	clean-fxd = clean -fxd
-	add-commit = commit -a
+	add-commit = commit -a -s
 	reset-head = reset --hard HEAD
 	ls = log --oneline --decorate
 	ll = log --oneline --decorate --all --graph --date=iso --pretty
