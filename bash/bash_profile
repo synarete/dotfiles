@@ -4,36 +4,37 @@
 # If not running interactively, don't do anything
 [ -z "$PS1" ] && return
 
-# Source system files
-source /etc/bashrc
-source /etc/profile
-
 # Check the window size after each command and update
 shopt -s checkwinsize
 
-# Try-source git system-wide files
+# Source system files
 _try_source() { if [ -f "$1" ]; then source "$1"; fi }
+_try_source "/etc/bashrc"
+_try_source "/etc/profile"
+_try_source "/etc/bash.bashrc"
+
+# Try-source git system-wide files
 _try_source /usr/share/git-core/contrib/completion/git-prompt.sh
 _try_source /etc/bash_completion.d/git-prompt
 
 # Dotfiles' root-dir
-ROOT="$(realpath "$(dirname "${BASH_SOURCE[0]}")"/../)"
+_rootdir="$(realpath "$(dirname "${BASH_SOURCE[0]}")"/../)"
 
 # Colors & functions
-source "${ROOT}/bash/bash_colors"
-source "${ROOT}/bash/bash_functions"
+_try_source "${_rootdir}/bash/bash_colors"
+_try_source "${_rootdir}/bash/bash_functions"
 
 # Prompt (PS1)
-source "${ROOT}/bash/bash_prompt"
+_try_source "${_rootdir}/bash/bash_prompt"
 
 # Aliases
-source "${ROOT}/bash/bash_alias"
+_try_source "${_rootdir}/bash/bash_alias"
 
 # Misc
-source "${ROOT}/bash/bash_misc"
+_try_source "${_rootdir}/bash/bash_misc"
 
 # Have python history file
-export PYTHONSTARTUP=${ROOT}/bash/pystartup
+export PYTHONSTARTUP=${_rootdir}/bash/pystartup
 
 # Extra tools
-export PATH="${HOME}"/.local/bin:"${ROOT}"/bin:${PATH}
+export PATH="${HOME}"/.local/bin:"${_rootdir}"/bin:${PATH}
