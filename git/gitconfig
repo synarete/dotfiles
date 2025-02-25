@@ -30,6 +30,44 @@
 
 [branch]
 	autosetuprebase = always
+	sort = -committerdate
+
+[tag]
+        sort = version:refname
+
+[diff]
+	tool = vimdiff
+	colormoved = "default"
+	colormovedws = "allow-indentation-change"
+        algorithm = histogram
+        mnemonicprefix = true
+        renames = true
+
+[merge]
+	conflictstyle = diff3
+	tool = vimdiff
+
+[commit]
+        verbose = true
+
+[log]
+	decorate = short
+
+[alias]
+	st = status -sb
+	br = branch
+	df = diff
+	co = checkout
+	nb = checkout -b
+	clean-fxd = clean -fxd
+	add-commit = commit -a -s
+	reset-head = reset --hard HEAD
+	ls = log --oneline --decorate
+	ll = log --oneline --decorate --all --graph --date=iso --pretty
+	lg = log --pretty=oneline --abbrev-commit --graph --decorate
+
+[credential]
+	helper = cache
 
 [color]
 	ui = auto
@@ -53,33 +91,3 @@
 	cmd = git rebase --abort
 [guitool "Pull with Rebase"]
 	cmd = git pull --rebase
-
-[log]
-	decorate = short
-
-
-[alias]
-	st = status -sb
-	br = branch
-	df = diff
-	co = checkout
-	nb = checkout -b
-	clean-fxd = clean -fxd
-	add-commit = commit -a -s
-	reset-head = reset --hard HEAD
-	ls = log --oneline --decorate
-	ll = log --oneline --decorate --all --graph --date=iso --pretty
-	lg = log --pretty=oneline --abbrev-commit --graph --decorate
-
-
-[merge]
-	conflictstyle = diff3
-	tool = vimdiff
-
-[diff]
-	tool = vimdiff
-	colormoved = "default"
-	colormovedws = "allow-indentation-change"
-
-[credential]
-	helper = cache
