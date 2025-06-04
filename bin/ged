@@ -1,2 +1,2 @@
 #!/bin/sh
-exec gedit "$@" > /dev/null 2>&1 &
+exec gnome-text-editor "$@" > /dev/null 2>&1 &
