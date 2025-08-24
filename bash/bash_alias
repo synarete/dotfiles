@@ -14,4 +14,4 @@ alias rgrepc='egrep -Rn --include="*.[ch]" '
 # Aliases from bin
 alias gll='git-log-list'
 alias gri='git-rebase-interactive'
-
+alias grc='git-reset-soft-commit'
