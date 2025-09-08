@@ -1,7 +1,8 @@
 #!/bin/bash
 self="$(basename "${BASH_SOURCE[0]}")"
-[ "$#" -ne 2 ] && echo "usage: ${self} <commit-id> <commit-message>" && exit 1
+[ "$#" -ne 1 ] && echo "usage: ${self} <commit-id>" && exit 1
 
 set -e -x
+msg="$(git log -1 --pretty=format:%s)"
 git reset --soft "$1"
-git commit --signoff --message="$2"
+git commit --signoff --message="${msg}"
