@@ -1,7 +1,0 @@
-#!/bin/bash
-set -e
-cd ${HOME}
-export GTK_IM_MODULE="ibus"
-export WEBKIT_DISABLE_COMPOSITING_MODE=1
-command -v eclipse
-exec eclipse "$@" > /dev/null 2>&1 &
