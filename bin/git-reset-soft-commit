@@ -5,6 +5,6 @@ self="$(basename "${BASH_SOURCE[0]}")"
 set -e -x
 commit_id="$1"
 git rev-parse --verify "${commit_id}"
-commit_msg="$(git log -1 --pretty=format:%s)"
+commit_msg="$(git log -1 --pretty=format:%B)"
 git reset --soft "${commit_id}"
 git commit --signoff --message="${commit_msg}"
