@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
 set -e
-exec emacs --fullscreen --no-splash "$@" > /dev/null 2>&1 &
+export GTK_THEME=Adwaita:dark
+exec emacs --no-splash "$@" > /dev/null 2>&1 &
