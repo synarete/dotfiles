@@ -5,4 +5,5 @@ export LANGUAGE=en_US.UTF-8
 export COLORTERM=truecolor
 export TERM=xterm-256color
 export ESHELL="/bin/bash"
-emacs --no-window-system --no-splash "$@"
+command -v emacs-nw || (echo "emacs-nw is missing" && exit 1)
+emacs-nw "$@"
