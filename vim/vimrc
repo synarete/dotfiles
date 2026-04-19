@@ -103,17 +103,35 @@ autocmd FileType gitcommit call setpos(".", [0, 1, 1, 0])
 autocmd FileType gitrebase setlocal nofoldenable
 autocmd FileType gitrebase setlocal bufhidden=delete
 
+" Git rebase-interactive single-key shortcuts
+autocmd FileType gitrebase nnoremap
+    \ <buffer> <silent> p :s/^\w\+/pick/<CR>:nohlsearch<CR>
+autocmd FileType gitrebase nnoremap
+    \ <buffer> <silent> r :s/^\w\+/reword/<CR>:nohlsearch<CR>
+autocmd FileType gitrebase nnoremap
+    \ <buffer> <silent> e :s/^\w\+/edit/<CR>:nohlsearch<CR>
+autocmd FileType gitrebase nnoremap
+    \ <buffer> <silent> s :s/^\w\+/squash/<CR>:nohlsearch<CR>
+autocmd FileType gitrebase nnoremap
+    \ <buffer> <silent> f :s/^\w\+/fixup/<CR>:nohlsearch<CR>
+autocmd FileType gitrebase nnoremap
+    \ <buffer> <silent> d :s/^\w\+/drop/<CR>:nohlsearch<CR>
+autocmd FileType gitrebase nnoremap
+    \ <buffer> <silent> x :s/^\w\+/exec/<CR>A
+autocmd FileType gitrebase nnoremap
+    \ <buffer> <silent> b :s/^\w\+/break/<CR>:nohlsearch<CR>
+
 " Color scheme
 try
-    colorscheme jellybeans
+  colorscheme jellybeans
 catch 
-    colorscheme desert
+  colorscheme desert
 endtry
 set background=dark
 
 " Colored line-numbers
 highlight LineNr term=bold cterm=NONE ctermfg=DarkGray ctermbg=NONE
-	\ gui=NONE guifg=Gray16 guibg=NONE
+    \ gui=NONE guifg=Gray16 guibg=NONE
 
 " Colored colum at 80
 highlight ColorColumn ctermbg=3 guibg=Gray3
@@ -228,7 +246,6 @@ hi User1 ctermfg=007 ctermbg=239 guibg=#4e4e4e guifg=#adadad
 hi User2 ctermfg=007 ctermbg=236 guibg=#303030 guifg=#adadad
 hi User3 ctermfg=236 ctermbg=236 guibg=#303030 guifg=#303030
 hi User4 ctermfg=239 ctermbg=239 guibg=#4e4e4e guifg=#4e4e4e
-
 
 " Minimal setup for files browsing
 let g:netrw_banner = 0
