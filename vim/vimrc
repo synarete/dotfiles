@@ -1,11 +1,7 @@
 " vimrc
 "
 
-" call pathogen#infect()
-" call pathogen#helptags()
-
-" Use Vim settings, rather then Vi settings (much better!).
-" Must be first: it changes other options as a side effect.
+" Disable vi compatibility (crucial for modern features)
 set nocompatible
 
 " Enable true colors
@@ -24,7 +20,7 @@ set list
 " Mark white-character visible
 "set list listchars=tab:>-,nbsp:.,trail:.,extends:>,precedes:<
 set listchars=tab:»\ ,extends:›,precedes:‹,nbsp:·,trail:·
-set showbreak=\\ "
+set showbreak=\\\
 
 " Keep 100 lines of command line history
 set history=100
@@ -43,6 +39,7 @@ set hlsearch
 
 " Makes search act like search in modern browsers
 set incsearch
+set smartcase
 
 " Show matching brackets when text indicator is over them
 set showmatch
@@ -56,6 +53,9 @@ set smartindent
 set smarttab
 set shiftround
 
+" Tab settings
+set tabstop=8
+
 " Enable filetype plugins
 filetype plugin on
 filetype indent on
@@ -63,8 +63,52 @@ filetype indent on
 " XTerm Color
 set t_Co=256
 
-" Color scheme (jellybeans|desert)
-colorscheme jellybeans
+" Better key-mapping experience
+set timeout timeoutlen=1000 ttimeoutlen=10
+
+" C Filetype specific settings
+autocmd FileType c setlocal tabstop=8 shiftwidth=8 noexpandtab
+autocmd FileType c setlocal cinoptions=:0,l1,t0,g0,(0,M4
+autocmd FileType c setlocal cindent
+autocmd FileType c setlocal comments=sr:/*,mb:*,ex:*/,://
+autocmd FileType c setlocal textwidth=80
+autocmd FileType c setlocal formatoptions=tcqlron
+
+" Better C syntax highlighting
+let c_space_errors = 1
+let c_no_trail_space_error = 0
+let c_no_tab_space_error = 0
+let c_comment_strings = 1
+let c_gnu = 1
+let c_syntax_for_h = 1
+
+" Python/Shell Filetype specific settings
+autocmd FileType python setlocal tabstop=4 shiftwidth=4 expandtab
+autocmd FileType sh,bash setlocal tabstop=8 shiftwidth=4 expandtab
+autocmd FileType sh,bash setlocal textwidth=80
+
+" Git commit settings
+autocmd FileType gitcommit setlocal textwidth=72
+autocmd FileType gitcommit setlocal colorcolumn=50,72
+autocmd FileType gitcommit setlocal spell spelllang=en_us
+autocmd FileType gitcommit setlocal complete+=kspell
+autocmd FileType gitcommit setlocal formatoptions+=tqn
+autocmd FileType gitcommit setlocal formatoptions-=l
+autocmd FileType gitcommit setlocal comments=:#,fb:-,fb:*
+
+" Git commit start in normal mode a first line
+autocmd FileType gitcommit call setpos(".", [0, 1, 1, 0])
+
+" Git rebase-interactive settings
+autocmd FileType gitrebase setlocal nofoldenable
+autocmd FileType gitrebase setlocal bufhidden=delete
+
+" Color scheme
+try
+    colorscheme jellybeans
+catch 
+    colorscheme desert
+endtry
 set background=dark
 
 " Colored line-numbers
@@ -88,12 +132,21 @@ set noswapfile
 set nobackup
 set nowritebackup
 
+" Perforamce optimazation
+set lazyredraw
+set ttyfast
+
 " Encypt strongly
 set cm=blowfish2
 set viminfo=
 
 " Scrolling
 set sidescroll=1
+
+" Bettwer Wildmenu
+set wildmenu
+set wildmode=longest:full,full
+set wildignore=*.p,*.obj,*~,*,pyc,*.swp
 
 " Spell-check in git commits
 autocmd FileType gitcommit setlocal spell
@@ -106,6 +159,15 @@ autocmd BufRead,BufNewFile *.tex setlocal spell
 
 " Avoid noisy cscope
 set nocscopeverbose
+
+" Mouse support
+set mouse=a
+
+" Use system clipboard
+set clipboard=unnamedplus
+
+" Clear search highlight
+nnoremap <silent> <Esc><Esc> :nohlsearch<CR>
 
 " Display buffers-list with F5
 nnoremap <F5> :buffers<CR>:buffer<Space>
