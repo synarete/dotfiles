@@ -84,7 +84,7 @@ let c_syntax_for_h = 1
 
 " Python/Shell Filetype specific settings
 autocmd FileType python setlocal tabstop=4 shiftwidth=4 expandtab
-autocmd FileType sh,bash setlocal tabstop=8 shiftwidth=4 expandtab
+autocmd FileType sh,bash setlocal tabstop=8
 autocmd FileType sh,bash setlocal textwidth=80
 
 " Git commit settings
