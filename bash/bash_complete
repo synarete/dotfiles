@@ -1,0 +1,22 @@
+# shellcheck shell=bash
+# Completions for private helpers
+
+_complete_run() {
+	local target_path script_dir
+	bin_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../bin" && pwd)"
+	target_path="$(type -p run 2>/dev/null)"
+
+	if [[ "$target_path" == "${bin_dir}/run" ]]; then
+		if [[ $COMP_CWORD -eq 1 ]]; then
+			local cur="${COMP_WORDS[COMP_CWORD]}"
+			COMPREPLY=( $(compgen -c -f -- "$cur") )
+		else
+			_command_offset 1
+		fi
+	else
+		COMPREPLY=()
+	fi
+}
+
+complete -F _complete_run run
+

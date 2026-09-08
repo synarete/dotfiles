@@ -30,6 +30,9 @@ _try_source "${_rootdir}/bash/bash_prompt"
 # Aliases
 _try_source "${_rootdir}/bash/bash_alias"
 
+# Completions
+_try_source "${_rootdir}/bash/bash_complete"
+
 # Misc
 _try_source "${_rootdir}/bash/bash_misc"
 
@@ -38,3 +41,7 @@ export PYTHONSTARTUP=${_rootdir}/bash/pystartup
 
 # Extra tools
 export PATH="${HOME}"/.local/bin:"${_rootdir}"/bin:${PATH}
+
+# Cleanups
+unset -f _try_source
+unset _rootdir
