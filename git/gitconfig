@@ -1,5 +1,5 @@
 [user]
-	email = synarete@xxxxxxxx
+	email = synarete@gmail.com
 	name = Shachar Sharon
 
 [init]
@@ -13,15 +13,14 @@
 	# excludesfile = ${HOME}/.gitignore_global
 
 [sendemail]
-	from = Shachar Sharon <shachars@xxxxxx>
+	from = Shachar Sharon <synarete@gmail.com>
 	smtpserver = smtp.gmail.com
-	smtpserverport = 465
-	smtpencryption = ssl
+	smtpserverport = 587
+	smtpencryption = tls
 	smtpdomain = xxxxxx.net
-	smtpuser = shachars@xxxxxx
-	smtppass = passwd
+	smtpuser = synarete@gmail.com
 	suppresscc = all
-	suppressfrom = yes
+	suppressfrom = no
 	signedoffbycc = no
 	chainreplyto = no
 
