@@ -1,0 +1,19 @@
+[general]
+accounts = Gmail
+maxsyncaccounts = 1
+
+[Account Gmail]
+localrepository = LocalGmail
+remoterepository = RemoteGmail
+
+[Repository LocalGmail]
+type = Maildir
+localfolders = ~/Mail
+
+[Repository RemoteGmail]
+type = Gmail
+remoteuser = YOUR_GMAIL_USERNAME@gmail.com
+remotepass = YOUR_16_CHAR_APP_PASSWORD
+sslcacertfile = /etc/pki/tls/certs/ca-bundle.crt
+# Keep local trash and remote trash synchronized correctly
+realdelete = no
