@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
-export GTK_THEME=Adwaita:dark
-command -v emacs || (echo "emacs is missing" && exit 1)
-exec emacs --no-splash "$@" > /dev/null 2>&1 &
+command -v emacs >/dev/null 2>&1 || { echo "emacs is missing" >&2; exit 1; }
+cd "${HOME}"
+GTK_THEME="Adwaita:dark" \
+  emacs --no-splash "$@" > /dev/null 2>&1 &
