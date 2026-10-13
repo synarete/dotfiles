@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o nounset
+set -o pipefail
+
+# Require target directory argument
+if [[ $# -lt 1 ]]; then
+    echo "Usage: $0 <project-dir> [claude-args...]" >&2
+    exit 1
+fi
+
+TARGET_DIR="$1"
+shift  # Shift off target directory so remaining args belong to claude
+
+# Resolve absolute path to project root
+unset CDPATH
+PROJECT_ROOT="$(cd "${TARGET_DIR}" && pwd -P)"
+
+# Divert standard temp
+export TMPDIR="${PROJECT_ROOT}/.scratch"
+export TMP="${TMPDIR}"
+
+# Ensure project-local tmp exist
+mkdir -p "${TMPDIR}"
+
+# Run claude from project's root
+cd "${PROJECT_ROOT}"
+exec claude "$@"
