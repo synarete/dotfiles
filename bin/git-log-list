@@ -1,194 +1,255 @@
-#!/usr/bin/env python3
-#
-# gll -- Wrapper of 'git log' with pretty colorful format
-#
-# Copyright (C) 2019-2022 Shachar Sharon
-#
-# Permission is hereby granted, free of charge, to any person obtaining a
-# copy of this software and associated documentation files (the "Software"),
-# to deal in the Software without restriction, including without limitation
-# the rights to use, copy, modify, merge, publish, distribute, sublicense,
-# and/or sell copies of the Software, and to permit persons to whom the
-# Software is furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# in all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.
-#
+#!/usr/bin/env guile
+!#
+;;
+;; gll -- Wrapper of 'git log' with pretty colorful format
+;;
+;; Copyright (C) 2019-2025 Shachar Sharon
+;;
+;; Permission is hereby granted, free of charge, to any person obtaining a
+;; copy of this software and associated documentation files (the "Software"),
+;; to deal in the Software without restriction, including without limitation
+;; the rights to use, copy, modify, merge, publish, distribute, sublicense,
+;; and/or sell copies of the Software, and to permit persons to whom the
+;; Software is furnished to do so, subject to the following conditions:
+;;
+;; The above copyright notice and this permission notice shall be included in
+;; in all copies or substantial portions of the Software.
+;;
+;; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+;; OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+;; MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+;; IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+;; CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+;; TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+;; SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+;;
 
-import getopt
-import os
-import shlex
-import shutil
-import subprocess
-import sys
+(use-modules (ice-9 getopt-long)
+             (ice-9 popen)
+             (ice-9 rdelim)
+             (ice-9 regex)
+             (ice-9 string-fun)
+             (srfi srfi-1))
 
-import colorama
+;;; ---------------------------------------------------------------------------
+;;; ANSI color codes
 
-WHITE = colorama.Fore.WHITE
-GREEN = colorama.Fore.GREEN
-YELLOW = colorama.Fore.YELLOW
-BLUE = colorama.Fore.BLUE
-CYAN = colorama.Fore.CYAN
-RED = colorama.Fore.RED
-MAGENTA = colorama.Fore.MAGENTA
-LIGHTRED_EX = colorama.Fore.LIGHTRED_EX
-LIGHTBLUE_EX = colorama.Fore.LIGHTBLUE_EX
-LIGHTGREEN_EX = colorama.Fore.LIGHTGREEN_EX
-LIGHTYELLOW_EX = colorama.Fore.LIGHTYELLOW_EX
-LIGHTMAGENTA_EX = colorama.Fore.LIGHTMAGENTA_EX
-RESET = colorama.Fore.RESET
-DIM = colorama.Style.DIM
-BRIGHT = colorama.Style.BRIGHT
-RESET_ALL = colorama.Style.RESET_ALL
-NLINES_DEFAULT = 24
+(define ESC "\x1b[")
 
+(define (ansi . codes)
+  (string-append ESC (string-join (map number->string codes) ";") "m"))
 
-def msg(txt: str) -> None:
-    name = os.path.basename(__file__)
-    print(name + ": " + txt)
+(define RESET-ALL   (ansi 0))
+(define DIM         (ansi 2))
+(define BRIGHT      (ansi 1))
+(define GREEN       (ansi 32))
+(define YELLOW      (ansi 33))
+(define RED         (ansi 31))
+(define LIGHTRED-EX    (ansi 91))
+(define LIGHTBLUE-EX   (ansi 94))
+(define LIGHTGREEN-EX  (ansi 92))
+(define LIGHTYELLOW-EX (ansi 93))
+(define LIGHTMAGENTA-EX (ansi 95))
 
+(define NLINES-DEFAULT 24)
 
-def die(txt: str) -> None:
-    msg(txt)
-    sys.exit(-1)
+;;; ---------------------------------------------------------------------------
+;;; Utilities
 
+(define (prog-name)
+  (basename (car (program-arguments))))
 
-def locate_bin(name: str) -> str:
-    xbin = shutil.which(name, os.X_OK)
-    if not xbin:
-        die("failed to find " + name)
-    return str(xbin).strip()
+(define (msg txt)
+  (display (string-append (prog-name) ": " txt "\n")
+           (current-error-port)))
 
+(define (die txt)
+  (msg txt)
+  (exit 1))
 
-def subexec(cmd, work_dir=None) -> str:
-    """Execute command as sub-process, die upon failure"""
-    ret = ""
-    with subprocess.Popen(
-        shlex.split(cmd),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        cwd=work_dir,
-        shell=False,
-        env=os.environ.copy(),
-    ) as pipes:
-        std_out, std_err = pipes.communicate()
-        if pipes.returncode != 0:
-            die("failed: " + cmd)
-        out = std_err or std_out
-        ret = out.decode("UTF-8")
-    return ret
+(define (locate-bin name)
+  (let ((found (search-path (parse-path (getenv "PATH")) name)))
+    (unless found
+      (die (string-append "failed to find " name)))
+    found))
 
+;;; ---------------------------------------------------------------------------
+;;; String helpers
 
-def git_log_format(work_dir: str, ref_name: str, nlines: int) -> str:
-    """Calls git-log-format without colors and with '|||' as seperator"""
-    cmd = locate_bin("git")
-    cmd = cmd + " --no-pager log --abbrev-commit --decorate --date=short"
-    cmd = cmd + f" -n{nlines} "
-    cmd = cmd + " --format=tformat:'%h|||%an|||%ad|||%d|||%s' "
-    cmd = cmd + ref_name
-    return subexec(cmd, work_dir)
+(define (string-contains-char? str ch)
+  (string-index str ch))
 
+(define (string-pad-right-to str width)
+  "Pad STR with spaces on the right up to WIDTH."
+  (let ((len (string-length str)))
+    (if (>= len width)
+        (substring str 0 width)
+        (string-append str (make-string (- width len) #\space)))))
 
-def parse_git_log(lines: str) -> list:
-    gll_dat = []
-    for ln in lines.split("\n"):
-        t = tuple(ln.split("|||", 5))
-        if len(t) != 5:
-            continue
-        gll_dat.append(t)
-    return gll_dat
+(define (split-on-sep str sep)
+  "Split STR on SEP string, returning a list of parts."
+  (let loop ((s str) (acc '()))
+    (let ((idx (string-search-forward sep s 0)))
+      (if (not idx)
+          (reverse (cons s acc))
+          (loop (substring s (+ idx (string-length sep)) (string-length s))
+                (cons (substring s 0 idx) acc))))))
 
+;;; ---------------------------------------------------------------------------
+;;; Git log invocation
 
-def color_branch_tags(tag_token: str) -> str:
-    tags_in = [tag.strip() for tag in tag_token.strip("()").split(",")]
-    if not tag_token or not tags_in:
-        return ""
-    tags_out = []
-    for tag in tags_in:
-        ctag = ""
-        if "/" in tag:
-            ctag = DIM + LIGHTRED_EX + tag
-        elif "HEAD" in tag:
-            if " -> " in tag:
-                head, tail = tuple(tag.split(" ", 1))
-                tag = head + " " + LIGHTGREEN_EX + tail
-            ctag = BRIGHT + LIGHTBLUE_EX + tag
-        elif "tag: " in tag:
-            ctag = LIGHTYELLOW_EX + tag.replace("tag: ", "")
-        else:
-            ctag = LIGHTMAGENTA_EX + tag
-        tags_out.append(RESET_ALL + ctag + RESET_ALL)
-    return "(" + ", ".join(tags_out) + ") "
+(define (git-log-format work-dir ref-name nlines)
+  "Run git log and return raw output string."
+  (let* ((git   (locate-bin "git"))
+         (fmt   "--format=tformat:'%h|||%an|||%ad|||%d|||%s'")
+         (args  (filter (lambda (s) (not (string=? s "")))
+                        (list "--no-pager" "log"
+                              "--abbrev-commit"
+                              "--decorate"
+                              "--date=short"
+                              (string-append "-n" (number->string nlines))
+                              fmt
+                              ref-name)))
+         (cmd   (string-join (cons git args) " "))
+         (port  (open-input-pipe
+                 (string-append "cd " work-dir " && " cmd)))
+         (out   (let loop ((lines '()))
+                  (let ((line (read-line port)))
+                    (if (eof-object? line)
+                        (string-join (reverse lines) "\n")
+                        (loop (cons line lines))))))
+         (status (close-pipe port)))
+    (unless (eqv? 0 (status:exit-val status))
+      (die (string-append "failed: " cmd)))
+    out))
 
+;;; ---------------------------------------------------------------------------
+;;; Parsing
 
-def print_gll_line(
-    sha: str, author: str, date: str, tag_token: str, commit_msg: str
-) -> None:
-    hsep = RED + BRIGHT + "|" + RESET_ALL
-    sha = GREEN + sha
-    author = YELLOW + "{:<20s}".format(author)
-    date = LIGHTBLUE_EX + date
-    tags = color_branch_tags(tag_token)
-    cmsg = RESET_ALL + commit_msg + RESET_ALL
-    tail = tags + cmsg
-    print(f"{sha} {author} {date} {hsep} {tail}")
+(define (parse-git-log-line ln)
+  "Parse one git log line. Return list of 5 fields or #f."
+  (let ((parts (split-on-sep ln "|||")))
+    (if (= (length parts) 5)
+        parts
+        #f)))
 
+(define (parse-git-log text)
+  "Parse full git log output into a list of field-lists."
+  (filter-map parse-git-log-line
+              (string-split text #\newline)))
 
-def print_gll(gll_dat: list) -> None:
-    for dat in gll_dat:
-        ent = [field.strip() for field in dat]
-        print_gll_line(ent[0], ent[1], ent[2], ent[3], ent[4])
+;;; ---------------------------------------------------------------------------
+;;; Colorize decorations
 
+(define (color-one-tag tag)
+  "Return a colorized string for a single decoration TAG."
+  (let ((ctag
+         (cond
+           ((string-index tag #\/)
+            (string-append DIM LIGHTRED-EX tag))
+           ((string-search-forward "HEAD" tag 0)
+            (if (string-search-forward " -> " tag 0)
+                (let* ((sp   (string-search-forward " " tag 0))
+                       (head (substring tag 0 sp))
+                       (tail (substring tag (+ sp 1) (string-length tag))))
+                  (string-append BRIGHT LIGHTBLUE-EX
+                                 head " " LIGHTGREEN-EX tail))
+                (string-append BRIGHT LIGHTBLUE-EX tag)))
+           ((string-search-forward "tag: " tag 0)
+            (string-append LIGHTYELLOW-EX
+                           (string-replace-substring tag "tag: " "")))
+           (else
+            (string-append LIGHTMAGENTA-EX tag)))))
+    (string-append RESET-ALL ctag RESET-ALL)))
 
-def usage(exit_code: int) -> None:
-    prog = os.path.basename(sys.argv[0])
-    print(f"usage: {prog} [-n NLINES] [<git-path>]")
-    sys.exit(exit_code)
+(define (color-branch-tags tag-token)
+  "Colorize all decorations in TAG-TOKEN (the %d field from git log)."
+  (let* ((stripped (string-trim-right
+                    (string-trim tag-token)
+                    #\)))
+         (stripped (string-trim stripped #\())
+         (raw-tags (string-split stripped #\,)))
+    (if (or (string=? tag-token "")
+            (null? raw-tags)
+            (every (lambda (t) (string=? (string-trim t) "")) raw-tags))
+        ""
+        (let ((colored (map (lambda (t)
+                              (color-one-tag (string-trim t)))
+                            raw-tags)))
+          (string-append "(" (string-join colored ", ") ") ")))))
 
+;;; ---------------------------------------------------------------------------
+;;; Printing
 
-def parse_args() -> tuple:
-    nlines = NLINES_DEFAULT
-    work_dir = os.getcwd()
-    ref_name = ""
-    try:
-        opts, args = getopt.getopt(sys.argv[1:], "hn:", ["help", "nlines="])
-    except getopt.GetoptError as err:
-        print(err)
-        usage(1)
-    for opt, arg in opts:
-        if opt in ("-n", "--nlines"):
-            nlines = int(arg)
-        else:
-            usage(2)
-    if len(args) > 1:
-        usage(3)
-    if args:
-        ref_name = args[0]
-        if os.path.isdir(ref_name):
-            ref_name = work_dir = os.path.realpath(ref_name)
-        elif os.path.isfile(ref_name):
-            ref_name = os.path.realpath(ref_name)
-            work_dir = os.path.dirname(ref_name)
+(define (print-gll-line sha author date tag-token commit-msg)
+  (let* ((hsep  (string-append RED BRIGHT "|" RESET-ALL))
+         (csha  (string-append GREEN sha))
+         (cauth (string-append YELLOW (string-pad-right-to author 20)))
+         (cdate (string-append LIGHTBLUE-EX date))
+         (tags  (color-branch-tags tag-token))
+         (cmsg  (string-append RESET-ALL commit-msg RESET-ALL))
+         (tail  (string-append tags cmsg)))
+    (display
+     (string-append csha " " cauth " " cdate " " hsep " " tail "\n"))))
 
-    return (work_dir, ref_name, nlines)
+(define (print-gll gll-dat)
+  (for-each
+   (lambda (fields)
+     (let ((ent (map string-trim fields)))
+       (apply print-gll-line ent)))
+   gll-dat))
 
+;;; ---------------------------------------------------------------------------
+;;; Argument parsing
 
-def main() -> None:
-    colorama.init()
-    (work_dir, ref_name, nlines) = parse_args()
-    git_out = git_log_format(work_dir, ref_name, nlines)
-    gll_dat = parse_git_log(git_out)
-    print_gll(gll_dat)
-    sys.exit(0)
+(define option-spec
+  '((help    (single-char #\h) (value #f))
+    (nlines  (single-char #\n) (value #t))))
 
+(define (usage exit-code)
+  (display (string-append "usage: " (prog-name) " [-n NLINES] [<git-path>]\n"))
+  (exit exit-code))
 
-if __name__ == "__main__":
-    main()
+(define (parse-args)
+  (let* ((opts    (getopt-long (program-arguments) option-spec
+                               #:stop-at-first-non-option #t))
+         (help?   (option-ref opts 'help #f))
+         (nlines  (string->number
+                   (option-ref opts 'nlines
+                               (number->string NLINES-DEFAULT))))
+         (rest    (option-ref opts '() '())))
+    (when help? (usage 0))
+    (when (> (length rest) 1) (usage 3))
+    (let* ((work-dir (getcwd))
+           (ref-name (if (null? rest) "" (car rest)))
+           (work-dir (cond
+                       ((and (not (string=? ref-name ""))
+                             (file-is-directory? ref-name))
+                        (canonicalize-path ref-name))
+                       ((and (not (string=? ref-name ""))
+                             (file-exists? ref-name))
+                        (dirname (canonicalize-path ref-name)))
+                       (else work-dir)))
+           (ref-name (cond
+                       ((string=? ref-name "") "")
+                       ((file-is-directory? ref-name)
+                        (canonicalize-path ref-name))
+                       ((file-exists? ref-name)
+                        (canonicalize-path ref-name))
+                       (else ref-name))))
+      (list work-dir ref-name nlines))))
+
+;;; ---------------------------------------------------------------------------
+;;; Entry point
+
+(define (main)
+  (let* ((args     (parse-args))
+         (work-dir (car args))
+         (ref-name (cadr args))
+         (nlines   (caddr args)))
+    (let* ((git-out (git-log-format work-dir ref-name nlines))
+           (gll-dat (parse-git-log git-out)))
+      (print-gll gll-dat))
+    (exit 0)))
+
+(main)
